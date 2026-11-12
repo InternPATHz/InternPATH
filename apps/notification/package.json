@@ -1,0 +1,37 @@
+{
+  "name": "@internpath/notification",
+  "private": true,
+  "version": "0.1.0",
+  "description": "InternPath notification service (owner: Junior, port: 3005)",
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "test": "mocha",
+    "test:cov": "c8 mocha",
+    "lint": "eslint src test",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@internpath/common": "workspace:^",
+    "@internpath/contracts": "workspace:^",
+    "@nestjs/common": "^12.5.0",
+    "@nestjs/config": "^12.1.1",
+    "@nestjs/core": "^12.5.0",
+    "@nestjs/platform-express": "^12.5.0",
+    "@prisma/client": "^6.19.3",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "nestjs-pino": "^5.3.1",
+    "nodemailer": "^10.5.0",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^12.5.0",
+    "@types/nodemailer": "^8.0.2",
+    "prisma": "6.19.3"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@internpath/contracts",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Shared TypeScript types only: Event envelope/payloads, DTO ที่แชร์ (ดู docs/event-contract.md)",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

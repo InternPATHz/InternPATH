@@ -11,6 +11,7 @@
 9. [แผนการดำเนินงาน 4 สัปดาห์ (Work Plan: 4 Weeks)](#-9-แผนการดำเนินงาน-4-สัปดาห์-work-plan-4-weeks)
 10. [การทดสอบการยอมรับของผู้ใช้งาน (UAT)](#-10-การทดสอบการยอมรับของผู้ใช้งาน-user-acceptance-testing---uat)
 11. [สมาชิกในทีมและการแบ่งความรับผิดชอบ (Team Members)](#-11-สมาชิกในทีมและการแบ่งความรับผิดชอบ-team-members)
+12. [เอกสารเทคนิค (Technical Docs)](docs/)
 
 ---
 
@@ -337,6 +338,9 @@
 | `CertificateIssued` / `CertificateRevoked` | Lifecycle | Notification |
 | `ReminderDue` | Lifecycle | Notification |
 | `UserDeletionRequested` | Identity | Lifecycle, Job Management, Verification, Notification |
+| `UserSuspended` | Identity | Gateway (อัปเดต Denylist), Notification |
+| `ProblemReportCreated` | Lifecycle | Notification |
+| `CompanyFlagChanged` (ธง `UNDER_REVIEW`) | Verification | Job Management, Notification |
 
 **ความทนทาน (Reliability)**
 - **Fail-safe:** หาก Verification Service ไม่ตอบใน 5 นาที ประกาศงานเข้า `PENDING_REVIEW` ไม่ Publish เอง

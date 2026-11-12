@@ -1,0 +1,27 @@
+node_modules/
+dist/
+build/
+.next/
+coverage/
+.nyc_output/
+*.log
+.claude/
+
+# secrets — ห้ามขึ้น Git (README 5.7)
+.env
+.env.*
+!.env.example
+
+# keys
+*.pem
+*.key
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Prisma
+*.db

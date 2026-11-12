@@ -1,0 +1,35 @@
+// ตารางทั้งหมดให้เป็นไปตาม docs/data-schema.md (หัวข้อของ Service นี้)
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("JOB_DATABASE_URL") // pooled (runtime)
+  directUrl = env("JOB_DIRECT_URL")   // direct (migration)
+}
+
+// ตารางร่วม (docs/data-schema.md §2.2) — ตารางเฉพาะของ Service เพิ่มต่อจากนี้ตามหัวข้อของ Service
+model OutboxEvent {
+  id            String    @id @default(uuid()) @db.Uuid
+  type          String
+  version       Int       @default(1)
+  aggregateId   String    @map("aggregate_id") @db.Uuid
+  payload       Json
+  correlationId String    @map("correlation_id") @db.Uuid
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  publishedAt   DateTime? @map("published_at") @db.Timestamptz(6)
+  attempts      Int       @default(0)
+
+  @@index([publishedAt, createdAt])
+  @@map("outbox_events")
+}
+
+model ProcessedEvent {
+  eventId     String   @map("event_id") @db.Uuid
+  consumer    String
+  processedAt DateTime @default(now()) @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, consumer])
+  @@map("processed_events")
+}

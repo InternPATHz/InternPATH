@@ -1,0 +1,42 @@
+{
+  "name": "@internpath/identity",
+  "private": true,
+  "version": "0.1.0",
+  "description": "InternPath identity service (owner: SA, port: 3001)",
+  "scripts": {
+    "build": "nest build",
+    "start": "node dist/main.js",
+    "start:dev": "nest start --watch",
+    "test": "mocha",
+    "test:cov": "c8 mocha",
+    "lint": "eslint src test",
+    "prisma:generate": "prisma generate"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1168.0",
+    "@aws-sdk/s3-request-presigner": "^3.1168.0",
+    "@internpath/common": "workspace:^",
+    "@internpath/contracts": "workspace:^",
+    "@nestjs/common": "^12.5.0",
+    "@nestjs/config": "^12.1.1",
+    "@nestjs/core": "^12.5.0",
+    "@nestjs/platform-express": "^12.5.0",
+    "@nestjs/schedule": "^12.0.3",
+    "@prisma/client": "^6.19.3",
+    "argon2": "^0.45.2",
+    "class-transformer": "^0.5.1",
+    "class-validator": "^0.15.1",
+    "file-type": "16.5.4",
+    "multer": "^2.5.0",
+    "nestjs-pino": "^5.3.1",
+    "pino": "^10.4.0",
+    "pino-http": "^11.0.0",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^12.5.0",
+    "@types/multer": "^2.3.0",
+    "prisma": "6.19.3"
+  }
+}

@@ -1,0 +1,12 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-size: 16px; /* README 8: ข้อความเนื้อหา 16px */
+  }
+  body {
+    @apply bg-surface text-ink font-sans leading-thai antialiased;
+  }
+}

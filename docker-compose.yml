@@ -1,0 +1,150 @@
+# ใช้งาน:
+#   docker compose --profile infra up -d                 # เฉพาะ Postgres/RabbitMQ/MinIO/Mailpit (pnpm infra:up)
+#   docker compose --profile infra --profile identity up # รัน Service เดียวบน Docker (profile = ชื่อ Service)
+#   docker compose --profile all up --build              # ทุกอย่าง
+# ตอนพัฒนาปกติให้รัน infra ใน Docker แล้วรัน Service ด้วย `pnpm --filter @internpath/<name> start:dev`
+
+x-service: &service
+  env_file:
+    - path: .env
+      required: false
+  restart: unless-stopped
+  environment: &service-env
+    # ในคอนเทนเนอร์ต้องเรียก infra ด้วยชื่อ service ไม่ใช่ localhost
+    RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
+    S3_ENDPOINT: http://minio:9000
+    SMTP_HOST: mailpit
+
+services:
+  # ---------- infra ----------
+  postgres:
+    image: postgres:16
+    profiles: ["infra", "all"]
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    profiles: ["infra", "all"]
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    profiles: ["infra", "all"]
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: ["infra", "all"]
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  # ---------- services (profile = ชื่อ Service) ----------
+  gateway:
+    <<: *service
+    profiles: ["gateway", "all"]
+    build: { context: ., dockerfile: apps/gateway/Dockerfile }
+    ports: ["3000:3000"]
+    environment:
+      <<: *service-env
+      PORT: "3000"
+      IDENTITY_URL: http://identity:3001
+      JOB_URL: http://job:3002
+      VERIFICATION_URL: http://verification:3003
+      LIFECYCLE_URL: http://lifecycle:3004
+      NOTIFICATION_URL: http://notification:3005
+
+  identity:
+    <<: *service
+    profiles: ["identity", "all"]
+    build: { context: ., dockerfile: apps/identity/Dockerfile }
+    ports: ["3001:3001"]
+    environment:
+      <<: *service-env
+      PORT: "3001"
+      IDENTITY_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/identity_db
+      IDENTITY_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/identity_db
+
+  job:
+    <<: *service
+    profiles: ["job", "all"]
+    build: { context: ., dockerfile: apps/job/Dockerfile }
+    ports: ["3002:3002"]
+    environment:
+      <<: *service-env
+      PORT: "3002"
+      JOB_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/job_db
+      JOB_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/job_db
+
+  verification:
+    <<: *service
+    profiles: ["verification", "all"]
+    build: { context: ., dockerfile: apps/verification/Dockerfile }
+    ports: ["3003:3003"]
+    environment:
+      <<: *service-env
+      PORT: "3003"
+      VERIFICATION_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/verification_db
+      VERIFICATION_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/verification_db
+
+  lifecycle:
+    <<: *service
+    profiles: ["lifecycle", "all"]
+    build: { context: ., dockerfile: apps/lifecycle/Dockerfile }
+    ports: ["3004:3004"]
+    environment:
+      <<: *service-env
+      PORT: "3004"
+      LIFECYCLE_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/lifecycle_db
+      LIFECYCLE_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/lifecycle_db
+
+  notification:
+    <<: *service
+    profiles: ["notification", "all"]
+    build: { context: ., dockerfile: apps/notification/Dockerfile }
+    ports: ["3005:3005"]
+    environment:
+      <<: *service-env
+      PORT: "3005"
+      NOTIFICATION_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/notification_db
+      NOTIFICATION_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/notification_db
+
+  web:
+    <<: *service
+    profiles: ["web", "all"]
+    build: { context: ., dockerfile: apps/web/Dockerfile }
+    ports: ["3100:3100"]
+
+volumes:
+  postgres-data:
+  minio-data:
