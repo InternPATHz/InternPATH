@@ -10,5 +10,6 @@
 | [api-contract.md](api-contract.md) | REST Endpoint ทั้งหมด, สิทธิ์ตาม Role, รูปแบบ Error, Internal API |
 | [event-contract.md](event-contract.md) | Event ทั้งหมด, Envelope, Payload, RabbitMQ Routing, Retry/DLQ, Idempotency |
 | [data-schema.md](data-schema.md) | ตาราง/ฟิลด์ของแต่ละ Service, Enum สถานะ และ State Machine (ใบสมัคร, ประกาศงาน ฯลฯ) |
+| [diagram.md](diagram.md) | Diagram ประกอบ (Mermaid): Use Case, Sequence, Class, ER — สร้างจาก api/event/data-schema ถ้าขัดกันให้ยึดเอกสารต้นทาง |
 
 **ถ้าเพิ่ง clone มา** ให้เริ่มที่ [getting-started.md](getting-started.md) แล้วต่อด้วย [developer-guide.md](developer-guide.md)
