@@ -1,4 +1,6 @@
 // ตารางทั้งหมดให้เป็นไปตาม docs/data-schema.md (หัวข้อของ Service นี้)
+// หมายเหตุ: partial unique index ของ queue_items และ trigger append-only ของ status_history/admin_audit_log
+// เขียนเป็น SQL มือใน migration (Prisma ไม่รองรับ) — อย่าลบเมื่อสร้าง migration ใหม่
 generator client {
   provider = "prisma-client-js"
 }
@@ -9,7 +11,176 @@ datasource db {
   directUrl = env("VERIFICATION_DIRECT_URL")   // direct (migration)
 }
 
-// ตารางร่วม (docs/data-schema.md §2.2) — ตารางเฉพาะของ Service เพิ่มต่อจากนี้ตามหัวข้อของ Service
+// ---------- Enums ----------
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+
+  @@map("risk_level")
+}
+
+enum EvaluationDecision {
+  APPROVE
+  PENDING_REVIEW
+  AUTO_REJECT
+
+  @@map("evaluation_decision")
+}
+
+enum AppealStatus {
+  OPEN
+  APPROVED
+  DENIED
+
+  @@map("appeal_status")
+}
+
+enum QueueItemType {
+  JOB_REVIEW
+  JOB_APPEAL
+  COMPANY_ACCOUNT
+  JOB_REPORT
+  REVIEW_HELD
+  REVIEW_REPORT
+
+  @@map("queue_item_type")
+}
+
+enum QueueItemStatus {
+  OPEN
+  IN_REVIEW
+  RESOLVED
+
+  @@map("queue_item_status")
+}
+
+enum QueuePriority {
+  NORMAL
+  FAST_TRACK
+
+  @@map("queue_priority")
+}
+
+enum QueueOrigin {
+  EVALUATION
+  VERIFY_TIMEOUT
+  APPEAL
+
+  @@map("queue_origin")
+}
+
+enum TermSeverity {
+  HARD
+  SOFT
+
+  @@map("term_severity")
+}
+
+// ---------- ตารางเฉพาะของ Verification (docs/data-schema.md §5 + spec §5.4) ----------
+model Evaluation {
+  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId                  String             @map("job_id") @db.Uuid
+  companyId              String             @map("company_id") @db.Uuid
+  submissionId           String             @unique @map("submission_id") @db.Uuid
+  submissionKind         String             @map("submission_kind")
+  /// เวลาที่ Job ส่งตรวจ (ใช้ตัดสินว่า "ผลตรวจล่าสุด" คือแถวไหน — ไม่ใช่เวลาที่ประมวลผล)
+  submittedAt            DateTime           @map("submitted_at") @db.Timestamptz(6)
+  /// ข้อความที่สแกน หลัง normalizeText (ห้าม log)
+  content                Json
+  riskScore              Int                @map("risk_score")
+  riskLevel              RiskLevel          @map("risk_level")
+  decision               EvaluationDecision
+  negatedOnly            Boolean            @map("negated_only")
+  matchedKeywords        Json               @map("matched_keywords")
+  reasons                Json
+  companyFlagUnderReview Boolean            @map("company_flag_under_review")
+  fastTrack              Boolean            @map("fast_track")
+  evaluatedAt            DateTime           @default(now()) @map("evaluated_at") @db.Timestamptz(6)
+
+  @@index([jobId, submittedAt])
+  @@map("evaluations")
+}
+
+model Appeal {
+  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// 1 ครั้งต่อประกาศ — Verification เป็นผู้บังคับกฎนี้ (README 5.1.5)
+  jobId        String       @unique @map("job_id") @db.Uuid
+  submissionId String       @map("submission_id") @db.Uuid
+  statement    String
+  status       AppealStatus @default(OPEN)
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  decidedBy    String?      @map("decided_by") @db.Uuid
+  decidedAt    DateTime?    @map("decided_at") @db.Timestamptz(6)
+
+  @@map("appeals")
+}
+
+model QueueItem {
+  id           String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  type         QueueItemType
+  targetType   String          @map("target_type")
+  targetId     String          @map("target_id") @db.Uuid
+  companyId    String?         @map("company_id") @db.Uuid
+  submissionId String?         @map("submission_id") @db.Uuid
+  priority     QueuePriority   @default(NORMAL)
+  riskLevel    RiskLevel?      @map("risk_level")
+  isAppeal     Boolean         @default(false) @map("is_appeal")
+  origin       QueueOrigin
+  dueAt        DateTime        @map("due_at") @db.Timestamptz(6)
+  status       QueueItemStatus @default(OPEN)
+  assignedTo   String?         @map("assigned_to") @db.Uuid
+  resolution   String?
+  createdAt    DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt   DateTime?       @map("resolved_at") @db.Timestamptz(6)
+
+  @@index([status, priority, dueAt])
+  @@map("queue_items")
+}
+
+model CompanySnapshot {
+  companyId     String   @id @map("company_id") @db.Uuid
+  name          String
+  status        String
+  entityVersion Int      @map("entity_version")
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("company_snapshots")
+}
+
+model BlacklistTerm {
+  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  term      String       @unique
+  severity  TermSeverity
+  weight    Int?
+  category  String       @default("GENERAL")
+  enabled   Boolean      @default(true)
+  createdBy String?      @map("created_by") @db.Uuid
+  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@map("blacklist_terms")
+}
+
+model RiskRule {
+  code      String   @id
+  weight    Int
+  params    Json     @default("{}")
+  enabled   Boolean  @default(true)
+  updatedBy String?  @map("updated_by") @db.Uuid
+  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("risk_rules")
+}
+
+model NegationCue {
+  id      String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  cue     String  @unique
+  enabled Boolean @default(true)
+
+  @@map("negation_cues")
+}
+
+// ---------- ตารางร่วม (docs/data-schema.md §2.2) ----------
 model OutboxEvent {
   id            String    @id @default(uuid()) @db.Uuid
   type          String
@@ -32,4 +203,40 @@ model ProcessedEvent {
 
   @@id([eventId, consumer])
   @@map("processed_events")
+}
+
+/// append-only (trigger ใน migration ห้าม UPDATE/DELETE)
+model StatusHistory {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entity        String
+  entityId      String   @map("entity_id") @db.Uuid
+  fromStatus    String?  @map("from_status")
+  toStatus      String   @map("to_status")
+  /// null = SYSTEM
+  actorId       String?  @map("actor_id") @db.Uuid
+  actorRole     String   @map("actor_role")
+  reason        String?
+  correlationId String   @map("correlation_id") @db.Uuid
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([entity, entityId, occurredAt])
+  @@map("status_history")
+}
+
+/// append-only (trigger ใน migration ห้าม UPDATE/DELETE)
+model AdminAuditLog {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adminId       String   @map("admin_id") @db.Uuid
+  action        String
+  targetType    String   @map("target_type")
+  /// ไม่ใช่ uuid เสมอไป (เช่น 'risk_rules')
+  targetId      String   @map("target_id")
+  before        Json?
+  after         Json?
+  reason        String?
+  correlationId String   @map("correlation_id") @db.Uuid
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([occurredAt])
+  @@map("admin_audit_log")
 }

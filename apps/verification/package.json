@@ -30,6 +30,11 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^12.5.0",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/pg": "^8.23.1",
+    "amqplib": "^2.3.1",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.1",
     "prisma": "6.19.3"
   }
 }

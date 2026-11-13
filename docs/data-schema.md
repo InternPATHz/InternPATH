@@ -222,14 +222,14 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`, �
 
 ## 5. Verification & Trust Service (`verification_db`)
 
-**`blacklist_keywords`**: `id`, `keyword`, `match_type (EXACT|CONTAINS|REGEX)`, `language`, `severity (BLOCK|SCORE)`, `weight int null`, `active`, `created_by`, `created_at`
+**`blacklist_terms`** (คำต้องห้าม — แก้ได้ผ่าน API; ค่าตั้งต้น seed ใน migration แบบ insert-if-missing): `id`, `term unique` (เก็บตัวพิมพ์เล็ก; จับแบบ substring ไม่สนตัวพิมพ์), `severity (HARD|SOFT)` (`HARD` = ปฏิเสธทันทีเมื่อพบใน `job_title`/`description` โดยไม่อยู่ในประโยคปฏิเสธ; `SOFT` = เพิ่มคะแนนตาม `weight`), `weight int null` (เฉพาะ `SOFT`), `category`, `enabled`, `created_by null`, `created_at`
 
-**`negation_patterns`**: `id`, `pattern` (เช่น `ไม่มี`, `ไม่เก็บ`, `ไม่ต้อง`, `no`, `without`), `active` — ใช้ตรวจคำต้องห้ามในประโยคปฏิเสธ (README 5.1)
+**`negation_cues`**: `id`, `cue unique` (เช่น `ไม่มี`, `ไม่เก็บ`, `ไม่ต้อง`, `no`, `not`, `without`), `enabled` — ตรวจคำต้องห้ามในประโยคปฏิเสธ (README 5.1): cue ต้องอยู่ก่อนคำในประโยคเดียวกันและห่างไม่เกิน `NEGATION_WINDOW.max_gap` ตัวอักษร
 
-**`risk_rules`**: `id`, `code`, `description`, `weight`, `active` — กฎให้คะแนน (เช่น description สั้น, ไม่ระบุเบี้ยเลี้ยง, มีช่องทางติดต่อส่วนตัว, บริษัทมีประวัติถูกปฏิเสธ)
+**`risk_rules`** (กฎให้คะแนน): `code PK`, `weight`, `params jsonb`, `enabled`, `updated_by null`, `updated_at` — `CONTACT_IN_TEXT`, `HARD_TERM_OTHER_FIELD`, `ALLOWANCE_HIGH`, `HOURS_EXCESSIVE`, `DESCRIPTION_TOO_SHORT`, `SOFT_TERMS`, `NO_ALLOWANCE`, `NEGATION_WINDOW` (ค่าตั้งต้นและความหมายดู `docs/superpowers/specs/2026-11-13-verification-slice1-design.md` §5.3)
 
 **`evaluations`** (ผลตรวจประกาศแต่ละ submission)
-`id`, `job_id`, `submission_id unique`, `risk_score int`, `risk_level`, `matched_keywords jsonb`, `negated_only bool`, `reasons jsonb`, `decision`, `company_flag_under_review bool`, `evaluated_at`
+`id`, `job_id`, `company_id`, `submission_id unique`, `submission_kind`, `submitted_at` (จาก E01 — ใช้ตัดสินว่า "ผลตรวจล่าสุด" คือแถวไหน ไม่ใช้เวลาที่ประมวลผล), `content jsonb` (ข้อความที่สแกนหลัง normalize — ไฮไลต์อ้างอิงข้อความนี้; **ห้าม log**), `risk_score int`, `risk_level`, `matched_keywords jsonb` (`[{term, field, negated, start, end}]`), `negated_only bool`, `reasons jsonb`, `decision (APPROVE|PENDING_REVIEW|AUTO_REJECT)`, `company_flag_under_review bool`, `fast_track bool` (snapshot ณ ตอนส่ง), `evaluated_at` | Index (`job_id`, `submitted_at`)
 
 **`appeals`**: `id`, `job_id unique` (1 ครั้ง/ประกาศ — **Verification เป็นผู้บังคับกฎนี้** README 5.1.5), `submission_id`, `statement text`, `status (OPEN|APPROVED|DENIED)`, `created_at`, `decided_by null`, `decided_at null` — ผล Admin เป็นที่สิ้นสุด
 
@@ -242,16 +242,18 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`, �
 | type | QueueItemType | |
 | target_type / target_id | text / uuid | job / company / review / problem_report |
 | company_id | uuid null | |
+| submission_id | uuid null | การส่งตรวจที่รายการนี้ตัดสิน (ใช้ใน `JobVerified` ของ Admin); ว่างได้เมื่อรายการเกิดจาก `VERIFY_TIMEOUT` ที่ยังไม่มี `submission_id` |
+| origin | `EVALUATION`/`VERIFY_TIMEOUT`/`APPEAL` | ที่มาของรายการ (ใช้แยก "ผลตรวจที่มาหลัง Fail-safe") |
 | priority | `NORMAL`/`FAST_TRACK` | ตาม entitlement ของบริษัท ณ เวลาเข้าคิว |
 | risk_level | RiskLevel null | สำหรับแถบสี เขียว/เหลือง/แดง |
 | is_appeal | bool | ป้าย APPEAL |
 | due_at | timestamptz | = created_at + 48 ชม. (หรือ 12 ชม. สำหรับ FAST_TRACK) |
 | status | QueueItemStatus | |
 | assigned_to | uuid null | |
-| resolution | text null | |
+| resolution | text null | รหัสผลการตัดสิน: `ADMIN_APPROVE`, `ADMIN_REJECT`, `SUPERSEDED` (เหตุผลที่ Admin ปฏิเสธเก็บใน `status_history.reason` ของแถว `RESOLVED`) |
 | created_at, resolved_at | | |
 
-`OVERDUE` = `status != RESOLVED AND now() > due_at` (คำนวณตอนอ่าน) | Index (`status`, `priority`, `due_at`)
+`OVERDUE` = `status != RESOLVED AND now() > due_at` (คำนวณตอนอ่าน) | Index (`status`, `priority`, `due_at`) | **partial unique index** (`target_id`, `type`) เมื่อ `status <> 'RESOLVED'` — รายการเปิดของ (เป้าหมาย, ชนิด) เดียวกันซ้อนกันไม่ได้ (เขียนมือใน migration)
 
 **`job_reports`**: `id`, `job_id`, `reporter_user_id`, `category`, `detail`, `counted bool` (false เมื่อผู้รายงานถูกยกคำร้องติด 3 ครั้ง), `status (OPEN|DISMISSED|UPHELD)`, `created_at`, `resolved_at` — UNIQUE (`job_id`, `reporter_user_id`) [รายงานได้ครั้งเดียวต่อประกาศ แม้หลังรีเซ็ต] | จำกัด 5 ครั้ง/วัน/ผู้ใช้ (นับจาก `created_at`)
 
@@ -269,7 +271,7 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`, �
 
 **`review_reports`**: `id`, `review_id`, `reporter_user_id`, `reason`, `created_at` — UNIQUE (`review_id`, `reporter_user_id`)
 
-+ ตารางร่วม: `outbox_events`, `processed_events`, `status_history` (entity = COMPANY_FLAG/QUEUE_ITEM), `admin_audit_log`
++ ตารางร่วม: `outbox_events`, `processed_events`, `status_history` (entity = COMPANY_FLAG/QUEUE_ITEM), `admin_audit_log` — `status_history` และ `admin_audit_log` บังคับ append-only ด้วย trigger ใน migration (UPDATE/DELETE ถูกปฏิเสธ; `admin_audit_log.target_id` เป็น text เพราะบางรายการไม่ใช่ uuid เช่น `risk_rules`)
 
 ---
 

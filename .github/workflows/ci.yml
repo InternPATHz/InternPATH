@@ -18,6 +18,9 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # Prisma Client ถูก generate จาก schema ก่อน lint/test/build (apps/verification ใช้แล้ว)
+      - name: Prisma generate
+        run: pnpm --filter @internpath/verification prisma:generate
       # รันเฉพาะแพ็กเกจที่เปลี่ยน (และที่พึ่งพามัน) เทียบกับ main
       - name: Lint
         run: pnpm --filter "...[origin/main]" --if-present lint
