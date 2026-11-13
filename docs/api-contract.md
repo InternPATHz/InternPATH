@@ -173,17 +173,17 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
 | GET | `/admin/queue` | AD | `?type=&priority=&risk_level=&overdue=true&status=` + Pagination มาตรฐาน (§1) → รายการพร้อม `company_name`, `due_at`, `overdue`, `is_appeal`, `risk_level`; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อน แล้ว `due_at` น้อยไปมาก |
-| GET | `/admin/queue/{id}` | AD | รายละเอียด + `reasons` + `content` (ข้อความที่สแกน หลัง normalize) + `highlights:[{field,start,end,keyword,negated}]` (ออฟเซ็ตอ้างอิง `content[field]`; `negated=true` = คำอยู่ในประโยคปฏิเสธ) + `origin`, `submission_id`, `appeal_statement` — รายการ Fail-safe ที่ยังไม่มีผลตรวจ: `reasons`/`highlights` ว่าง, `content` เป็น `null` |
+| GET | `/admin/queue/{id}` | AD | รายละเอียด + `reasons` + `content` (ข้อความที่สแกน หลัง normalize) + `highlights:[{field,start,end,keyword,negated}]` (ออฟเซ็ตอ้างอิง `content[field]`; `negated=true` = คำอยู่ในประโยคปฏิเสธ) + `origin`, `submission_id`, `appeal_statement`, `reports:[{id, reporter_user_id, category, detail, counted, status, created_at}]` (เฉพาะ `JOB_REPORT` — ตัวตนผู้รายงานเห็นได้เฉพาะ Admin ที่นี่ที่เดียว; ชนิดอื่น `[]`) — รายการ Fail-safe ที่ยังไม่มีผลตรวจ: `reasons`/`highlights` ว่าง, `content` เป็น `null` |
 | POST | `/admin/queue/{id}/actions/{approve\|reject}` | AD | งาน `JOB_REVIEW`/`JOB_APPEAL` → ส่ง `JobVerified(ADMIN_APPROVE/ADMIN_REJECT)`; `reject` ต้องมี `reason`; `204`; `409 STATE_CONFLICT` (ตัดสินไปแล้ว/สองคนกดพร้อมกัน), `422 SUBMISSION_UNKNOWN` (รายการยังไม่ทราบ submission), `422 UNSUPPORTED_ITEM_TYPE` (ชนิดอื่นที่ยังไม่รองรับ) |
-| POST | `/admin/queue/{id}/actions/{dismiss-report\|uphold-report}` | AD | `JOB_REPORT`: `dismiss` ⇒ `JobVerified(RESTORE)` + รีเซ็ตตัวนับ + นับ `consecutive_dismissed` ของผู้รายงาน; `uphold` ⇒ `JobVerified(REMOVE)` |
+| POST | `/admin/queue/{id}/actions/{dismiss-report\|uphold-report}` | AD | เฉพาะ `JOB_REPORT` (ชนิดอื่น ⇒ `422 UNSUPPORTED_ITEM_TYPE`; ปิดแล้ว ⇒ `409 STATE_CONFLICT`; `204`; body `{reason?}`) **รายการที่ระงับแล้ว (`origin=REPORT_THRESHOLD`):** `dismiss` ⇒ `JobVerified(RESTORE)` + รายงานของรอบนี้ `DISMISSED` + รีเซ็ตตัวนับ + `consecutive_dismissed +1` ของผู้รายงานแต่ละคน; `uphold` ⇒ `JobVerified(REMOVE)` + รายงาน `UPHELD`/`counted=true` + `consecutive_dismissed=0` — ถ้ารายการไม่มี `submission_id` ⇒ `422 SUBMISSION_UNKNOWN` **รายการ "ไม่นับ" (`origin=REPORT_UNCOUNTED`, ประกาศยัง `PUBLISHED`):** `dismiss` ปิดรายงานและรีเซ็ตตัวนับ ไม่ส่ง Event; `uphold` ทำให้รายงานเป็น `counted=true` แล้วคำนวณตัวนับใหม่ ครบเกณฑ์ ⇒ ระงับตามปกติ (E04) ไม่ส่ง `REMOVE` และไม่มี action ระงับด้วยมือ (R5-G02) — เขียน audit `REPORT_DISMISS`/`REPORT_UPHOLD` |
 | POST | `/admin/queue/{id}/actions/{publish-review\|remove-review}` | AD | `REVIEW_HELD`/`REVIEW_REPORT` → `ReviewModerationResult` |
-| POST | `/admin/queue/{id}/actions/company-clear-flag` | AD | `COMPANY_ACCOUNT`: เคลียร์ธง `UNDER_REVIEW` |
+| POST | `/admin/queue/{id}/actions/company-clear-flag` | AD | `COMPANY_ACCOUNT`: เคลียร์ธง `UNDER_REVIEW` + ปิดรายการ + `CompanyFlagChanged(active=false)`; `204`; body `{reason?}`; ชนิดอื่น ⇒ `422 UNSUPPORTED_ITEM_TYPE`; ปิดแล้ว ⇒ `409 STATE_CONFLICT`; audit `FLAG_CLEAR` |
 
 ### 6.2 ธงบริษัท
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| PUT | `/admin/flags/companies/{company_id}/under-review` | AD | `{active, reason}` ตั้ง/เคลียร์ → `CompanyFlagChanged` |
-| GET | `/admin/flags/companies` | AD | |
+| PUT | `/admin/flags/companies/{company_id}/under-review` | AD | `{active, reason}` (`reason` บังคับทั้งสองทิศ) ตั้ง/เคลียร์ → `200 {company_id, active, changed}`; ค่าเดิมอยู่แล้ว ⇒ `changed=false` ไม่ส่ง `CompanyFlagChanged`/ไม่เขียน audit; ตั้งด้วยมือไม่สร้างรายการคิว, เคลียร์ปิดรายการ `COMPANY_ACCOUNT` ที่เปิดอยู่ (`resolution=ADMIN_CLEAR_FLAG`); audit `FLAG_SET`/`FLAG_CLEAR` |
+| GET | `/admin/flags/companies` | AD | `?active=&q=` (ค้นชื่อบริษัท) + Pagination มาตรฐาน; เรียงที่ตั้งล่าสุดก่อน; เฉพาะบริษัทที่เคยติดธง → `{company_id, company_name, active, set_by, set_reason, set_at, cleared_at, trigger_count}` |
 
 ### 6.3 Blacklist & กฎ
 | Method | Path | Role | คำอธิบาย |
@@ -198,7 +198,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 6.4 การรายงาน
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| POST | `/jobs/{job_id}/reports` | S | `{category, detail}` — `409 ALREADY_REPORTED`, `429` เมื่อเกิน 5/วัน; ครบ 3 บัญชี ⇒ `ReportThresholdReached` |
+| POST | `/jobs/{job_id}/reports` | S | `{category, detail}` (`category` ตาม §11, `detail` 20–1000 ตัวอักษร) → `201 {id, status:'OPEN'}` (ไม่บอกว่ารายงานนับเข้าเกณฑ์หรือไม่) — รายงานได้เฉพาะประกาศ `PUBLISHED`/`CLOSED` (`422 JOB_NOT_REPORTABLE`; ไม่รู้จักประกาศ `404`), `409 ALREADY_REPORTED` (1 ครั้ง/ประกาศ แม้หลังรีเซ็ต), `429 RATE_LIMITED` + `Retry-After` (วินาที) เมื่อเกิน 5 ครั้ง/วัน (นับตามปฏิทิน `Asia/Bangkok`); ครบ 3 บัญชีที่นับเข้าเกณฑ์ ⇒ `ReportThresholdReached` + รายการคิว `JOB_REPORT`; ผู้รายงานที่ถูกยกคำร้องติด 3 ครั้ง ⇒ รายงานไม่นับแต่ยังเข้าคิว |
 | POST | `/reviews/{review_id}/reports` | S,H | `{reason}` 1 ครั้งต่อผู้ใช้ต่อรีวิว |
 
 ### 6.5 สำหรับ HR ดูผลตรวจ
@@ -339,5 +339,18 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | :-: | :--- | :--- |
 | 1 | `verify-hash` ของ Certificate | README ระบุเก็บ SHA-256 แต่ไม่ระบุว่าจะมี Endpoint สาธารณะ — ถ้าไม่ต้องการ ตัดออก |
 | 2 | ~~Pagination/Sort มาตรฐานของ Admin Queue~~ | ✅ ปิดแล้ว: ใช้ Pagination มาตรฐาน §1; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อนแล้ว `due_at` น้อยไปมาก (§6.1) — ปรับตาม UI ภายหลังได้ |
+
+## 11. รูปร่าง Response/ค่า Enum ที่ PM ตัดสินแล้ว (2026-11-14)
+
+**แหล่งความจริงของชนิดข้อมูลคือ `libs/contracts/src/dto/`** (เอกสารนี้ระบุเฉพาะระดับ Endpoint) — เปลี่ยนต้องแก้ทั้งสองที่ในPR เดียวกัน (developer-guide §4 ข้อ 8)
+
+| หัวข้อ | ที่ตัดสิน | ไฟล์ |
+| :--- | :--- | :--- |
+| Response ของ Identity (`/users/me`, `/companies/me`, สมาชิก, เอกสาร, รายการ Admin, Internal) | ตามฟิลด์ใน data-schema §3 **ยกเว้น** `password_hash`, token hash, `object_key` (ใช้ Signed URL) | `dto/identity-responses.ts` |
+| Response ของ Lifecycle/Notification (ใบสมัคร, เรซูเม่, ใบรับรอง, รีวิว, แจ้งเตือน, Internal job) | ตามฟิลด์ใน data-schema §6-§7; `available_actions[]` เป็นชื่อ `{action}` ของ endpoint | `dto/lifecycle-responses.ts` |
+| `user` ใน `LoginResponse` | `AuthUser` (id, email, full_name, phone?, role, status, email_verified, created_at) | `dto/identity-responses.ts` |
+| `doc_type` เอกสารบริษัท | `REGISTRATION_CERT`, `VAT_CERT`, `AUTHORIZATION_LETTER`, `OTHER` | `CompanyDocType` |
+| `category` รายงานประกาศ (R5-G01) | `SCAM_OR_FEE`, `MISLEADING_INFO`, `INAPPROPRIATE_CONTENT`, `DUPLICATE_OR_SPAM`, `OTHER`; `detail` 20–1000 ตัวอักษร | `JobReportCategory` |
+| `category` รายงานปัญหาระหว่างฝึก | `WORKLOAD_OR_HOURS`, `NO_ALLOWANCE_AS_PROMISED`, `UNSAFE_OR_HARASSMENT`, `DIFFERENT_FROM_JOB_POST`, `OTHER` | `ProblemReportCategory` |
 
 *(ข้อ `reopen` ประกาศ, `TERMINATED`→ประเมินต่อ, อาจารย์ให้ FAIL ได้แม้บริษัท PASS และ Event E16–E18 ทีมยืนยันแล้ว — ดู [data-schema.md](data-schema.md) §8 และ [event-contract.md](event-contract.md) §4)*

@@ -50,4 +50,16 @@ describe('CompanySnapshotService (Postgres จริง)', function () {
     ]);
     expect(await row(id)).to.include({ name: 'v2', entityVersion: 2 });
   });
+
+  it('ประมวลผลพร้อมกัน 40 บริษัท (v1 กับ v2 ขนานกัน) ทุกบริษัทต้องจบที่ v2 (กัน createMany ของ v2 ถูกข้ามเพราะ v1 แทรกก่อน)', async () => {
+    const ids = Array.from({ length: 40 }, () => randomUUID());
+    await Promise.all(
+      ids.flatMap((id) => [
+        apply(companyChanged({ company_id: id, entity_version: 1, snapshot: { name: 'v1', university_partner: false, verified_badge: false } })),
+        apply(companyChanged({ company_id: id, entity_version: 2, snapshot: { name: 'v2', university_partner: false, verified_badge: false } })),
+      ]),
+    );
+    const rows = await t.prisma.companySnapshot.findMany({ where: { companyId: { in: ids } } });
+    expect(rows.filter((r) => r.entityVersion !== 2 || r.name !== 'v2')).to.have.length(0);
+  });
 });

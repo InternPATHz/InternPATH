@@ -72,6 +72,7 @@ apps/<service>/
 5. **ห้ามใส่ข้อมูลส่วนบุคคลใน Event** (ใส่แค่ `user_id`) และห้าม Log รหัสผ่าน/Token/เนื้อหาเรซูเม่
 6. **ห้าม commit** `.env`, คีย์ JWT, รหัสผ่านจริง (มีแค่ `.env.example`)
 7. ตรวจสิทธิ์ที่ **ทุก Service** ด้วย Guard (อย่าพึ่ง Gateway อย่างเดียว) และตรวจความเป็นเจ้าของข้อมูล เช่น `company_id` ใน Token ต้องตรงกับทรัพยากร
+8. **Contract ล็อกแล้ว — ใช้ชนิดข้อมูลจาก `@internpath/contracts` เท่านั้น** (Event E01-E18 ทุกตัวและ Enum ใน `data-schema.md` §2.1 อยู่ใน `libs/contracts/src/`) ห้ามประกาศ payload/enum ซ้ำในแอป การเปลี่ยนชื่อ/ชนิด/ความหมายของฟิลด์หรือค่า Enum ต้องบอกใน PR (ติดป้าย "contract change"), แก้ `docs/` และ `libs/contracts` พร้อมกัน และให้ PM อนุมัติ — เพิ่มฟิลด์ที่ไม่บังคับ (`?`) ได้โดยไม่ต้องรออนุมัติ แต่ต้องบอกใน PR
 
 ## 5. Workflow การทำงาน
 
@@ -175,7 +176,7 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 
 โครงตอนนี้ **รันได้และทดสอบผ่าน แต่ยังไม่มีโค้ดธุรกิจ** สิ่งที่ยังต้องสร้าง:
 
-- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification ทำแล้ว (สไลซ์ 1)**; Service อื่นยังมีแค่ `outbox_events` / `processed_events`
+- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification ทำแล้ว (สไลซ์ 1 และ 2: รายงานประกาศ, ตัวนับ/ระงับอัตโนมัติ, ธง `UNDER_REVIEW`; ค่า env `REPORT_THRESHOLD`, `REPORT_DAILY_LIMIT`, `REPORTER_DISMISS_STREAK`, `REJECTION_THRESHOLD`, `REJECTION_WINDOW_DAYS` ใน `.env.example`)**; Service อื่นยังมีแค่ `outbox_events` / `processed_events`
 - [x] Outbox relay และ Consumer — อยู่ใน `libs/common` (`OutboxWriter`, `OutboxRelay`, `EventConsumer`, `MessagingModule`); เหลือให้แต่ละ Service เรียกใช้ตาม §6.3 (โฟลเดอร์ `outbox/`, `events/` ของแต่ละ Service ยังว่าง)
 - [ ] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก
 - [ ] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit, Denylist (ตอนนี้มีแค่ health)

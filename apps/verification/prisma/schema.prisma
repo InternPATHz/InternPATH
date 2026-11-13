@@ -66,8 +66,29 @@ enum QueueOrigin {
   EVALUATION
   VERIFY_TIMEOUT
   APPEAL
+  REPORT_THRESHOLD
+  REPORT_UNCOUNTED
+  REJECTION_THRESHOLD
+  ADMIN_FLAG
 
   @@map("queue_origin")
+}
+
+enum ReportStatus {
+  OPEN
+  DISMISSED
+  UPHELD
+
+  @@map("report_status")
+}
+
+enum RejectionKind {
+  AUTO_REJECTED
+  ADMIN_REJECTED
+  SUSPENDED
+  REMOVED
+
+  @@map("rejection_kind")
 }
 
 enum TermSeverity {
@@ -146,6 +167,79 @@ model CompanySnapshot {
   updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
 
   @@map("company_snapshots")
+}
+
+/// สำเนาสถานะประกาศจาก E03 (ใช้ตอบ "รายงานได้ไหม" และหา company_id) — เขียนเฉพาะเมื่อ entity_version ใหม่กว่า
+model JobSnapshot {
+  jobId         String   @id @map("job_id") @db.Uuid
+  companyId     String   @map("company_id") @db.Uuid
+  status        String
+  entityVersion Int      @map("entity_version")
+  updatedAt     DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("job_snapshots")
+}
+
+model JobReport {
+  id             String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId          String       @map("job_id") @db.Uuid
+  reporterUserId String       @map("reporter_user_id") @db.Uuid
+  category       String
+  /// ห้าม log
+  detail         String
+  /// false เมื่อผู้รายงานถูกยกคำร้องติดกันครบเกณฑ์
+  counted        Boolean
+  status         ReportStatus @default(OPEN)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  resolvedAt     DateTime?    @map("resolved_at") @db.Timestamptz(6)
+
+  /// รายงานได้ครั้งเดียวต่อประกาศ แม้หลังรีเซ็ตตัวนับ
+  @@unique([jobId, reporterUserId])
+  @@index([reporterUserId, createdAt])
+  @@map("job_reports")
+}
+
+model JobReportCounter {
+  jobId          String    @id @map("job_id") @db.Uuid
+  countedReports Int       @default(0) @map("counted_reports")
+  resetAt        DateTime? @map("reset_at") @db.Timestamptz(6)
+  suspendedAt    DateTime? @map("suspended_at") @db.Timestamptz(6)
+
+  @@map("job_report_counters")
+}
+
+model ReporterStat {
+  userId               String @id @map("user_id") @db.Uuid
+  consecutiveDismissed Int    @default(0) @map("consecutive_dismissed")
+
+  @@map("reporter_stats")
+}
+
+model CompanyRejectionEvent {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId     String        @map("company_id") @db.Uuid
+  jobId         String        @map("job_id") @db.Uuid
+  kind          RejectionKind
+  occurredAt    DateTime      @map("occurred_at") @db.Timestamptz(6)
+  /// event_id ของ E03 ที่ทำให้เกิดเหตุการณ์ — กันนับซ้ำเมื่อ Event ถูกส่งซ้ำ
+  sourceEventId String        @unique @map("source_event_id") @db.Uuid
+
+  @@index([companyId, occurredAt])
+  @@map("company_rejection_events")
+}
+
+model CompanyFlag {
+  companyId     String    @id @map("company_id") @db.Uuid
+  underReview   Boolean   @default(false) @map("under_review")
+  setBy         String?   @map("set_by")
+  setReason     String?   @map("set_reason")
+  setAt         DateTime? @map("set_at") @db.Timestamptz(6)
+  triggerCount  Int?      @map("trigger_count")
+  clearedBy     String?   @map("cleared_by") @db.Uuid
+  clearedAt     DateTime? @map("cleared_at") @db.Timestamptz(6)
+  entityVersion Int       @default(0) @map("entity_version")
+
+  @@map("company_flags")
 }
 
 model BlacklistTerm {

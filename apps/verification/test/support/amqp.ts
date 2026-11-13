@@ -53,12 +53,17 @@ export interface Collector {
 }
 
 /** คิวชั่วคราวที่รับ `verification.JobVerified` ทั้งหมด (จำลอง Job ที่รับผลตรวจ) */
-export async function collectJobVerified(): Promise<Collector> {
+export function collectJobVerified(): Promise<Collector> {
+  return collectOutbound(['JobVerified']);
+}
+
+/** คิวชั่วคราวที่รับ Event ที่ Verification ส่ง (`verification.<type>`) ตามชนิดที่ระบุ (จำลอง Job/Notification ผู้รับ) */
+export async function collectOutbound(types: string[]): Promise<Collector> {
   const conn = await amqp.connect(brokerUrl());
   const ch = await conn.createChannel();
   await ch.assertExchange('internpath.events', 'topic', { durable: true });
   const { queue } = await ch.assertQueue('', { exclusive: true, autoDelete: true });
-  await ch.bindQueue(queue, 'internpath.events', 'verification.JobVerified');
+  for (const type of types) await ch.bindQueue(queue, 'internpath.events', `verification.${type}`);
   const messages: any[] = [];
   await ch.consume(queue, (m) => {
     if (!m) return;

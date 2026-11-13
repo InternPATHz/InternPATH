@@ -4,9 +4,12 @@ import { AppealModule } from './appeal/appeal.module';
 import { AuditModule } from './audit/audit.module';
 import { ConsumersModule } from './consumers/consumers.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
+import { FlagModule } from './flag/flag.module';
+import { JobModule } from './job/job.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import type { Tx } from './prisma/types';
+import { ReportModule } from './report/report.module';
 import { RulesModule } from './rules/rules.module';
 
 /**
@@ -20,6 +23,9 @@ import { RulesModule } from './rules/rules.module';
     RulesModule,
     EvaluationModule,
     AppealModule,
+    FlagModule,
+    JobModule,
+    ReportModule,
     ConsumersModule,
     MessagingModule.register<Tx>({
       service: 'verification',

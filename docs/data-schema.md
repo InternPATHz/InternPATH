@@ -235,6 +235,8 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`, �
 
 **`company_snapshots`**: `company_id PK`, `name`, `status`, `entity_version` — ใช้แสดงชื่อบริษัทในคิว Admin และเช็กว่าบริษัท `VERIFIED` (สำเนาจาก `CompanyStatusChanged`)
 
+**`job_snapshots`** *(สไลซ์ 2)*: `job_id PK`, `company_id`, `status text`, `entity_version int`, `updated_at` — สำเนาสถานะประกาศจาก `JobStatusChanged` (เขียนเฉพาะเมื่อ `entity_version` ใหม่กว่า) ใช้ตอบว่า "รายงานได้ไหม" (`PUBLISHED`/`CLOSED`) และหา `company_id` ของประกาศ — Verification ไม่เรียก Job ตรงๆ
+
 **`queue_items`** (Admin Queue)
 | ฟิลด์ | ชนิด | หมายเหตุ |
 | :--- | :--- | :--- |
@@ -243,7 +245,7 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`, �
 | target_type / target_id | text / uuid | job / company / review / problem_report |
 | company_id | uuid null | |
 | submission_id | uuid null | การส่งตรวจที่รายการนี้ตัดสิน (ใช้ใน `JobVerified` ของ Admin); ว่างได้เมื่อรายการเกิดจาก `VERIFY_TIMEOUT` ที่ยังไม่มี `submission_id` |
-| origin | `EVALUATION`/`VERIFY_TIMEOUT`/`APPEAL` | ที่มาของรายการ (ใช้แยก "ผลตรวจที่มาหลัง Fail-safe") |
+| origin | `EVALUATION`/`VERIFY_TIMEOUT`/`APPEAL`/`REPORT_THRESHOLD`/`REPORT_UNCOUNTED`/`REJECTION_THRESHOLD`/`ADMIN_FLAG` | ที่มาของรายการ (ใช้แยก "ผลตรวจที่มาหลัง Fail-safe"; `REPORT_THRESHOLD` = ประกาศถูกระงับเพราะรายงานครบเกณฑ์, `REPORT_UNCOUNTED` = รายงานที่ไม่นับเข้าเกณฑ์ ประกาศยัง `PUBLISHED`, `REJECTION_THRESHOLD` = ธงบริษัทติดอัตโนมัติ) |
 | priority | `NORMAL`/`FAST_TRACK` | ตาม entitlement ของบริษัท ณ เวลาเข้าคิว |
 | risk_level | RiskLevel null | สำหรับแถบสี เขียว/เหลือง/แดง |
 | is_appeal | bool | ป้าย APPEAL |
@@ -255,15 +257,15 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`, �
 
 `OVERDUE` = `status != RESOLVED AND now() > due_at` (คำนวณตอนอ่าน) | Index (`status`, `priority`, `due_at`) | **partial unique index** (`target_id`, `type`) เมื่อ `status <> 'RESOLVED'` — รายการเปิดของ (เป้าหมาย, ชนิด) เดียวกันซ้อนกันไม่ได้ (เขียนมือใน migration)
 
-**`job_reports`**: `id`, `job_id`, `reporter_user_id`, `category`, `detail`, `counted bool` (false เมื่อผู้รายงานถูกยกคำร้องติด 3 ครั้ง), `status (OPEN|DISMISSED|UPHELD)`, `created_at`, `resolved_at` — UNIQUE (`job_id`, `reporter_user_id`) [รายงานได้ครั้งเดียวต่อประกาศ แม้หลังรีเซ็ต] | จำกัด 5 ครั้ง/วัน/ผู้ใช้ (นับจาก `created_at`)
+**`job_reports`**: `id`, `job_id`, `reporter_user_id`, `category`, `detail`, `counted bool` (false เมื่อผู้รายงานถูกยกคำร้องติด 3 ครั้ง), `status (OPEN|DISMISSED|UPHELD)`, `created_at`, `resolved_at` — UNIQUE (`job_id`, `reporter_user_id`) [รายงานได้ครั้งเดียวต่อประกาศ แม้หลังรีเซ็ต] | จำกัด 5 ครั้ง/วัน/ผู้ใช้ (นับจาก `created_at` ตามปฏิทิน `Asia/Bangkok`) | index (`reporter_user_id`, `created_at`) | `category` ค่าตาม api-contract §11 (`JobReportCategory`), `detail` 20–1000 ตัวอักษร (ห้าม log)
 
 **`job_report_counters`**: `job_id PK`, `counted_reports int`, `reset_at null`, `suspended_at null`
 
 **`reporter_stats`**: `user_id PK`, `consecutive_dismissed int` — รีเซ็ตเป็น 0 เมื่อมีรายงานที่ถูกยืนยัน; `>= 3` ⇒ รายงานใหม่ `counted=false`
 
-**`company_rejection_events`**: `id`, `company_id`, `job_id`, `kind (AUTO_REJECTED|ADMIN_REJECTED|SUSPENDED|REMOVED)`, `occurred_at` — นับ 3 ครั้งใน 30 วัน ⇒ ติดธง
+**`company_rejection_events`**: `id`, `company_id`, `job_id`, `kind (AUTO_REJECTED|ADMIN_REJECTED|SUSPENDED|REMOVED)`, `occurred_at` (= `changed_at` ของ E03), `source_event_id uuid UNIQUE` (= `event_id` ของ E03 ที่ทำให้เกิดเหตุการณ์ — กันนับซ้ำเมื่อ Event ถูกส่งซ้ำ) — นับ 3 ครั้งใน 30 วัน ⇒ ติดธง; นับเฉพาะหลัง `company_flags.cleared_at` (เคลียร์ธงแล้วเริ่มนับใหม่) | index (`company_id`, `occurred_at`)
 
-**`company_flags`**: `company_id PK`, `under_review bool`, `set_by`, `set_reason`, `set_at`, `cleared_by null`, `cleared_at null`, `entity_version`
+**`company_flags`**: `company_id PK`, `under_review bool`, `set_by` (`SYSTEM`|`ADMIN`), `set_reason`, `set_at`, `trigger_count int null` (จำนวนเหตุการณ์ปฏิเสธที่ทำให้ติดธงอัตโนมัติ), `cleared_by null`, `cleared_at null`, `entity_version` (เพิ่มทีละ 1 ทุกครั้งที่ธงเปลี่ยน; ใช้เป็น `entity_version` ของ E18) — แถวถูกสร้างเมื่อมีเหตุการณ์/คำสั่งแรกของบริษัท; "เคยติดธง" = `set_at` ไม่ว่าง
 
 **`company_entitlements`**: (สำเนา) `company_id PK`, `fast_track_enabled`, `entity_version`
 
@@ -490,6 +492,23 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 | `CLOSED` | `PUBLISHED` | HR เปิดใหม่ (ถ้า deadline/โควตายังอยู่) *(ทีมยืนยันแล้ว; README ไม่ได้ระบุ)* | `JobStatusChanged` |
 
 การเปลี่ยนสถานะที่เกิดจาก Event ใช้ `updateMany where status = <สถานะที่คาดไว้ของการตัดสินนั้น>`; ถ้า 0 แถว ⇒ Event เก่า/ซ้ำ ให้ข้ามอย่างเงียบ (log ระดับ `warn`) และให้ Verification ตรวจ `submission_id` เทียบ `current_submission_id` เพื่อทิ้งผลของ submission ที่ถูกแทนที่
+
+### 8.2.1 สถานะประกาศ × action ของ Verification (OD-06) — [spec สไลซ์ 2](superpowers/specs/2026-11-14-verification-slice2-design.md) §5.6
+
+Verification **ตรวจเฉพาะสิ่งที่ตัวเองบังคับ** (✓ = ตรวจจากข้อมูลของ Verification; — = ไม่ตรวจ ปล่อยให้ Job ปฏิเสธการเปลี่ยนสถานะเองตาม §8.2)
+
+| สถานะประกาศ | รายงาน | ตรวจ (approve/reject) | อุทธรณ์ | ยกคำร้อง/ยืนยัน (dismiss/uphold-report) |
+| :--- | :-: | :-: | :-: | :-: |
+| `DRAFT`, `VERIFYING` | ✗ | — | ✗ | — |
+| `PUBLISHED` | ✓ (1 คน/ประกาศ) | ✗ | ✗ | — (มีเฉพาะรายการ "ไม่นับ") |
+| `PENDING_REVIEW` | ✗ | ✓ มีรายการ `JOB_REVIEW`/`JOB_APPEAL` เปิด | ✗ | ✗ |
+| `AUTO_REJECTED` | ✗ | ✗ | ✓ ผลล่าสุดเป็น `AUTO_REJECT` และยังไม่เคยอุทธรณ์ | ✗ |
+| `ADMIN_REJECTED` | ✗ | ✗ | ✗ | ✗ |
+| `SUSPENDED` | ✗ (R5-G01) | ✗ | ✗ | ✓ มีรายการ `JOB_REPORT` เปิด |
+| `REMOVED` | ✗ | ✗ | ✗ | ✗ |
+| `CLOSED` | ✓ | ✗ | ✗ | — |
+
+หมายเหตุ: §8.2 ให้ Job ระงับได้เฉพาะจาก `PUBLISHED` — ประกาศ `CLOSED` ที่ถูกรายงานครบเกณฑ์จะได้ E04 และรายการคิวแต่ Job อาจไม่เปลี่ยนสถานะ (ต้องตกลงกับ Job: ให้รับ E04 ตอน `CLOSED` หรือจำกัดให้รายงานได้เฉพาะ `PUBLISHED`)
 
 ### 8.3 Company Status (Identity) — README 5.6
 `PENDING` → (`VERIFIED` | `NEED_MORE_INFO` | `REJECTED`)  •  `NEED_MORE_INFO` → `PENDING` (ส่งเอกสารเพิ่ม)  •  `VERIFIED` ⇄ `SUSPENDED`  •  `REJECTED` สมัครใหม่ได้โดยแก้ข้อมูล → `PENDING`
