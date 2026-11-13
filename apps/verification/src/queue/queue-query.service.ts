@@ -34,6 +34,18 @@ export interface QueueDetail extends QueueListItem {
   content: unknown;
   highlights: Highlight[];
   appeal_statement: string | null;
+  /** เฉพาะ JOB_REPORT: รายงานทั้งหมดของประกาศ (ตัวตนผู้รายงานเห็นได้เฉพาะ Admin ผ่าน endpoint นี้) — ชนิดอื่นเป็น [] */
+  reports: ReportView[];
+}
+
+export interface ReportView {
+  id: string;
+  reporter_user_id: string;
+  category: string;
+  detail: string;
+  counted: boolean;
+  status: string;
+  created_at: Date;
 }
 
 @Injectable()
@@ -65,10 +77,11 @@ export class QueueQueryService {
   async detail(id: string, now = new Date()): Promise<QueueDetail> {
     const item = await this.prisma.queueItem.findUnique({ where: { id } });
     if (!item) throw new AppException('NOT_FOUND', 'ไม่พบรายการคิว', 404);
-    const [evaluation, appeal, names] = await Promise.all([
+    const [evaluation, appeal, names, reportRows] = await Promise.all([
       item.submissionId ? this.prisma.evaluation.findUnique({ where: { submissionId: item.submissionId } }) : null,
       item.type === 'JOB_APPEAL' ? this.prisma.appeal.findUnique({ where: { jobId: item.targetId } }) : null,
       this.companyNames([item.companyId]),
+      item.type === 'JOB_REPORT' ? this.prisma.jobReport.findMany({ where: { jobId: item.targetId }, orderBy: { createdAt: 'asc' } }) : [],
     ]);
     return {
       ...this.toListItem(item, names, now),
@@ -82,6 +95,15 @@ export class QueueQueryService {
       content: evaluation?.content ?? null,
       highlights: buildHighlights((evaluation?.matchedKeywords ?? []) as unknown as MatchedKeyword[]),
       appeal_statement: appeal?.statement ?? null,
+      reports: reportRows.map((r) => ({
+        id: r.id,
+        reporter_user_id: r.reporterUserId,
+        category: r.category,
+        detail: r.detail,
+        counted: r.counted,
+        status: r.status,
+        created_at: r.createdAt,
+      })),
     };
   }
 

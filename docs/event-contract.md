@@ -114,7 +114,8 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
 | E17 | `ProblemReportCreated` *(เพิ่มใหม่)* | lifecycle | notification | 5.2.2 |
 | E18 | `CompanyFlagChanged` *(เพิ่มใหม่)* | verification | job, notification | 5.1.4 |
 
-> **E03 รับโดย verification เพิ่ม** เพื่อรู้ว่าประกาศถูกตั้ง `PENDING_REVIEW` โดย Fail-safe (สร้างรายการคิว Admin) และเพื่อนับการถูกปฏิเสธ/ระงับ/ลบ (เกณฑ์ `UNDER_REVIEW`)
+> **E03 รับโดย verification เพิ่ม** เพื่อรู้ว่าประกาศถูกตั้ง `PENDING_REVIEW` โดย Fail-safe (สร้างรายการคิว Admin) และเพื่อนับการถูกปฏิเสธ/ระงับ/ลบ (เกณฑ์ `UNDER_REVIEW`) — **Verification รับ E03 ทุกตัว** (สไลซ์ 2): เก็บสำเนาสถานะ/`company_id` ของประกาศ (`job_snapshots`) และนับ `to_status ∈ {AUTO_REJECTED, ADMIN_REJECTED, SUSPENDED, REMOVED}` เป็นเหตุการณ์ปฏิเสธของบริษัท ดังนั้น **Job ต้องส่ง E03 ทุกการเปลี่ยนสถานะ พร้อม `company_id` และ `entity_version` ที่เพิ่มขึ้น**
+> **E04/E18 ส่งโดย verification:** E04 = รายงานนับเข้าเกณฑ์ครบ 3 บัญชี (ส่งครั้งเดียวต่อรอบรีเซ็ต) — Job ระงับได้เฉพาะจาก `PUBLISHED` ตาม [data-schema.md](data-schema.md) §8.2; E18 ส่งเมื่อธงเปลี่ยนจริง (`entity_version` เพิ่มทีละ 1)
 > **E16–E18** ทีมยืนยันแล้วและได้เพิ่มในตารางสรุป README 5.8 แล้ว (Denylist ทันที, แจ้งอาจารย์/Admin เมื่อมีรายงานปัญหา, ธงบริษัทมีผลกับ Job)
 
 ---

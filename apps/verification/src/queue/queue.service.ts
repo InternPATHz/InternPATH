@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { QueueItem } from '@prisma/client';
+import type { QueueItem, QueueItemType } from '@prisma/client';
 import { asUuid } from '../common/uuid';
 import type { Tx } from '../prisma/types';
 import { SLA_CONFIG, SlaConfig, computeDueAt } from './sla';
@@ -57,6 +57,137 @@ export class QueueService {
       },
     });
     return item;
+  }
+
+  /**
+   * รายการ JOB_REPORT ของประกาศ (รายงานครบเกณฑ์ หรือรายงานที่ไม่นับเข้าเกณฑ์) — priority NORMAL เสมอ
+   * (Fast-Track ใช้เฉพาะ JOB_REVIEW/JOB_APPEAL — OD-10) due_at = created_at + SLA ปกติ
+   */
+  createReportItem(
+    tx: Tx,
+    a: {
+      jobId: string;
+      companyId: string;
+      submissionId: string | null;
+      origin: 'REPORT_THRESHOLD' | 'REPORT_UNCOUNTED';
+      correlationId?: string;
+      now?: Date;
+    },
+  ): Promise<QueueItem> {
+    return this.createGenericItem(tx, {
+      type: 'JOB_REPORT',
+      targetType: 'job',
+      targetId: a.jobId,
+      companyId: a.companyId,
+      submissionId: a.submissionId,
+      origin: a.origin,
+      correlationId: a.correlationId,
+      now: a.now,
+    });
+  }
+
+  /** รายการ COMPANY_ACCOUNT: ตรวจบัญชีบริษัทที่ติดธง UNDER_REVIEW (target = company_id) */
+  createCompanyItem(
+    tx: Tx,
+    a: { companyId: string; origin: 'REJECTION_THRESHOLD' | 'ADMIN_FLAG'; correlationId?: string; now?: Date },
+  ): Promise<QueueItem> {
+    return this.createGenericItem(tx, {
+      type: 'COMPANY_ACCOUNT',
+      targetType: 'company',
+      targetId: a.companyId,
+      companyId: a.companyId,
+      submissionId: null,
+      origin: a.origin,
+      correlationId: a.correlationId,
+      now: a.now,
+    });
+  }
+
+  private async createGenericItem(
+    tx: Tx,
+    a: {
+      type: 'JOB_REPORT' | 'COMPANY_ACCOUNT';
+      targetType: 'job' | 'company';
+      targetId: string;
+      companyId: string;
+      submissionId: string | null;
+      origin: 'REPORT_THRESHOLD' | 'REPORT_UNCOUNTED' | 'REJECTION_THRESHOLD' | 'ADMIN_FLAG';
+      correlationId?: string;
+      now?: Date;
+    },
+  ): Promise<QueueItem> {
+    const now = a.now ?? new Date();
+    const item = await tx.queueItem.create({
+      data: {
+        type: a.type,
+        targetType: a.targetType,
+        targetId: a.targetId,
+        companyId: a.companyId,
+        submissionId: a.submissionId,
+        priority: 'NORMAL',
+        isAppeal: false,
+        origin: a.origin,
+        dueAt: computeDueAt(now, 'NORMAL', this.sla),
+        status: 'OPEN',
+        createdAt: now,
+      },
+    });
+    await tx.statusHistory.create({
+      data: {
+        entity: 'QUEUE_ITEM',
+        entityId: item.id,
+        fromStatus: null,
+        toStatus: 'OPEN',
+        actorId: null,
+        actorRole: 'SYSTEM',
+        reason: a.origin,
+        correlationId: asUuid(a.correlationId),
+        occurredAt: now,
+      },
+    });
+    return item;
+  }
+
+  /** รายการเปิดของ (target, type) หนึ่งๆ — ใช้กับ JOB_REPORT / COMPANY_ACCOUNT */
+  findOpenByType(tx: Tx, targetId: string, type: QueueItemType): Promise<QueueItem | null> {
+    return tx.queueItem.findFirst({ where: { targetId, type, status: { not: 'RESOLVED' } }, orderBy: { createdAt: 'asc' } });
+  }
+
+  /**
+   * ปิดรายการเป็น RESOLVED แบบ `updateMany where status <> 'RESOLVED'` (กันปิดซ้อน/กดพร้อมกัน) + status_history
+   * คืน false ถ้ารายการถูกปิดไปก่อนแล้ว (ไม่เขียนอะไร)
+   */
+  async resolveOpenItem(
+    tx: Tx,
+    a: {
+      item: QueueItem;
+      resolution: string;
+      actorId: string | null;
+      actorRole: 'SYSTEM' | 'PLATFORM_ADMIN';
+      reason?: string;
+      correlationId?: string;
+    },
+  ): Promise<boolean> {
+    const now = new Date();
+    const { count } = await tx.queueItem.updateMany({
+      where: { id: a.item.id, status: { not: 'RESOLVED' } },
+      data: { status: 'RESOLVED', resolution: a.resolution, resolvedAt: now },
+    });
+    if (count === 0) return false;
+    await tx.statusHistory.create({
+      data: {
+        entity: 'QUEUE_ITEM',
+        entityId: a.item.id,
+        fromStatus: a.item.status,
+        toStatus: 'RESOLVED',
+        actorId: a.actorId,
+        actorRole: a.actorRole,
+        reason: a.reason ?? null,
+        correlationId: asUuid(a.correlationId),
+        occurredAt: now,
+      },
+    });
+    return true;
   }
 
   /** รายการคิวที่ยังเปิดอยู่ของประกาศ (ระบุ type เพื่อจำกัด; ไม่ระบุ = JOB_REVIEW หรือ JOB_APPEAL) */

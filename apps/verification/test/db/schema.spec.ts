@@ -9,12 +9,18 @@ const EXPECTED_TABLES = [
   'admin_audit_log',
   'appeals',
   'blacklist_terms',
+  'company_flags',
+  'company_rejection_events',
   'company_snapshots',
   'evaluations',
+  'job_report_counters',
+  'job_reports',
+  'job_snapshots',
   'negation_cues',
   'outbox_events',
   'processed_events',
   'queue_items',
+  'reporter_stats',
   'risk_rules',
   'status_history',
 ];
@@ -39,7 +45,7 @@ describe('verification_db schema (Postgres จริง)', function () {
   const count = async (table: string, where = 'true'): Promise<number> =>
     Number((await pg.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${where}`)).rows[0].n);
 
-  it('migrate deploy ผ่านบนฐานข้อมูลเปล่า และตารางครบ 11 ตาราง', async () => {
+  it('migrate deploy ผ่านบนฐานข้อมูลเปล่า และตารางครบ 17 ตาราง', async () => {
     const rows = (
       await pg.query(
         `SELECT table_name FROM information_schema.tables
@@ -127,5 +133,50 @@ describe('verification_db schema (Postgres จริง)', function () {
     ).rows.map((r) => `${r.tablename}: ${r.indexdef}`);
     expect(defs.some((d) => d.startsWith('evaluations:') && d.includes('(submission_id)'))).to.equal(true);
     expect(defs.some((d) => d.startsWith('appeals:') && d.includes('(job_id)'))).to.equal(true);
+  });
+
+  it('สไลซ์ 2: job_reports ซ้ำ (job_id, reporter_user_id) ⇒ unique; company_rejection_events.source_event_id ซ้ำ ⇒ unique', async () => {
+    const job = randomUUID();
+    const user = randomUUID();
+    const report = () =>
+      pg.query(
+        `INSERT INTO job_reports (job_id, reporter_user_id, category, detail, counted, status)
+         VALUES ($1, $2, 'OTHER', 'รายละเอียดอย่างน้อยยี่สิบตัวอักษรครบถ้วน', true, 'OPEN')`,
+        [job, user],
+      );
+    await report();
+    let err: { code?: string } | undefined;
+    try {
+      await report();
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    expect(err?.code).to.equal('23505');
+
+    const evt = randomUUID();
+    const rejection = () =>
+      pg.query(
+        `INSERT INTO company_rejection_events (company_id, job_id, kind, occurred_at, source_event_id)
+         VALUES ($1, $2, 'AUTO_REJECTED', now(), $3)`,
+        [randomUUID(), randomUUID(), evt],
+      );
+    await rejection();
+    err = undefined;
+    try {
+      await rejection();
+    } catch (e) {
+      err = e as { code?: string };
+    }
+    expect(err?.code).to.equal('23505');
+  });
+
+  it('สไลซ์ 2: queue_items รับ origin REPORT_THRESHOLD/REPORT_UNCOUNTED/REJECTION_THRESHOLD/ADMIN_FLAG', async () => {
+    for (const origin of ['REPORT_THRESHOLD', 'REPORT_UNCOUNTED', 'REJECTION_THRESHOLD', 'ADMIN_FLAG']) {
+      await pg.query(
+        `INSERT INTO queue_items (type, target_type, target_id, priority, is_appeal, origin, due_at, status)
+         VALUES ('JOB_REPORT', 'job', $1, 'NORMAL', false, $2::queue_origin, now(), 'OPEN')`,
+        [randomUUID(), origin],
+      );
+    }
   });
 });

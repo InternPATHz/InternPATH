@@ -1,15 +1,15 @@
 import type { EventEnvelope, JobStatusChangedPayload } from '@internpath/contracts';
 import { EventConsumer } from '@internpath/common';
 import { Injectable, OnModuleInit } from '@nestjs/common';
-import { EvaluationService } from '../evaluation/evaluation.service';
+import { JobEventsService } from '../job/job-events.service';
 import type { Tx } from '../prisma/types';
 
-/** รับ E03 `JobStatusChanged` จาก Job (ใช้เฉพาะ VERIFY_TIMEOUT ในสไลซ์ 1) */
+/** รับ E03 `JobStatusChanged` ทุกตัวจาก Job: snapshot สถานะประกาศ, นับการปฏิเสธของบริษัท, Fail-safe `VERIFY_TIMEOUT` */
 @Injectable()
 export class JobStatusChangedConsumer implements OnModuleInit {
   constructor(
     private readonly consumer: EventConsumer<Tx>,
-    private readonly evaluation: EvaluationService,
+    private readonly jobEvents: JobEventsService,
   ) {}
 
   onModuleInit(): Promise<void> {
@@ -17,7 +17,7 @@ export class JobStatusChangedConsumer implements OnModuleInit {
       producer: 'job',
       type: 'JobStatusChanged',
       handler: (env, tx) =>
-        this.evaluation.handleJobStatusChanged(env as EventEnvelope<'JobStatusChanged', JobStatusChangedPayload>, tx),
+        this.jobEvents.handleJobStatusChanged(env as EventEnvelope<'JobStatusChanged', JobStatusChangedPayload>, tx),
     });
   }
 }
