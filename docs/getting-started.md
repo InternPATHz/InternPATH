@@ -44,6 +44,19 @@ pnpm --filter @internpath/web dev               # เว็บ http://localhost:
 
 รันบน Docker ทั้งชุด: `docker compose --profile all up --build` หรือเลือกทีละ Service ด้วย `--profile infra --profile identity`
 
+## 3.1 สาธิตผ่าน Cloudflare (Front บน Cloudflare, Backend บนเครื่องคุณ)
+
+ใช้เมื่ออยากให้คนอื่นเปิดลิงก์เว็บได้ ส่วนตอนพัฒนาและเทสเองในเครื่องไม่ต้องทำขั้นตอนนี้ — แผนภาพและข้อกำหนดดู [architecture.md](architecture.md) §8.1
+
+> **สถานะ:** โค้ด Worker proxy ยังไม่มีใน repo ขั้นตอนด้านล่างคือแนวทางที่ตกลงไว้ ยังไม่ได้ทดลองรันจริง
+
+1. รัน backend: `pnpm infra:up` แล้วเปิด Service ที่ต้องใช้ (หรือ `docker compose --profile all up --build`)
+2. เปิด tunnel ไปที่ gateway ตัวเดียว: `cloudflared tunnel --url http://localhost:3000` จะได้ URL แบบ `https://xxxx.trycloudflare.com` (เปลี่ยนทุกครั้งที่รัน)
+3. ตั้งตัวแปรของ Worker: `API_ORIGIN` = URL จากข้อ 2 และ `EDGE_SHARED_SECRET` = ค่าเดียวกับใน `.env` ของ gateway (ตั้งผ่าน `npx wrangler secret put` หรือหน้า Cloudflare Dashboard)
+4. เปิด URL `*.workers.dev` ของ Front ถ้า API ไม่ตอบ หน้าเว็บควรแสดงข้อความ "ระบบหลังบ้านออฟไลน์"
+
+ทุกครั้งที่เปิด tunnel ใหม่ ต้องอัปเดต `API_ORIGIN` ให้ตรง • ก่อนวันนำเสนอควรทดสอบทั้งชุดล่วงหน้าและเตรียมวิดีโอ/ภาพหน้าจอสำรอง
+
 ## 4. คำสั่งที่ใช้บ่อย
 
 | คำสั่ง | ทำอะไร |

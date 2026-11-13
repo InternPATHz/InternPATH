@@ -150,6 +150,9 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 - [ ] Scheduler (SLA, Reconciliation โควตา, Fail-safe 5 นาที)
 - [ ] หน้าเว็บของแต่ละ Role (มีแค่หน้าแรกและ Tailwind theme)
 - [ ] ยังไม่เคยรัน Dockerfile / `docker compose up` จริง (Docker engine ยังไม่ผ่านการทดสอบ)
+- [ ] การสาธิตผ่าน Cloudflare ([architecture.md](architecture.md) §8.1): Worker proxy `/api/*` + `API_ORIGIN`, ตรวจ `X-Edge-Secret` / CORS / IP ผู้ใช้ที่ Gateway, ข้อความ "ระบบหลังบ้านออฟไลน์" ใน Front, ลิงก์อีเมลจาก `WEB_BASE_URL`
+- [ ] `docker-compose.yml`: ให้ Postgres / RabbitMQ / MinIO bind เฉพาะ `127.0.0.1` และเพิ่ม `restart: unless-stopped`
+- [ ] Retry queue ร่วมต่อ Service เพื่ออยู่ในเพดาน queue ของ CloudAMQP แผนฟรี ([event-contract.md](event-contract.md) §3.3)
 
 เลือกงานจาก Work Plan ใน README หัวข้อ 9 ตามสัปดาห์ แล้วตรวจกับ Open Decisions ท้าย [architecture.md](architecture.md) ก่อนเริ่ม
 

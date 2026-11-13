@@ -39,8 +39,10 @@
                               ┌──────▼───────┐
                               │ notification │ (Junior) ── DB ── [Postgres]
                               └──────────────┘ ── SMTP ──► Mailpit
-   File Storage: MinIO (dev) / Cloudflare R2 (deploy) — เข้าถึงผ่าน Service เจ้าของข้อมูลเท่านั้น
+   File Storage: MinIO (dev) / Cloudflare R2 (สาธิต) — เข้าถึงผ่าน Service เจ้าของข้อมูลเท่านั้น
 ```
+
+> แผนภาพนี้คือโครงสร้างภายใน — ตอนสาธิต Browser เข้ามาที่ **Cloudflare Workers** (Front + proxy `/api/*`) แล้วผ่าน **Cloudflare Tunnel** มาที่ gateway ของเครื่องที่รัน Docker ดู §8.1
 
 ## 2. Service และความเป็นเจ้าของ
 
@@ -114,7 +116,8 @@ Sync Call ภายในทั้งหมดที่มี (รายละ�
 | Denylist | Identity เผยแพร่รายการ `user_id` ที่ถูกระงับ; Gateway เก็บ Cache (in-memory + ดึงใหม่ทุก 30 วินาที หรืออัปเดตทันทีจาก Event `CompanyStatusChanged` / ผู้ใช้ถูกระงับ) |
 | Service Token | JWT แยก (`typ: service`, `iss`, `aud`) ออกโดยแต่ละ Service ด้วย secret/คีย์ของตนเอง หรือใช้ shared secret ต่อคู่ Service ใน `.env` — Endpoint ภายในอยู่ใต้ prefix `/internal/**` และ **Gateway ไม่ Route `/internal/**` ออกสู่ภายนอก** |
 | RBAC | ตรวจที่ทุก Service ด้วย `RolesGuard` จาก `libs/common` และตรวจความเป็นเจ้าของข้อมูลเสมอ (เช่น `company_id` ใน Token ต้องตรงกับทรัพยากร) — ไม่พึ่ง Gateway อย่างเดียว |
-| Rate Limit | ที่ Gateway ตามตาราง README 5.7 (login, register, reset password, หน้าตรวจ E-Certificate ต่อ IP) |
+| Rate Limit | ที่ Gateway ตามตาราง README 5.7 (login, register, reset password, หน้าตรวจ E-Certificate ต่อ IP) — ตอนสาธิตผ่าน Worker proxy IP ที่ Gateway เห็นไม่ใช่ของผู้ใช้ ให้ Worker ส่ง IP ผู้ใช้มาใน header (เช่น `X-Client-IP` จาก `CF-Connecting-IP` ของคำขอเดิม) และ Gateway เชื่อ header นี้เฉพาะเมื่อ `X-Edge-Secret` ถูกต้อง |
+| Edge Secret (สาธิต) | Worker proxy ใส่ header `X-Edge-Secret` (ค่าลับร่วมกับ Gateway) ทุกคำขอที่ส่งผ่าน tunnel; Gateway ปฏิเสธคำขอที่ไม่มีหรือไม่ตรง เพื่อไม่ให้ใครที่รู้ URL ของ tunnel ยิงเข้า API ตรงได้ (ปิดได้เมื่อไม่ได้เปิด tunnel) |
 | Password | argon2id |
 | Secrets | `.env` / Secret ของที่ Deploy; มี `.env.example` ใน repo |
 | File | อัปโหลดผ่าน Service เจ้าของข้อมูลเท่านั้น; Signed URL อายุ ~10 นาที (README 5.9) |
@@ -133,7 +136,8 @@ Sync Call ภายในทั้งหมดที่มี (รายละ�
 | Health | ทุก Service มี `GET /health` (liveness) และ `GET /ready` (เช็ก DB + Broker) |
 | API Docs | OpenAPI สร้างจาก NestJS Swagger ที่ `/docs` (dev เท่านั้น); [api-contract.md](api-contract.md) เป็นสเปกที่ตกลงกันก่อนเขียนโค้ด |
 | Testing | Mocha + Chai + Sinon + c8, `supertest` กับ Test DB ใน Docker (README 4.4, 6) |
-| Migration | Prisma Migrate ใช้ connection string แบบ direct; รันจริงใช้ pooled (README 4.4) |
+| Migration | Prisma Migrate ใช้ `<PREFIX>_DIRECT_URL`; รันจริงใช้ `<PREFIX>_DATABASE_URL` — ตอนนี้ค่าเดียวกัน (Postgres ใน Docker ไม่มี pooler) (README 4.4) |
+| CORS | ตอนสาธิตเบราว์เซอร์เรียกผ่าน Worker proxy แบบ origin เดียวกัน จึงไม่ต้อง CORS; ถ้าเรียก Gateway ตรง (เช่น `localhost`) ให้อนุญาตเฉพาะ origin ที่ระบุใน `CORS_ALLOWED_ORIGINS` (ห้าม `*`) และรองรับ preflight กับ header `Authorization`, `Content-Type`, `X-Correlation-Id`, `Idempotency-Key` |
 
 ## 7. Background Jobs
 
@@ -155,15 +159,43 @@ Sync Call ภายในทั้งหมดที่มี (รายละ�
 | :--- | :--- | :--- | :--- | :--- | :--- |
 | dev (Docker Compose) | Postgres (1 container, DB ต่อ Service) | RabbitMQ | MinIO | Mailpit | เครื่องนักพัฒนา |
 | test (CI) | Postgres (service container) | Mock / RabbitMQ container | Mock | — | GitHub Actions |
-| deploy (demo) | Neon (pooled runtime / direct migrate) | CloudAMQP | Cloudflare R2 | Mailpit | **ยังไม่ตัดสินใจ** (Heroku หรือเครื่องทีม — README 4.4, 5.12) |
+| demo (สาธิต) | Postgres ใน Docker (บนเครื่องทีม) | CloudAMQP | Cloudflare R2 | Mailpit (ในเครื่อง) | Docker Compose บนเครื่องทีม • Front: Cloudflare Workers |
 
 Docker Compose Profiles: `infra` (Postgres, RabbitMQ, MinIO, Mailpit) + `identity` `job` `verification` `lifecycle` `notification` `gateway` `web`
+
+### 8.1 การ Deploy ตอนสาธิต (Front บน Cloudflare, Backend บนเครื่องทีม)
+
+```text
+ Browser ──► Cloudflare Workers ──────────────► Cloudflare Tunnel ──► เครื่องทีม (Docker Compose)
+             • static (Front)       /api/*       (quick tunnel,         ├─ gateway :3000  ◄── เปิดออกมาเฉพาะตัวนี้
+             • Worker proxy  ──────────────────►  URL เปลี่ยนทุกครั้ง)   ├─ identity / job / verification
+               ใส่ X-Edge-Secret                                         │   lifecycle / notification
+               ปลายทาง = API_ORIGIN                                      └─ Postgres, Mailpit (ภายในเครื่อง)
+                                                  CloudAMQP ◄── ทุก Service ต่อออกไป (amqps)
+                                                  Cloudflare R2 ◄── Service เจ้าของไฟล์ (S3 API) + Signed URL ให้เบราว์เซอร์
+```
+
+| หัวข้อ | ข้อกำหนด |
+| :--- | :--- |
+| Front | ส่งออกเป็น static แล้วโฮสต์บน Cloudflare Workers (`*.workers.dev`) — ไฟล์ static ไม่นับโควตา request |
+| Worker proxy | ส่งต่อ `/api/*` ไปที่ `API_ORIGIN` (ตัวแปรของ Worker) พร้อม `X-Edge-Secret`; ทำแค่ proxy เพื่ออยู่ในเพดาน CPU 10 ms ของแผนฟรี |
+| ย้าย Backend ภายหลัง | เปลี่ยน `API_ORIGIN` เป็น URL ใหม่ (เช่น VM ถาวร) — ไม่ต้อง build Front ใหม่ ไม่แก้โค้ด |
+| ตอนเทสเองในเครื่อง | ชี้ `API_ORIGIN` ไป `http://localhost:3000` หรือรัน `apps/web` ในเครื่อง |
+| เปิดออกนอกเครื่อง | เฉพาะ gateway (3000) ผ่าน tunnel; Postgres 5432, RabbitMQ 15672, MinIO 9001/9000 ต้อง bind เฉพาะ `127.0.0.1` |
+| Front ต้องรองรับ Backend ออฟไลน์ | เมื่อ `/api/*` ตอบ 5xx/timeout ให้แสดงข้อความ "ระบบหลังบ้านออฟไลน์" ไม่ใช่หน้าพัง |
+| Token ฝั่ง Front | เริ่มจาก access token ในหน่วยความจำ + refresh token ใน `localStorage`; ถ้ามีเวลาให้ย้ายเป็น `httpOnly` cookie ที่ตั้งโดยฝั่ง server (ทำได้ง่ายเพราะ origin เดียวกัน) |
+| ลิงก์ในอีเมล | สร้างจาก `WEB_BASE_URL` (URL ของ Front บน Cloudflare) ไม่ใช่ `localhost` |
+| ข้อควรระวัง | เครื่องต้องเปิดและ Docker ต้องรันตลอดช่วงสาธิต; quick tunnel ไม่มี SLA; ข้อจำกัดของแผนฟรี ดู README 5.12 |
+| CloudAMQP | จำนวน queue ที่ต้องใช้: คิวของ Consumer ประมาณ 33 คิว (นับจาก [event-contract.md](event-contract.md) §4) — ใช้ retry queue ร่วมต่อ Service เพื่อไม่ให้ชนเพดานของแผนฟรี |
+
+> ตอนนี้ **ยังไม่มีโค้ด Worker proxy ใน repo** และตัวแปร `API_ORIGIN`, `EDGE_SHARED_SECRET`, `CORS_ALLOWED_ORIGINS`, `WEB_BASE_URL` ยังไม่มีโค้ดอ่าน — ระบุไว้ล่วงหน้าตามการตัดสินใจนี้
 
 ## 9. ประเด็นที่ยังเปิดอยู่ (Open Decisions)
 
 | # | หัวข้อ | ผู้ตัดสินใจ | กำหนด |
 | :-: | :--- | :--- | :--- |
-| 1 | ที่รัน NestJS ตอน Deploy | ทีม (PM) | ต้นสัปดาห์ที่ 3 |
+| 1 | ~~ที่รัน NestJS ตอน Deploy~~ | ทีม (PM) | ✅ ตัดสินใจแล้ว: Docker Compose บนเครื่องทีม + Cloudflare Tunnel, Front บน Cloudflare Workers (§8.1) |
 | 2 | JWT Public Key: ฝัง env หรือ JWKS endpoint | SA | สัปดาห์ที่ 1 |
 | 3 | ค่าน้ำหนัก Risk Score และ Blacklist เริ่มต้น | PM | สัปดาห์ที่ 1 |
-| 4 | แผนฟรีของ Neon ให้กี่โปรเจกต์ (1 โปรเจกต์/Service หรือแยก Schema) | SA | สัปดาห์ที่ 1 |
+| 4 | ~~แผนฟรีของ Neon ให้กี่โปรเจกต์~~ | SA | ✅ ยกเลิก: ไม่ใช้ Neon ใช้ Postgres ใน Docker แยกฐานข้อมูลต่อ Service |
+| 5 | ที่ลง Backend ถาวร (ถ้าต้องการออนไลน์ตลอด เช่น VM ฟรี หรือบริการ PaaS) | ทีม | เมื่อหาได้ — ย้ายโดยเปลี่ยน `API_ORIGIN` |

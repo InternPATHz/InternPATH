@@ -68,6 +68,8 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
 
 ทำด้วย retry queue + TTL + DLX หรือ delayed-message plugin; Header `x-retry-count` เก็บจำนวนครั้ง
 
+> **เพดานแผนฟรีของ CloudAMQP:** จำนวน queue จำกัด (Consumer มีประมาณ 33 คิวตาม §4 และ DLQ อีกต่อคิว) จึงให้ใช้ **retry queue ร่วมต่อ Service** (หนึ่งชุด 5 วินาที / 30 วินาที / 2 นาที ต่อ Service แทนการแยกต่อ `<consumer>.<EventType>`) และตรวจตัวเลขเพดานจริงของแผนก่อนใช้งาน
+
 ### 3.4 ลำดับ Event
 - Event ที่เป็น "สถานะล่าสุดของ entity" ต้องมี `entity_version` (integer เพิ่มทีละ 1 ต่อ entity ที่ผู้ส่ง) ใน Payload
 - ผู้รับเขียนทับเฉพาะเมื่อ `entity_version` ใหม่ > ที่เก็บไว้; ถ้าน้อยกว่าให้ทิ้ง (ไม่ใช่ข้อผิดพลาด) — ใช้กับ Snapshot บริษัท (`CompanyStatusChanged`), สถานะประกาศ (`JobStatusChanged`)

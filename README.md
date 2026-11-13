@@ -71,28 +71,28 @@
 
 | ส่วน | เทคโนโลยี | หมายเหตุ |
 | :--- | :--- | :--- |
-| **Frontend** | **Next.js (TSX) + Tailwind CSS** | หน้าเว็บแยกตาม Role ในแอปเดียว (`apps/web`) ใช้ UI Kit กลางที่แปลงชุดสีในหัวข้อ 8 เป็นธีมของ Tailwind |
+| **Frontend** | **Next.js (TSX) + Tailwind CSS** | หน้าเว็บแยกตาม Role ในแอปเดียว (`apps/web`) ใช้ UI Kit กลางที่แปลงชุดสีในหัวข้อ 8 เป็นธีมของ Tailwind • ตอนสาธิตส่งออกเป็น static แล้วโฮสต์บน **Cloudflare Workers** (ดูแถว "การ Deploy ตอนสาธิต") |
 | **Backend** | **NestJS (TypeScript)** | REST API + OpenAPI, Validation ด้วย `class-validator`, รูปแบบ Error เดียวกันทุก Service |
 | **Message Broker** | **RabbitMQ** | ตอนพัฒนารันใน Docker ในเครื่อง ตอน Deploy ใช้ **CloudAMQP** (แผนฟรีมีเพดานข้อความ/จำนวน connection ดู 5.12) |
-| **Database** | **PostgreSQL** | ตอนพัฒนารันใน Docker ตอน Deploy ใช้ **Neon** — แต่ละ Service มีฐานข้อมูลของตนเอง (ถ้าแผนฟรีของ Neon ให้ได้หลายโปรเจกต์ใช้ 1 โปรเจกต์ต่อ Service ถ้าไม่ได้ใช้ 1 โปรเจกต์ แยก Schema ต่อ Service) |
-| **ORM** | **Prisma** | `schema.prisma` ต่อ 1 Service; ตอนรันจริงใช้ connection string แบบ **pooled** และตอน Migration ใช้แบบ **direct** (ดูกติกาด้านล่าง) |
-| **File Storage** | **Cloudflare R2** (Deploy) / **MinIO** (พัฒนา) | ใช้ผ่าน S3 API (`@aws-sdk/client-s3`) สลับกันได้ด้วยค่า config (ดู 5.9) |
-| **Email (สาธิต)** | **Mailpit** | SMTP จำลองใน Docker Compose |
+| **Database** | **PostgreSQL (Docker)** | รันใน Docker Compose ทั้งตอนพัฒนาและตอนสาธิต (ไม่ใช้ Neon) — 1 instance แต่แยกฐานข้อมูลต่อ Service (`identity_db`, `job_db`, …) ตาม `docker/postgres/init.sql` |
+| **ORM** | **Prisma** | `schema.prisma` ต่อ 1 Service; ตั้งทั้ง `<PREFIX>_DATABASE_URL` และ `<PREFIX>_DIRECT_URL` เป็นค่าเดียวกัน (ไม่มี connection pooler) เผื่อย้ายไปฐานข้อมูลที่ต้องแยกสองแบบภายหลัง (ดูกติกาด้านล่าง) |
+| **File Storage** | **Cloudflare R2** (สาธิต) / **MinIO** (พัฒนา) | ใช้ผ่าน S3 API (`@aws-sdk/client-s3`) สลับกันได้ด้วยค่า config (ดู 5.9) • ตอนสาธิตต้องใช้ R2 เพราะ Signed URL ต้องเปิดได้จากเบราว์เซอร์ (MinIO ในเครื่องเปิดจากเครื่องอื่นไม่ได้) |
+| **Email** | **Mailpit** | SMTP จำลองใน Docker Compose ใช้ได้ทั้งตอนพัฒนาและสาธิตบนเครื่องเดียว (อีเมลอยู่ใน Mailpit ของเครื่องนั้น) • ถ้าต้องให้คนอื่นรับอีเมลจริง ตั้ง `SMTP_*` ชี้ไปบริการ SMTP แทน (ไม่ต้องแก้โค้ด) |
 | **Repository** | **Monorepo (pnpm workspaces)** | `apps/` = `web`, `gateway`, และ 5 Services; `libs/` = `contracts` (ชนิดข้อมูล Event/DTO) และ `common` (Guard, Logger, Correlation ID); เอกสารอยู่ใน `docs/` |
 | **Testing** | **Mocha + Chai + Sinon + c8** | Unit / Integration Test ของแต่ละ Service ใช้ Mocha เป็น Test Runner (เบาและรัน process เดียว เหมาะกับเครื่องของทีม), Chai เป็น Assertion, Sinon สำหรับ Mock/Stub, c8 วัด Coverage; ทดสอบ API ด้วย `supertest` กับ Test Database แยกต่างหาก (Docker) ไม่ใช้ฐานข้อมูลจริง; แต่ละ Service มี `.mocharc` และสคริปต์ `pnpm test` ของตนเอง (Nest CLI สร้างโปรเจกต์มาพร้อม Jest ต้องถอดออกและตั้งค่า Mocha + `ts-node` แทน); UAT ในหัวข้อ 10 ยังเป็นการทดสอบด้วยมือตามเดิม |
 | **Container / CI** | **Docker Compose / GitHub Actions** | CI รัน Lint, Test, Build; ทำงานผ่าน Branch + Pull Request |
-| **ที่รัน NestJS ตอน Deploy** | *ยังไม่ตัดสินใจ* | ตัวเลือกคือ Heroku (เครดิตนักศึกษา สเกลเหลือศูนย์นอกวันทดสอบ) หรือเครื่องของทีมตอนสาธิต — **ต้องตัดสินใจก่อนเริ่มต่อ Service เข้าด้วยกันจริง** โค้ดไม่ต่างกันไม่ว่าเลือกแบบใด (ต่างกันที่ค่าใน `.env`) |
+| **การ Deploy ตอนสาธิต** | **Cloudflare Workers (Front) + Docker Compose บนเครื่องทีม (Backend)** | Front เป็น static บน Cloudflare Workers; Worker ทำหน้าที่ proxy `/api/*` ไปยัง `API_ORIGIN` (ตัวแปรของ Worker) ซึ่งตอนนี้ชี้ไป **Cloudflare quick tunnel** ที่เปิดเฉพาะ gateway (3000) ของเครื่องที่รัน Docker • ที่ลง backend ถาวรยังไม่มี: เมื่อได้แล้วเปลี่ยนแค่ `API_ORIGIN` ไม่ต้อง build Front ใหม่ • รายละเอียดดู [docs/architecture.md](docs/architecture.md) §8 |
 
 **กฎของ Monorepo (เพื่อให้ยังเป็น Microservices จริง)**
 - ห้าม import โค้ดข้าม Service ที่แชร์ได้มีเพียง `libs/contracts` และ `libs/common`
 - แต่ละ Service มี `package.json`, Dockerfile และ Prisma Schema ของตนเอง Build และ Deploy แยกกันได้
 - ไม่มี Foreign Key ข้ามฐานข้อมูล อ้างอิงข้าม Service ด้วย ID เท่านั้น
 
-**กติกาการใช้ Prisma และ Neon**
+**กติกาการใช้ Prisma และ PostgreSQL**
 - **รูปแบบ "UPDATE แบบมีเงื่อนไขในคำสั่งเดียว"** สำหรับงานที่หลายคนทำพร้อมกัน: การจองโควตา (`UPDATE ... SET reserved = reserved + 1 WHERE id = ? AND reserved < quota` แล้วตรวจจำนวนแถวที่เปลี่ยน) และการเปลี่ยนสถานะ (`updateMany` ที่ `where` สถานะเดิม; ถ้าจำนวนแถวเป็น 0 แปลว่ามีคนเปลี่ยนไปก่อน) เพื่อไม่ต้องล็อกแถว
-- Migration ใช้ connection string แบบ direct ส่วนแอปที่รันจริงใช้แบบ pooled
-- Neon พักฐานข้อมูลเมื่อไม่มีคิวรี 5 นาที คิวรีแรกหลังจากนั้นช้ากว่าปกติ (ตั้ง timeout ของการเชื่อมต่อให้เผื่อเวลาและมี Retry) และ SLA Scheduler ต้องไม่ยิงคิวรีถี่เกินจำเป็น (ตรวจทุก 15 นาทีขึ้นไป) เพื่อไม่ให้ฐานข้อมูลตื่นตลอดและกินชั่วโมงฟรี
-- ไม่ใช้ฟีเจอร์ระดับ Session ที่ตัวรวม connection (PgBouncer) ไม่รองรับ เช่น `LISTEN/NOTIFY` (ใช้ RabbitMQ แทน)
+- Migration ใช้ `<PREFIX>_DIRECT_URL` ส่วนแอปที่รันจริงใช้ `<PREFIX>_DATABASE_URL` — ตอนนี้ทั้งสองชี้ Postgres ใน Docker ตัวเดียวกัน ไม่มี connection pooler
+- ไม่พึ่งฟีเจอร์ระดับ Session เช่น `LISTEN/NOTIFY` (ใช้ RabbitMQ แทน) เพื่อให้ย้ายไปใช้ตัวรวม connection หรือฐานข้อมูลแบบ Managed ภายหลังได้โดยไม่ต้องแก้โค้ด
+- ข้อมูลอยู่ใน Docker volume ของเครื่องเดียว ควร `pg_dump` สำรองเป็นระยะ และไม่เปิดพอร์ต Postgres ออกนอกเครื่อง
 
 ---
 
@@ -256,7 +256,7 @@
 
 - ตัวนับเวลาของ HR ถูกพักขณะประกาศงานอยู่ในสถานะที่ซ่อน (`VERIFYING` / `SUSPENDED`) ตาม 5.1.2
 - **Scheduler ต้อง idempotent:** ทุกการเตือนและการหมดอายุบันทึกลงตาราง `reminder_log` ที่มี Unique Key (`entity_id`, `type`, `due_date`) โดย **เขียนแถวก่อนแล้วจึงส่ง** จึงไม่เกิดการเตือนซ้ำแม้ Scheduler ทำงานซ้อนหรือรันใหม่หลังล่ม
-- Scheduler ตรวจทุก **15 นาทีขึ้นไป** (ไม่ถี่กว่านี้ เพื่อไม่ให้ฐานข้อมูลบน Neon ตื่นตลอด ดู 4.4)
+- Scheduler ตรวจทุก **15 นาที** (ค่าตั้งได้ใน config)
 - ผลของการหมดเวลา (`EXPIRED`) เป็นการเปลี่ยนสถานะโดย Lifecycle เอง ส่วน "การเตือน" ส่งเป็น Event `ReminderDue` ให้ Notification Service
 
 ### 5.4 การตรวจสอบความถูกต้องของ E-Certificate
@@ -389,9 +389,9 @@
 - ยังตรวจไม่ได้ว่าบริษัทกับนักศึกษารวมหัวกันสร้างการฝึกงานปลอมเพื่อให้ได้ใบรับรอง (เกณฑ์ 30 วันเป็นเพียงด่านป้องกันเบื้องต้น)
 - หน้าตรวจสอบ E-Certificate ใช้ Certificate ID + Hash เก็บในระบบ ยังไม่มีลายเซ็นดิจิทัลหรือ Blockchain
 - **ยังไม่มีการสแกนไวรัสไฟล์ที่อัปโหลด** (ตรวจเฉพาะชนิดและขนาดไฟล์)
-- การแจ้งเตือนอีเมลใช้ Mailpit สำหรับสาธิตเท่านั้น (ไม่ส่งออกไปยังอีเมลจริง)
-- **ที่รัน NestJS ตอน Deploy ยังไม่ตัดสินใจ** ต้องสรุปก่อนเริ่มต่อ Service เข้าด้วยกัน
-- **ข้อจำกัดของบริการแผนฟรี:** Neon (พื้นที่จำกัด ฐานข้อมูลพักเมื่อไม่ใช้งานทำให้คำขอแรกช้า), CloudAMQP (จำนวนข้อความต่อเดือนและ connection จำกัด) ต้องออกแบบไม่ให้เกินเพดาน
+- การแจ้งเตือนอีเมลใช้ Mailpit เป็นค่าเริ่มต้น (ไม่ส่งออกไปยังอีเมลจริง) ถ้าต้องการให้คนอื่นรับอีเมลจริงให้ตั้ง `SMTP_*` ไปที่บริการ SMTP
+- **Backend ตอนสาธิตรันบนเครื่องทีม:** ต้องเปิดเครื่อง/Docker/tunnel ระหว่างสาธิต, URL ของ quick tunnel เปลี่ยนทุกครั้งที่รัน (ต้องอัปเดต `API_ORIGIN` ของ Worker), ไม่มี SLA และใช้ได้เฉพาะงานสาธิต — Front ต้องแสดงข้อความ "ระบบหลังบ้านออฟไลน์" แทนหน้าพังเมื่อเรียก API ไม่ได้ และควรเตรียมวิดีโอ/ภาพหน้าจอสำรองไว้
+- **ข้อจำกัดของบริการแผนฟรี:** CloudAMQP (จำนวนข้อความต่อเดือน, connection และจำนวน queue จำกัด — ใช้ retry queue ร่วมต่อ Service ไม่แยกต่อ queue), Cloudflare Workers (100,000 request ต่อวัน, CPU 10 ms ต่อ request — ไฟล์ static ไม่นับ จึงให้ Front เป็น static และให้ Worker ทำแค่ proxy; หลีกเลี่ยงการ poll ถี่ เช่น กระดิ่งแจ้งเตือนควร ≥ 30 วินาที) ต้องออกแบบไม่ให้เกินเพดาน
 - ระบบรองรับหลายมหาวิทยาลัยในระดับโครงสร้างข้อมูล (`university_id`) แต่สาธิตจริงเพียงแห่งเดียว
 - ค่าน้ำหนักของ Risk Score และรายการ Blacklist เริ่มต้นกำหนดใน Week 1 และปรับจูนได้หลังใช้งานจริง
 - HR Pro Subscription และ Talent Pool Search เป็น Future Phase
@@ -406,7 +406,7 @@
    - **Automated Test:** แต่ละ Service เขียน Unit / Integration Test ด้วย **Mocha + Chai + Sinon** และวัด Coverage ด้วย **c8** ทดสอบ API ด้วย `supertest` กับ Test Database แยก (Docker) ไม่ใช้ฐานข้อมูลจริง เคสสำคัญที่ต้องมีเทสอัตโนมัติ ได้แก่ State Machine ใบสมัคร, การจอง/คืนโควตาแบบ Atomic (รวมกรณียิงพร้อมกัน), Idempotency ของ Consumer และ Risk Score
    - **CI:** GitHub Actions รัน Lint, Test และ Build ของ Service ที่ถูกแก้ทุก Pull Request (รันเทสบน CI แทนเครื่องของแต่ละคนเพื่อไม่ให้เครื่องหนักเกินไป)
    - **Integration & UAT:** ทดสอบการส่ง Event ข้าม Service และ UAT ตามหัวข้อ 10 โดย **ผู้ทดสอบต้องไม่ใช่เจ้าของ Service ที่ทดสอบ** (Lifecycle Service ซึ่ง Tester เป็นเจ้าของ ให้ PM และ Junior Developer เป็นผู้ทดสอบหลัก)
-5. **Deployment & Demo:** ตอนพัฒนารันทุกอย่างด้วย **Docker Compose** (PostgreSQL, RabbitMQ, MinIO, Mailpit) โดยแบ่งเป็น **Profile ต่อ Service** เพื่อให้แต่ละคนรันเฉพาะส่วนที่กำลังทำ ตอน Deploy ใช้ Neon (ฐานข้อมูล), CloudAMQP (Broker) และ Cloudflare R2 (ไฟล์) ส่วนที่รัน NestJS จะตัดสินใจก่อนเริ่มต่อ Service เข้าด้วยกัน (ดู 4.4)
+5. **Deployment & Demo:** ตอนพัฒนารันทุกอย่างด้วย **Docker Compose** (PostgreSQL, RabbitMQ, MinIO, Mailpit) โดยแบ่งเป็น **Profile ต่อ Service** เพื่อให้แต่ละคนรันเฉพาะส่วนที่กำลังทำ ตอนสาธิตรัน Backend (NestJS + PostgreSQL) ด้วย Docker Compose บนเครื่องทีม ใช้ CloudAMQP (Broker) และ Cloudflare R2 (ไฟล์) ส่วน Front โฮสต์บน Cloudflare Workers และเรียก Backend ผ่าน Worker proxy + Cloudflare Tunnel (ดู 4.4 และ [docs/architecture.md](docs/architecture.md) §8)
 
 ---
 
@@ -448,9 +448,9 @@
 
 | สัปดาห์ | เป้าหมายหลัก (Weekly Milestone) | งานที่ต้องดำเนินการ (Key Activities) | สิ่งที่ส่งมอบ (Deliverables) |
 | :---: | :--- | :--- | :--- |
-| **Week 1** | **Design, Setup & Organization Onboarding** | - สรุป Requirement, กำหนดกฎ Risk Score & Blacklist (รวมกติกาคำในประโยคปฏิเสธ), กำหนดค่า SLA/เกณฑ์ใน config กลาง และวางแผน UAT Test Cases<br>- ออกแบบ System Architecture (5 Services), Prisma Schema ต่อ Service, API Contract, **Application State Machine** และ Event Catalog (Envelope + Outbox)<br>- วาง **Monorepo** (pnpm workspaces, `apps/*`, `libs/contracts`, `libs/common`, `docs/`), เทมเพลต NestJS + Prisma + Mocha และ CI (GitHub Actions)<br>- สมัครและตั้งค่า Neon, Cloudflare R2 และ CloudAMQP; Docker Compose (PostgreSQL, RabbitMQ, MinIO, Mailpit) แบบ Profile ต่อ Service; เตรียมข้อมูลจำลอง (Mock Data)<br>- พัฒนาระบบ Auth (4 Roles, ยืนยันอีเมล, รีเซ็ตรหัสผ่าน, JWT + Refresh), การผูกอาจารย์ที่ปรึกษาแบบอาจารย์ยืนยัน, การอนุมัติบัญชีอาจารย์และบริษัทโดย Admin ตามเกณฑ์, HR Owner/Member และการบันทึก Consent<br>- **Figma + UI Kit (Tailwind Theme และ Admin Layout)** | เอกสาร Requirement + Architecture Diagram + State Machine + Event Catalog + API Contract + Monorepo ที่รันได้ + Demo การสมัครสมาชิก ผูกอาจารย์ และ Admin อนุมัติบัญชีบริษัท |
+| **Week 1** | **Design, Setup & Organization Onboarding** | - สรุป Requirement, กำหนดกฎ Risk Score & Blacklist (รวมกติกาคำในประโยคปฏิเสธ), กำหนดค่า SLA/เกณฑ์ใน config กลาง และวางแผน UAT Test Cases<br>- ออกแบบ System Architecture (5 Services), Prisma Schema ต่อ Service, API Contract, **Application State Machine** และ Event Catalog (Envelope + Outbox)<br>- วาง **Monorepo** (pnpm workspaces, `apps/*`, `libs/contracts`, `libs/common`, `docs/`), เทมเพลต NestJS + Prisma + Mocha และ CI (GitHub Actions)<br>- สมัครและตั้งค่า Cloudflare (Workers, R2) และ CloudAMQP; Docker Compose (PostgreSQL, RabbitMQ, MinIO, Mailpit) แบบ Profile ต่อ Service; เตรียมข้อมูลจำลอง (Mock Data)<br>- พัฒนาระบบ Auth (4 Roles, ยืนยันอีเมล, รีเซ็ตรหัสผ่าน, JWT + Refresh), การผูกอาจารย์ที่ปรึกษาแบบอาจารย์ยืนยัน, การอนุมัติบัญชีอาจารย์และบริษัทโดย Admin ตามเกณฑ์, HR Owner/Member และการบันทึก Consent<br>- **Figma + UI Kit (Tailwind Theme และ Admin Layout)** | เอกสาร Requirement + Architecture Diagram + State Machine + Event Catalog + API Contract + Monorepo ที่รันได้ + Demo การสมัครสมาชิก ผูกอาจารย์ และ Admin อนุมัติบัญชีบริษัท |
 | **Week 2** | **Core Verification Engine**<br>*(ด่านตรวจงานอัตโนมัติ)* | - พัฒนาระบบสแกนคำต้องห้าม (รองรับประโยคปฏิเสธ) และคำนวณ Risk Score (เขียว/เหลือง/แดง) พร้อมแสดงเหตุผลให้ HR<br>- พัฒนาฟอร์มสร้างการ์ดประกาศงาน (ข้อมูลบังคับ, หมวด Tech/Business/Corporate, `target_majors`, `quota`), จำกัดการส่งตรวจ 5 ครั้งต่อวัน และกติกาแก้ไขฟิลด์ข้อความ/โครงสร้าง<br>- พัฒนา Appeal, Admin Queue พร้อม SLA และป้าย `OVERDUE`, และ Fail-safe 5 นาที<br>- เชื่อมต่อ Message Queue (`JobSubmitted` / `JobVerified` / `JobStatusChanged`) พร้อม Outbox/Retry/DLQ/Idempotency และเริ่ม Notification Service (In-App + Mailpit)<br>- ทดสอบ Integration และตรวจสอบความถูกต้องของกฎการคัดกรอง | **Demo ไฮไลต์:** โพสต์งาน 3 รูปแบบโชว์การแยกเข้าคิว 🟢 เขียว (ผ่านเลย), 🟡 เหลือง (รอ Admin กดอนุมัติ), 🔴 แดง (ตีกลับพร้อมเหตุผล) + อุทธรณ์ + แก้ไขประกาศแล้วถูกตรวจซ้ำ |
-| **Week 3** | **Student–Advisor Flow, SLA & Auto-Suspend** | - **Company Directory (SA, ใน Identity Service)** และ **Job Search (Junior, ใน Job Management Service)**<br>- ตัดสินใจ **ที่รัน NestJS ตอน Deploy** ให้เสร็จก่อนเริ่มต่อ Service เข้าด้วยกัน<br>- พัฒนาระบบสมัครงาน ➔ HR ตอบรับพร้อมวันเริ่ม-สิ้นสุด ➔ นักศึกษายืนยัน ➔ **อาจารย์กดอนุมัติ/ไม่อนุมัติ (พร้อมเหตุผล)** ➔ HR ยืนยันเริ่มงาน (ปรับวันที่ได้) รวมถึงการถอนใบสมัคร ถอนข้อเสนอ และกฎห้ามสมัครซ้ำ<br>- พัฒนากติกายืนยันได้ทีละ 1 ที่ การถอน/ปฏิเสธอัตโนมัติ และการจอง/ยืนยัน/คืนโควตาแบบ Atomic พร้อม Reconciliation<br>- พัฒนา SLA Scheduler (เตือน/หมดอายุ/ยกระดับ แบบ idempotent)<br>- สร้างระบบรายงานและ Auto-Suspend (จำกัดการรายงาน, กันรายงานเท็จ, คืนสถานะเมื่อ Admin ยกคำร้อง), ธง `UNDER_REVIEW` ของบริษัท และแจ้งเตือนอาจารย์เมื่อเกิดเคสปัญหา<br>- ปรับปรุง API Gateway (Routing, ตรวจ Token, Rate Limit) และทดสอบ Flow การทำงานหลัก | Demo นักศึกษาสมัครงาน ➔ HR ตอบรับ ➔ นักศึกษายืนยัน ➔ อาจารย์อนุมัติ ➔ HR ยืนยันเริ่มงาน, การหมดอายุตาม SLA และทดสอบระบบ Report Auto-Suspend |
+| **Week 3** | **Student–Advisor Flow, SLA & Auto-Suspend** | - **Company Directory (SA, ใน Identity Service)** และ **Job Search (Junior, ใน Job Management Service)**<br>- ตั้ง **Cloudflare Tunnel + Worker proxy** ให้ Front บน Cloudflare เรียก Backend ที่รันบนเครื่องทีมได้ก่อนเริ่มต่อ Service เข้าด้วยกัน<br>- พัฒนาระบบสมัครงาน ➔ HR ตอบรับพร้อมวันเริ่ม-สิ้นสุด ➔ นักศึกษายืนยัน ➔ **อาจารย์กดอนุมัติ/ไม่อนุมัติ (พร้อมเหตุผล)** ➔ HR ยืนยันเริ่มงาน (ปรับวันที่ได้) รวมถึงการถอนใบสมัคร ถอนข้อเสนอ และกฎห้ามสมัครซ้ำ<br>- พัฒนากติกายืนยันได้ทีละ 1 ที่ การถอน/ปฏิเสธอัตโนมัติ และการจอง/ยืนยัน/คืนโควตาแบบ Atomic พร้อม Reconciliation<br>- พัฒนา SLA Scheduler (เตือน/หมดอายุ/ยกระดับ แบบ idempotent)<br>- สร้างระบบรายงานและ Auto-Suspend (จำกัดการรายงาน, กันรายงานเท็จ, คืนสถานะเมื่อ Admin ยกคำร้อง), ธง `UNDER_REVIEW` ของบริษัท และแจ้งเตือนอาจารย์เมื่อเกิดเคสปัญหา<br>- ปรับปรุง API Gateway (Routing, ตรวจ Token, Rate Limit) และทดสอบ Flow การทำงานหลัก | Demo นักศึกษาสมัครงาน ➔ HR ตอบรับ ➔ นักศึกษายืนยัน ➔ อาจารย์อนุมัติ ➔ HR ยืนยันเริ่มงาน, การหมดอายุตาม SLA และทดสอบระบบ Report Auto-Suspend |
 | **Week 4** | **Evaluation, E-Certificate, Review & UAT** | - พัฒนาการยุติกลางคัน (`TERMINATED`), HR ประเมินผล (`PASS`/`FAIL` พร้อมเหตุผล), การโต้แย้งและประเมินซ้ำ, เส้นทาง `NO_EVALUATION`, การจัดการเมื่อบริษัทถูกระงับขณะฝึก, **รายงานปัญหาระหว่างฝึกงาน** และอาจารย์บันทึก `academic_result`<br>- พัฒนา **E-Certificate (PDF)** พร้อม Certificate ID, QR, หน้าตรวจสอบสาธารณะ, SHA-256 และการเพิกถอน (เช็กฝึกจริง ≥ 30 วัน)<br>- พัฒนาระบบรีวิวบริษัท (สิทธิ์เขียน, Moderation ผ่าน Verification, บริษัทตอบกลับ, ไม่ระบุชื่อ, อัปเดตคะแนนที่ Directory) และการมองเห็นข้อมูลตาม PDPA รวมถึงการลบบัญชี (`UserDeletionRequested`), `status_history` และ `admin_audit_log`<br>- ดำเนินการทดสอบ UAT ครบทุกเคสจริง และสรุปรายงาน Bug<br>- จัดทำสไลด์นำเสนอและสรุปผลการดำเนินงาน | ระบบฉบับสมบูรณ์พร้อมผลการทดสอบ UAT และรายงานผลการทดสอบระบบ |
 
 ---
