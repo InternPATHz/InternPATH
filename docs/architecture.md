@@ -74,7 +74,7 @@ InternPATH/
 │  └─ notification/
 ├─ libs/
 │  ├─ contracts/      ชนิดข้อมูล Event Envelope/Payload, DTO ที่แชร์ (TypeScript types เท่านั้น)
-│  └─ common/         JWT Guard, Role Guard, Logger, Correlation ID, Error filter, Outbox publisher
+│  └─ common/         JWT Guard, Role Guard, Logger, Correlation ID, Error filter, Outbox relay, Event consumer (idempotency + retry/DLQ)
 ├─ docs/
 ├─ docker-compose.yml (profiles ต่อ Service)
 └─ .github/workflows/ (lint • test • build เฉพาะ Service ที่เปลี่ยน)

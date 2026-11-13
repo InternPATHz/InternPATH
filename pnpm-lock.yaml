@@ -434,6 +434,21 @@ importers:
       '@nestjs/testing':
         specifier: ^12.5.0
         version: 12.5.0(@nestjs/common@12.5.0(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2))(@nestjs/core@12.5.0)(@nestjs/platform-express@12.5.0)
+      '@types/jsonwebtoken':
+        specifier: ^9.0.10
+        version: 9.0.10
+      '@types/pg':
+        specifier: ^8.23.1
+        version: 8.23.1
+      amqplib:
+        specifier: ^2.3.1
+        version: 2.3.1
+      jsonwebtoken:
+        specifier: ^9.0.3
+        version: 9.0.3
+      pg:
+        specifier: ^8.23.1
+        version: 8.23.1
       prisma:
         specifier: 6.19.3
         version: 6.19.3(typescript@5.6.3)
@@ -471,6 +486,9 @@ importers:
 
   libs/common:
     dependencies:
+      '@internpath/contracts':
+        specifier: workspace:^
+        version: link:../contracts
       '@nestjs/common':
         specifier: ^12.5.0
         version: 12.5.0(class-transformer@0.5.1)(class-validator@0.15.1)(reflect-metadata@0.2.2)(rxjs@7.8.2)

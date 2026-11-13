@@ -12,6 +12,7 @@
     "lint": "eslint src test"
   },
   "dependencies": {
+    "@internpath/contracts": "workspace:^",
     "@nestjs/common": "^12.5.0",
     "@nestjs/config": "^12.1.1",
     "@nestjs/core": "^12.5.0",

@@ -172,9 +172,9 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 6.1 Admin Queue
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/admin/queue` | AD | `?type=&priority=&risk_level=&overdue=true&status=` → รายการพร้อม `due_at`, `overdue`, `is_appeal`, `risk_level` |
-| GET | `/admin/queue/{id}` | AD | รายละเอียด + Risk reasons + ข้อความที่ไฮไลต์คำต้องห้าม (`highlights:[{start,end,keyword}]`) |
-| POST | `/admin/queue/{id}/actions/{approve\|reject}` | AD | งาน `JOB_REVIEW`/`JOB_APPEAL` → ส่ง `JobVerified(ADMIN_APPROVE/ADMIN_REJECT)`; `reject` ต้องมี `reason` |
+| GET | `/admin/queue` | AD | `?type=&priority=&risk_level=&overdue=true&status=` + Pagination มาตรฐาน (§1) → รายการพร้อม `company_name`, `due_at`, `overdue`, `is_appeal`, `risk_level`; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อน แล้ว `due_at` น้อยไปมาก |
+| GET | `/admin/queue/{id}` | AD | รายละเอียด + `reasons` + `content` (ข้อความที่สแกน หลัง normalize) + `highlights:[{field,start,end,keyword,negated}]` (ออฟเซ็ตอ้างอิง `content[field]`; `negated=true` = คำอยู่ในประโยคปฏิเสธ) + `origin`, `submission_id`, `appeal_statement` — รายการ Fail-safe ที่ยังไม่มีผลตรวจ: `reasons`/`highlights` ว่าง, `content` เป็น `null` |
+| POST | `/admin/queue/{id}/actions/{approve\|reject}` | AD | งาน `JOB_REVIEW`/`JOB_APPEAL` → ส่ง `JobVerified(ADMIN_APPROVE/ADMIN_REJECT)`; `reject` ต้องมี `reason`; `204`; `409 STATE_CONFLICT` (ตัดสินไปแล้ว/สองคนกดพร้อมกัน), `422 SUBMISSION_UNKNOWN` (รายการยังไม่ทราบ submission), `422 UNSUPPORTED_ITEM_TYPE` (ชนิดอื่นที่ยังไม่รองรับ) |
 | POST | `/admin/queue/{id}/actions/{dismiss-report\|uphold-report}` | AD | `JOB_REPORT`: `dismiss` ⇒ `JobVerified(RESTORE)` + รีเซ็ตตัวนับ + นับ `consecutive_dismissed` ของผู้รายงาน; `uphold` ⇒ `JobVerified(REMOVE)` |
 | POST | `/admin/queue/{id}/actions/{publish-review\|remove-review}` | AD | `REVIEW_HELD`/`REVIEW_REPORT` → `ReviewModerationResult` |
 | POST | `/admin/queue/{id}/actions/company-clear-flag` | AD | `COMPANY_ACCOUNT`: เคลียร์ธง `UNDER_REVIEW` |
@@ -188,10 +188,12 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 6.3 Blacklist & กฎ
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET/POST | `/admin/blacklist` | AD | จัดการคำต้องห้าม |
-| PATCH/DELETE | `/admin/blacklist/{id}` | AD | |
-| POST | `/admin/blacklist/test` | AD | `{text}` → ผลสแกน (ใช้ทดสอบกฎก่อนใช้จริง) |
-| GET/PUT | `/admin/risk-rules` | AD | ดู/ปรับค่าน้ำหนัก |
+| GET/POST | `/admin/blacklist` | AD | จัดการคำต้องห้าม: `GET ?severity=&enabled=&q=` + Pagination; `POST {term, severity, weight?, category?}` (`HARD` ห้ามมี `weight`, `SOFT` ต้องมี `weight` ≥ 0 จำนวนเต็ม; term ซ้ำไม่สนตัวพิมพ์ → `409 TERM_EXISTS`) |
+| PATCH/DELETE | `/admin/blacklist/{id}` | AD | `PATCH {enabled?, weight?, category?}`; `DELETE` → `204` |
+| POST | `/admin/blacklist/test` | AD | `{text}` → `{decision, risk_level, risk_score, matched_keywords, reasons}` (ทดสอบกฎก่อนใช้จริง **ไม่บันทึกอะไร**; ไม่นับกฎ "รายละเอียดสั้นเกินไป") |
+| GET/PUT | `/admin/risk-rules` | AD | `GET` → `{rules:[{code,weight,params,enabled}], negation_cues:[{id,cue,enabled}]}`; `PUT {rules?:[{code,weight?,params?,enabled?}], negation_cues?:[{cue,enabled}]}` — `params` รวมเข้ากับค่าเดิม, ตรวจทุกรายการก่อนแก้ (ผิดข้อเดียว = ไม่เปลี่ยนเลย `400`), `NEGATION_WINDOW.params.max_gap` 0–100 |
+
+ทุกการแก้ของ Admin เขียน `admin_audit_log` (ดู §6.6)
 
 ### 6.4 การรายงาน
 | Method | Path | Role | คำอธิบาย |
@@ -202,8 +204,13 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 6.5 สำหรับ HR ดูผลตรวจ
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/verification/jobs/{job_id}/result` | H (เจ้าของ), AD | `{risk_level, risk_score, reasons[], matched_keywords[], is_appeal, can_appeal}` |
-| POST | `/verification/jobs/{job_id}/appeal` | H (เจ้าของ) | `{statement}` — เฉพาะงานที่ผลล่าสุดคือ `AUTO_REJECTED`, 1 ครั้ง/ประกาศ (`409 APPEAL_ALREADY_USED`) → สร้างรายการ `JOB_APPEAL` และส่ง `JobVerified(APPEAL_ACCEPTED)` ให้ Job เปลี่ยนเป็น `PENDING_REVIEW` (ป้าย APPEAL) |
+| GET | `/verification/jobs/{job_id}/result` | H (เจ้าของ), AD | ผลตรวจ **ล่าสุด** (เลือกจาก `submitted_at`): `{risk_level, risk_score, reasons[], matched_keywords:[{term,field,negated}], is_appeal, can_appeal}` + `admin_reason` เมื่อ Admin เป็นผู้ปฏิเสธ; ไม่คืน `content`/`assigned_to`/`submission_id`; `403` เมื่อ HR คนละบริษัท, `404` เมื่อไม่เคยถูกตรวจ |
+| POST | `/verification/jobs/{job_id}/appeal` | H (เจ้าของ) | `{statement}` — เฉพาะงานที่ผลล่าสุดคือ `AUTO_REJECTED`, 1 ครั้ง/ประกาศ (`409 APPEAL_ALREADY_USED`) → สร้างรายการ `JOB_APPEAL` และส่ง `JobVerified(APPEAL_ACCEPTED)` ให้ Job เปลี่ยนเป็น `PENDING_REVIEW` (ป้าย APPEAL) — `statement` 20–2000 ตัวอักษร; `201 {id, status:'OPEN'}`; ผลล่าสุดไม่ใช่ `AUTO_REJECT` หรือมีรายการคิวเปิดอยู่แล้ว (เช่น Fail-safe ที่ผลตรวจมาทีหลัง; `can_appeal=false`) → `409 STATE_CONFLICT`; ส่งใหม่หลังอุทธรณ์ไม่ผ่านแล้วถูก `AUTO_REJECT` อีกจะอุทธรณ์ไม่ได้ (`409 APPEAL_ALREADY_USED`) |
+
+### 6.6 Audit
+| Method | Path | Role | คำอธิบาย |
+| :--- | :--- | :---: | :--- |
+| GET | `/admin/audit` | AD | บันทึกการกระทำของ Admin ย้อนหลัง: `?actor=&action=&target_type=&from=&to=` + Pagination; เรียงใหม่ไปเก่า → `{id, admin_id, action, target_type, target_id, before, after, reason, correlation_id, occurred_at}` (action เช่น `QUEUE_APPROVE`, `QUEUE_REJECT`, `BLACKLIST_CREATE\|UPDATE\|DELETE`, `RISK_RULES_UPDATE`) |
 
 ---
 
@@ -331,6 +338,6 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | # | ประเด็น | หมายเหตุ |
 | :-: | :--- | :--- |
 | 1 | `verify-hash` ของ Certificate | README ระบุเก็บ SHA-256 แต่ไม่ระบุว่าจะมี Endpoint สาธารณะ — ถ้าไม่ต้องการ ตัดออก |
-| 2 | Pagination/Sort มาตรฐานของ Admin Queue | ปรับตามความต้องการ UI |
+| 2 | ~~Pagination/Sort มาตรฐานของ Admin Queue~~ | ✅ ปิดแล้ว: ใช้ Pagination มาตรฐาน §1; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อนแล้ว `due_at` น้อยไปมาก (§6.1) — ปรับตาม UI ภายหลังได้ |
 
 *(ข้อ `reopen` ประกาศ, `TERMINATED`→ประเมินต่อ, อาจารย์ให้ FAIL ได้แม้บริษัท PASS และ Event E16–E18 ทีมยืนยันแล้ว — ดู [data-schema.md](data-schema.md) §8 และ [event-contract.md](event-contract.md) §4)*

@@ -124,14 +124,47 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 ```
 4. Commit โฟลเดอร์ `prisma/migrations/` ด้วย
 5. รัน `pnpm --filter @internpath/<service> prisma:generate` เมื่อ schema เปลี่ยน
-> ขั้นตอน migration นี้ยังไม่เคยถูกลองรันจริงในโปรเจกต์ (ยังไม่มี migration แรก) ถ้าติดปัญหาให้แจ้งทีมและอัปเดตคู่มือนี้
+> ลองรันจริงแล้วกับ `apps/verification` (2026-11-13): `prisma migrate dev --name init --create-only` ได้ migration แรก แล้วเพิ่ม **SQL มือต่อท้ายไฟล์** สำหรับสิ่งที่ Prisma ไม่รองรับ (partial unique index, trigger append-only ของ `status_history`/`admin_audit_log`) — `prisma migrate diff --from-migrations … --to-schema-datamodel …` รายงาน "No difference" จึงไม่ต้องกลัว drift แต่ห้ามลบ SQL มือเมื่อสร้าง migration ใหม่
+> - ค่าตั้งต้น (seed) ใส่ใน migration แยก (`*_seed_defaults`) แบบ `INSERT … ON CONFLICT DO NOTHING` เพื่อไม่ทับค่าที่ Admin แก้
+> - เทสต์ที่ต้องใช้ DB สร้างฐาน `ver_it_<hex>` ใหม่ต่อรอบ แล้วรัน `prisma migrate deploy` (ดู `apps/verification/test/support/db.ts`) และลบทิ้งตอนจบ
+> - เทสต์พื้นฐานตั้ง `DISABLE_INFRA=true` ใน `test/setup.ts` ให้ `AppModule` ไม่โหลดส่วนที่ต้องใช้ DB/RabbitMQ (CI จึงไม่ต้องมี infra)
 
 ### 6.3 เพิ่ม Event ใหม่ / ส่ง-รับ Event
 ทำตามรายการใน [event-contract.md](event-contract.md) §7:
 1. เพิ่มแถวและ Payload ในเอกสาร
 2. เพิ่ม type ใน `libs/contracts/src/events/` (ใช้ `EventEnvelope<'ชื่อEvent', Payload>`)
-3. **ผู้ส่ง:** เขียนแถวลง `outbox_events` ใน Transaction เดียวกับการเปลี่ยนข้อมูล (ห้ามส่ง RabbitMQ ตรงๆ)
-4. **ผู้รับ:** บันทึก `processed_events` ก่อนประมวลผล (กันซ้ำด้วย `event_id`) และเทียบ `entity_version` ถ้าเป็นสถานะ
+3. **ผู้ส่ง:** เรียก `OutboxWriter.add(tx, …)` ภายใน `$transaction` เดียวกับการเปลี่ยนข้อมูล (ห้ามส่ง RabbitMQ ตรงๆ) — relay ของ `libs/common` ส่งให้เอง
+   ```ts
+   // AppModule: MessagingModule.register({ service: 'job', publishes: { databaseUrlEnv: 'JOB_DIRECT_URL' } })
+   await this.prisma.$transaction(async (tx) => {
+     const job = await tx.job.update({ /* … */ });
+     await this.outbox.add(tx, { type: 'JobSubmitted', aggregateId: job.id, correlationId, payload });
+   });
+   ```
+   `correlationId` ที่ไม่ใช่ UUID จะถูกแทนด้วย UUID ใหม่ (คอลัมน์เป็น `uuid`)
+4. **ผู้รับ:** ลงทะเบียน handler กับ `EventConsumer` — lib จัดการ `processed_events` (กันซ้ำด้วย `event_id`), manual ack, retry 3 ครั้ง (5 วินาที / 30 วินาที / 2 นาที) แล้วเข้า DLQ ให้เอง; handler ต้อง **ทำงานกับ `tx` ที่ได้รับเท่านั้น** และ **throw เมื่อล้มเหลว** (Transaction จะ rollback แล้วลองใหม่) ส่วนการเทียบ `entity_version` ถ้าเป็นสถานะเป็นหน้าที่ของ handler
+   ```ts
+   // AppModule: PrismaService เป็น provider ที่ฉีดผ่าน DI จึงต้องใช้รูปแบบ { inject, useFactory } (และ imports โมดูลของมัน)
+   MessagingModule.register({
+     service: 'job',
+     imports: [PrismaModule],
+     consumes: {
+       inject: [PrismaService],
+       useFactory: (prisma: PrismaService) => ({ runInTransaction: (fn) => prisma.$transaction(fn) }),
+     },
+   })
+   // ใน provider ของ Service (inject EventConsumer):
+   await consumer.subscribe({
+     producer: 'verification', type: 'JobVerified',   // supportedVersions เริ่มต้น [1]
+     handler: async (envelope, tx) => { /* เขียนผลด้วย tx */ },
+   });
+   ```
+   ตั้ง `RABBITMQ_URL` (ใน dev ชี้ RabbitMQ ใน Docker; ตอนสาธิตชี้ CloudAMQP โดยไม่ต้องแก้โค้ด) และ `<PREFIX>_DIRECT_URL` ของ Service ที่ publish
+
+   ข้อควรรู้:
+   - **Event จะไปถึงผู้รับก็ต่อเมื่อคิวของผู้รับถูกประกาศแล้ว** (ผู้รับประกาศคิวตอน `subscribe`) ผู้ส่งไม่ใช้ `mandatory` จึงไม่รู้ว่าไม่มีคิว: ข้อความที่ส่งก่อนที่ Service ผู้รับเคยรันจะหายเงียบ ตอน dev/สาธิตให้รันผู้รับให้ครบก่อนสร้างข้อมูล
+   - log ของ lib ไม่ใส่ข้อความ error ของ handler (Prisma ฝังค่าใน query ไว้ในข้อความ) มีแค่ชื่อ/รหัส; ถ้าต้องดูรายละเอียดให้ log ใน handler เองโดยระวังข้อมูลอ่อนไหว (`ReviewSubmitted`)
+   - `onDeadLetter` เป็น hook เสริม (log ระดับ `error` ทำเสมออยู่แล้ว); hook ที่ throw จะถูก log และไม่กระทบการเข้า DLQ
 5. อัปเดตคอลัมน์ Consume/Publish ใน [architecture.md](architecture.md) §2
 
 ### 6.4 เรียก Service อื่น
@@ -142,17 +175,17 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 
 โครงตอนนี้ **รันได้และทดสอบผ่าน แต่ยังไม่มีโค้ดธุรกิจ** สิ่งที่ยังต้องสร้าง:
 
-- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service (ตอนนี้มีแค่ `outbox_events` / `processed_events`)
-- [ ] Outbox relay และ Consumer (โฟลเดอร์ `outbox/`, `events/` ยังว่าง)
+- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification ทำแล้ว (สไลซ์ 1)**; Service อื่นยังมีแค่ `outbox_events` / `processed_events`
+- [x] Outbox relay และ Consumer — อยู่ใน `libs/common` (`OutboxWriter`, `OutboxRelay`, `EventConsumer`, `MessagingModule`); เหลือให้แต่ละ Service เรียกใช้ตาม §6.3 (โฟลเดอร์ `outbox/`, `events/` ของแต่ละ Service ยังว่าง)
 - [ ] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก
 - [ ] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit, Denylist (ตอนนี้มีแค่ health)
 - [ ] การลงทะเบียน `JwtAuthGuard` เป็น Guard ของแต่ละ Service (ตอนนี้เป็น class ให้ใช้ต่อ controller)
 - [ ] Scheduler (SLA, Reconciliation โควตา, Fail-safe 5 นาที)
 - [ ] หน้าเว็บของแต่ละ Role (มีแค่หน้าแรกและ Tailwind theme)
-- [ ] ยังไม่เคยรัน Dockerfile / `docker compose up` จริง (Docker engine ยังไม่ผ่านการทดสอบ)
+- [ ] Dockerfile ของ Service ยังไม่เคยรัน; `docker compose --profile infra up -d postgres rabbitmq mailpit` รันผ่านแล้ว (2026-11-13) แต่ **MinIO ดึง image ไม่ได้** (`minio/minio` บน Docker Hub ใช้ไม่ได้ และ `quay.io/minio/minio` ตอบ 401) ต้องเปลี่ยนไปใช้ตัวแทนที่รองรับ S3
 - [ ] การสาธิตผ่าน Cloudflare ([architecture.md](architecture.md) §8.1): Worker proxy `/api/*` + `API_ORIGIN`, ตรวจ `X-Edge-Secret` / CORS / IP ผู้ใช้ที่ Gateway, ข้อความ "ระบบหลังบ้านออฟไลน์" ใน Front, ลิงก์อีเมลจาก `WEB_BASE_URL`
-- [ ] `docker-compose.yml`: ให้ Postgres / RabbitMQ / MinIO bind เฉพาะ `127.0.0.1` และเพิ่ม `restart: unless-stopped`
-- [ ] Retry queue ร่วมต่อ Service เพื่ออยู่ในเพดาน queue ของ CloudAMQP แผนฟรี ([event-contract.md](event-contract.md) §3.3)
+- [x] `docker-compose.yml`: Postgres / RabbitMQ / MinIO bind เฉพาะ `127.0.0.1` และมี `restart: unless-stopped`
+- [x] Retry queue ร่วมต่อ Service (3 คิวต่อ Service) เพื่ออยู่ในเพดาน queue ของ CloudAMQP แผนฟรี ([event-contract.md](event-contract.md) §3.3) — ยังต้องตรวจตัวเลขเพดานจริงกับ CloudAMQP (ดู [architecture.md](architecture.md) §8.1)
 
 เลือกงานจาก Work Plan ใน README หัวข้อ 9 ตามสัปดาห์ แล้วตรวจกับ Open Decisions ท้าย [architecture.md](architecture.md) ก่อนเริ่ม
 
@@ -166,5 +199,7 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 | `Environment variable not found: *_DATABASE_URL` (Prisma) | Prisma ไม่อ่าน `.env` ที่ราก — ตั้งตัวแปรในเชลล์ หรือสร้าง `apps/<service>/.env` |
 | Port ชน (`EADDRINUSE`) | ตั้ง `PORT=xxxx` ก่อนรัน หรือปิดโปรเซสเดิม |
 | `docker` ใช้ไม่ได้บน Windows | เปิด WSL2: PowerShell (Administrator) `wsl --install --no-distribution` แล้วรีสตาร์ต |
+| ต่อ Postgres/RabbitMQ ช้า (~2 วินาทีต่อการเชื่อมต่อ) หรือ Prisma ขึ้น `Unable to start a transaction in the given time` | `docker-compose.yml` bind พอร์ตเฉพาะ `127.0.0.1` แต่ `localhost` บน Windows ถูกแปลงเป็น IPv6 (`::1`) ก่อน จึงต้องรอ timeout ก่อนถอยมา IPv4 → ใช้ `127.0.0.1` ใน `.env` (`.env.example` ปรับแล้ว; ถ้าคัดลอก `.env` ไว้ก่อนหน้า ให้แทน `localhost` เป็น `127.0.0.1` ใน URL ของ Postgres/RabbitMQ/MinIO) |
+| `Prisma Client did not initialize yet` / import `@prisma/client` ไม่ได้ | ยังไม่ได้ generate → `pnpm --filter @internpath/<service> prisma:generate` (CI รันขั้นนี้ก่อน lint/test/build ให้แล้ว) |
 | Prisma ขึ้น error แปลกหลังอัปเกรด | โปรเจกต์ล็อก Prisma ไว้ที่ 6.x อย่าอัปเป็น 7+ โดยไม่ย้าย config ก่อน |
 | `pnpm install` แล้ว `prepare` ล้ม | ดู error ของ `tsc` ใน `libs/*`; ตรวจว่าใช้ TypeScript 5.6 (ล็อกด้วย `pnpm.overrides`) |
