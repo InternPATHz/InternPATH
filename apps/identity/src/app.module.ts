@@ -1,9 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { HealthModule, createLoggingModule } from '@internpath/common';
+import { HealthModule, MessagingModule, createLoggingModule } from '@internpath/common';
 import { PrismaModule } from './prisma/prisma.module';
+import { CompanyMembersModule } from './modules/company-members/company-members.module';
 
-const infra = process.env.DISABLE_INFRA === 'true' ? [] : [PrismaModule];
+const infra = process.env.DISABLE_INFRA === 'true' ? [] : [
+  PrismaModule,
+  CompanyMembersModule,
+  MessagingModule.register({ service: 'identity', publishes: { databaseUrlEnv: 'IDENTITY_DIRECT_URL' } }),
+];
 
 @Module({
   imports: [
