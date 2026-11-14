@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { AppException } from '@internpath/common';
 import { Injectable } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../../generated/client';
 import { AuditService } from '../audit/audit.service';
 import { Page, skipOf } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';

@@ -83,6 +83,8 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 ### 2.3 กติกา Anonymize (README 5.11)
 เมื่อได้รับ `UserDeletionRequested`: ลบ/ล้าง PII ในตารางของตนและไฟล์ใน Storage; แทน `actor_id` ใน `status_history`/`admin_audit_log` ด้วย `anonymous_actor_id`; ข้อมูลที่ "เก็บแต่ไม่ระบุตัวตน" = ใบรับรอง, รีวิวที่เผยแพร่
 
+**Authorized Anonymization Operation (PM ตัดสิน 2026-11-15):** trigger append-only ของ `status_history` / `admin_audit_log` ต้องอนุญาต `UPDATE` ได้ก็ต่อเมื่อ (1) transaction นั้นตั้ง `SET LOCAL internpath.anonymize = 'on'` (ทำเฉพาะใน handler ของ `UserDeletionRequested`) **และ** (2) คอลัมน์ที่เปลี่ยนมีเพียง `actor_id` (ของ `admin_audit_log` คือ `admin_id`) ค่าใหม่ต้องเท่ากับ `anonymous_actor_id` ทุกคอลัมน์อื่นต้องเหมือนเดิม — นอกนี้ `UPDATE`/`DELETE` ยังถูกปฏิเสธเหมือนเดิม (ไม่แยกข้อมูลระบุตัวตนออกไปตารางอื่น เพื่อให้ประวัติอ่านได้ครบในที่เดียว) ใช้กับทุก Service ที่มีตารางสองตัวนี้ (Identity, Job, Verification, Lifecycle) และมีเทสต์ครอบคลุมทั้งกรณีที่ต้องผ่านและกรณีที่ต้องถูกปฏิเสธ
+
 ### 2.4 สำเนา (Snapshot) ที่แต่ละ Service เก็บได้
 ตารางเจ้าของข้อมูลฉบับย่ออยู่ใน README 5.8 — ตารางด้านล่างระบุ **ฟิลด์** ที่ Service อื่นเก็บเป็นสำเนาได้ (Snapshot):
 
@@ -188,6 +190,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | quota_confirmed | int default 0 | |
 | application_deadline | date | **ฟิลด์โครงสร้าง** |
 | status | JobStatus | |
+| suspended_from_status | JobStatus null | สถานะก่อนถูกระงับ (`PUBLISHED` หรือ `CLOSED`) ตั้งตอน `→ SUSPENDED`, ใช้ตอน `RESTORE` (§8.2) |
 | featured | bool default false | มีผลเมื่อ `PUBLISHED` และบริษัท `featured_enabled` |
 | current_submission_id | uuid null | |
 | verifying_since | timestamptz null | ไว้ทำ Fail-safe 5 นาที |
@@ -195,7 +198,11 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | entity_version | int | เพิ่มทุกการเปลี่ยนสถานะ |
 | version | int | optimistic lock |
 
-Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`, ค้นหาข้อความ: `tsvector`/trigram
+Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
+
+**DRAFT ไม่ครบได้ (PM ตัดสิน 2026-11-15):** `POST /hr/jobs` สร้าง `DRAFT` ได้แม้กรอกไม่ครบ จึงให้ฟิลด์เนื้อหา/โครงสร้างข้างบน (ยกเว้น `id`, `company_id`, `created_by`, `status`, `version`, `entity_version`) เป็น nullable และมี `CHECK (status = 'DRAFT' OR (ฟิลด์ที่ README 5.1.5 บังคับทั้งหมดไม่เป็น NULL))` — ตรวจความครบตอน `actions/submit` (`400 MISSING_REQUIRED_JOB_FIELDS` + `details[]`)
+
+**ค้นหาข้อความ (PM ตัดสิน 2026-11-15):** แยกเป็น migration ภายหลัง (ไม่ต้องอยู่ใน migration แรก) ใช้ **trigram (`pg_trgm`)** ไม่ใช้ `tsvector` เพราะภาษาไทยไม่มีช่องว่างคั่นคำ — GIN index บน `job_title` เป็นหลัก (เพิ่ม `description`/`location` ถ้าจำเป็นหลังวัดผล) ใช้กับ `?q=` ของ `/search/jobs`
 
 **`job_submissions`**: `id (=submission_id)`, `job_id`, `kind (NEW|EDIT|RESUBMIT)`, `changed_fields text[]`, `submitted_by`, `submitted_at`, `result_decision null`, `resolved_at null` — ใช้นับ Rate Limit **5 ครั้ง/วัน/บริษัท** (นับตามวัน `Asia/Bangkok`)
 
@@ -205,7 +212,8 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`, �
 | application_id | uuid **PK** (`ref:lifecycle`) |
 | job_id | uuid FK jobs |
 | status | QuotaReservationStatus |
-| reserved_at, confirmed_at, released_at | timestamptz |
+| reserved_at | timestamptz NOT NULL (ตั้งตอนจอง) |
+| confirmed_at, released_at | timestamptz null (เป็น NULL จนกว่าจะเกิด confirm/release) |
 | release_reason | text null |
 
 การจอง: `UPDATE jobs SET quota_reserved = quota_reserved+1 WHERE id=? AND quota_reserved+quota_confirmed < quota` (affected=0 ⇒ โควตาเต็ม) + `INSERT quota_reservations ON CONFLICT (application_id) DO NOTHING` ใน Transaction เดียว
@@ -216,7 +224,7 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`, �
 
 **`company_flags`**: `company_id PK`, `under_review bool`, `entity_version`
 
-+ ตารางร่วม: `outbox_events`, `processed_events`, `status_history` (entity = JOB)
++ ตารางร่วม: `outbox_events`, `processed_events`, `status_history` (entity = JOB) — **ไม่มี `admin_audit_log` ใน migration แรก** เพราะ Job ไม่มี action เขียนของ Admin (`/admin/jobs` อ่านอย่างเดียว; การตัดสินของ Admin ทำผ่าน Verification) เพิ่มเมื่อมี action เขียนจริง
 
 ---
 
@@ -474,24 +482,28 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 
 | จาก | ไป | ที่มา | Event |
 | :--- | :--- | :--- | :--- |
-| `DRAFT` | `VERIFYING` | HR ส่งตรวจ (ผ่าน Guard ข้อมูลบังคับ, Rate limit 5/วัน, บริษัท `VERIFIED`) | ส่ง `JobSubmitted` |
-| `PUBLISHED` | `VERIFYING` | HR แก้ไข **ฟิลด์ข้อความอิสระ** | ส่ง `JobSubmitted` (kind=EDIT) |
+| `DRAFT` | `VERIFYING` | HR ส่งตรวจ (ผ่าน Guard ข้อมูลบังคับ, Rate limit 5/วัน, บริษัท `VERIFIED`) | `JobStatusChanged` (`application_effect=NONE`) **และ** `JobSubmitted` |
+| `PUBLISHED` | `VERIFYING` | HR แก้ไข **ฟิลด์ข้อความอิสระ** | `JobStatusChanged` (`application_effect=FREEZE`) **และ** `JobSubmitted` (kind=EDIT) |
 | `PUBLISHED` | `PUBLISHED` | HR แก้ฟิลด์โครงสร้าง (`quota`, `deadline`, `target_majors`) | ไม่ส่ง |
 | `VERIFYING` | `PUBLISHED` | `JobVerified.APPROVE` | `JobStatusChanged` |
 | `VERIFYING` | `PENDING_REVIEW` | `JobVerified.PENDING_REVIEW` **หรือ** Fail-safe หมดเวลา 5 นาที (Job ตั้งเอง, `reason_code=VERIFY_TIMEOUT`) | `JobStatusChanged` |
 | `VERIFYING` | `AUTO_REJECTED` | `JobVerified.AUTO_REJECT` | `JobStatusChanged` |
 | `AUTO_REJECTED` | `PENDING_REVIEW` | HR อุทธรณ์ผ่าน Verification (ครั้งเดียว/ประกาศ — Verification ตรวจและบันทึก `appeals`) → `JobVerified(APPEAL_ACCEPTED)` | `JobStatusChanged` |
-| `AUTO_REJECTED` | `VERIFYING` | HR แก้ไขแล้วส่งใหม่ | `JobSubmitted` |
+| `AUTO_REJECTED` | `VERIFYING` | HR แก้ไขแล้วส่งใหม่ | `JobStatusChanged` (`NONE`) **และ** `JobSubmitted` (kind=RESUBMIT) |
 | `PENDING_REVIEW` | `PUBLISHED` | `JobVerified.ADMIN_APPROVE` | `JobStatusChanged` |
 | `PENDING_REVIEW` | `ADMIN_REJECTED` | `JobVerified.ADMIN_REJECT` | `JobStatusChanged` |
-| `ADMIN_REJECTED` | `VERIFYING` | HR แก้แล้วส่งใหม่ | `JobSubmitted` |
-| `PUBLISHED` | `SUSPENDED` | `ReportThresholdReached` (E04) | `JobStatusChanged` |
-| `SUSPENDED` | `PUBLISHED` | `JobVerified.RESTORE` | `JobStatusChanged` |
+| `ADMIN_REJECTED` | `VERIFYING` | HR แก้แล้วส่งใหม่ | `JobStatusChanged` (`NONE`) **และ** `JobSubmitted` (kind=RESUBMIT) |
+| `PUBLISHED` | `SUSPENDED` | `ReportThresholdReached` (E04) — ตั้ง `suspended_from_status = PUBLISHED` | `JobStatusChanged` (`FREEZE`, `reason_code=REPORT_THRESHOLD`) |
+| `CLOSED` | `SUSPENDED` | `ReportThresholdReached` (E04) — ตั้ง `suspended_from_status = CLOSED` *(PM ตัดสิน 2026-11-15: ประกาศ `CLOSED` รายงานได้ตาม R5-G01)* | `JobStatusChanged` (`FREEZE`, `reason_code=REPORT_THRESHOLD`) |
+| `SUSPENDED` | `PUBLISHED` | `JobVerified.RESTORE` เมื่อ `suspended_from_status = PUBLISHED` (และยังไม่เลย deadline) | `JobStatusChanged` (`UNFREEZE`, `reason_code=ADMIN_DISMISSED`) |
+| `SUSPENDED` | `CLOSED` | `JobVerified.RESTORE` เมื่อ `suspended_from_status = CLOSED` **หรือ** เลย `application_deadline` ระหว่างระงับ | `JobStatusChanged` (`UNFREEZE`, `reason_code=ADMIN_DISMISSED`) |
 | `SUSPENDED` | `REMOVED` | `JobVerified.REMOVE` | `JobStatusChanged` |
 | `PUBLISHED` | `CLOSED` | HR ปิดรับ หรือถึง deadline | `JobStatusChanged` |
 | `CLOSED` | `PUBLISHED` | HR เปิดใหม่ (ถ้า deadline/โควตายังอยู่) *(ทีมยืนยันแล้ว; README ไม่ได้ระบุ)* | `JobStatusChanged` |
 
-การเปลี่ยนสถานะที่เกิดจาก Event ใช้ `updateMany where status = <สถานะที่คาดไว้ของการตัดสินนั้น>`; ถ้า 0 แถว ⇒ Event เก่า/ซ้ำ ให้ข้ามอย่างเงียบ (log ระดับ `warn`) และให้ Verification ตรวจ `submission_id` เทียบ `current_submission_id` เพื่อทิ้งผลของ submission ที่ถูกแทนที่
+**ทุกการเปลี่ยนสถานะส่ง `JobStatusChanged` เสมอ** (รวมทุกแถวที่เข้า `VERIFYING` ซึ่งส่งคู่กับ `JobSubmitted` ใน transaction/outbox เดียวกัน โดยส่ง `JobStatusChanged` ก่อน) พร้อม `company_id` และ `entity_version` ที่เพิ่มขึ้นทุกครั้ง — ผู้รับ: Lifecycle (Freeze/Unfreeze ใบสมัครตาม `application_effect`), Verification (`job_snapshots`, นับการปฏิเสธ), Notification (PM ตัดสิน 2026-11-15)
+
+การเปลี่ยนสถานะที่เกิดจาก Event (`JobVerified`) ต้องผ่านทั้งสองเงื่อนไขก่อนรับ: `updateMany where status = <สถานะที่คาดไว้ของการตัดสินนั้น> AND current_submission_id = <submission_id ของ Event>`; ถ้า 0 แถว ⇒ Event เก่า/ซ้ำ ให้ข้ามอย่างเงียบ (log ระดับ `warn`) — ฝั่ง Verification ก็ทิ้งผลของ submission ที่ถูกแทนที่เช่นกัน (E01 รอบเก่าที่มาช้าถูกเก็บไว้เฉยๆ ไม่ส่ง `JobVerified`)
 
 ### 8.2.1 สถานะประกาศ × action ของ Verification (OD-06) — [spec สไลซ์ 2](superpowers/specs/2026-11-14-verification-slice2-design.md) §5.6
 
@@ -508,7 +520,13 @@ Verification **ตรวจเฉพาะสิ่งที่ตัวเอ�
 | `REMOVED` | ✗ | ✗ | ✗ | ✗ |
 | `CLOSED` | ✓ | ✗ | ✗ | — |
 
-หมายเหตุ: §8.2 ให้ Job ระงับได้เฉพาะจาก `PUBLISHED` — ประกาศ `CLOSED` ที่ถูกรายงานครบเกณฑ์จะได้ E04 และรายการคิวแต่ Job อาจไม่เปลี่ยนสถานะ (ต้องตกลงกับ Job: ให้รับ E04 ตอน `CLOSED` หรือจำกัดให้รายงานได้เฉพาะ `PUBLISHED`)
+หมายเหตุ: ประกาศ `CLOSED` ที่ถูกรายงานครบเกณฑ์ ⇒ Job ระงับ (`CLOSED → SUSPENDED`) และเก็บ `suspended_from_status`; `RESTORE` คืนสถานะเดิม (§8.2) — ตัดสินแล้ว 2026-11-15
+
+### 8.2.2 บริษัทถูกระงับ (`CompanyStatusChanged` → `SUSPENDED`) — PM ตัดสิน 2026-11-15
+
+- **ไม่เปลี่ยน `jobs.status`** (ไม่ใช้ `CLOSED`/`SUSPENDED` ของประกาศ เพราะแยกไม่ออกว่า HR ปิดเองหรือบริษัทถูกระงับ ทำให้คืนสถานะไม่ได้) — ซ่อนและปิดรับสมัครด้วยเงื่อนไขร่วม: **ประกาศ `PUBLISHED` และบริษัท `VERIFIED`** จาก `company_snapshots` (Job ใช้ในหน้าค้นหา/รายละเอียดสาธารณะ, Lifecycle ใช้ตอน `POST /applications`) บริษัทกลับเป็น `VERIFIED` ⇒ ประกาศกลับมาเห็นและรับสมัครได้เองโดยไม่ต้องคืนสถานะ
+- **ใบสมัครค้าง:** Lifecycle Freeze ตัวนับ SLA ของใบสมัครที่ยังไม่ `IN_PROGRESS` ขณะบริษัทถูกระงับ (HR ถูกระงับบัญชี ตอบไม่ได้ จึงไม่ให้หมดเวลาโดยไม่ใช่ความผิด) และ Unfreeze เมื่อบริษัทกลับเป็น `VERIFIED`; `IN_PROGRESS` ไม่ถูกตัดอัตโนมัติ ให้อาจารย์ตัดสินฝึกต่อ/ยุติ (README 5.2.2)
+- โควตาที่จองไว้ไม่ถูกคืนเพราะการระงับบริษัท
 
 ### 8.3 Company Status (Identity) — README 5.6
 `PENDING` → (`VERIFIED` | `NEED_MORE_INFO` | `REJECTED`)  •  `NEED_MORE_INFO` → `PENDING` (ส่งเอกสารเพิ่ม)  •  `VERIFIED` ⇄ `SUSPENDED`  •  `REJECTED` สมัครใหม่ได้โดยแก้ข้อมูล → `PENDING`

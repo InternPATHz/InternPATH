@@ -25,4 +25,4 @@ Thumbs.db
 
 # Prisma
 *.db
-apps/identity/generated/
+apps/*/generated/

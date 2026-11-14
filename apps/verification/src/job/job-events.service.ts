@@ -1,6 +1,6 @@
 import type { EventEnvelope, JobStatusChangedPayload } from '@internpath/contracts';
 import { Injectable } from '@nestjs/common';
-import type { RejectionKind } from '@prisma/client';
+import type { RejectionKind } from '../../generated/client';
 import { EvaluationService } from '../evaluation/evaluation.service';
 import { FlagService } from '../flag/flag.service';
 import type { Tx } from '../prisma/types';

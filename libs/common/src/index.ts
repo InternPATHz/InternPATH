@@ -13,6 +13,7 @@ export * from './outbox/outbox.types';
 export * from './outbox/outbox-writer';
 export * from './outbox/envelope';
 export * from './messaging/topology';
+export * from './messaging/provision';
 export * from './messaging/broker-connection';
 export * from './outbox/outbox-relay';
 export * from './messaging/event-consumer';

@@ -23,6 +23,26 @@ const CODE_BY_STATUS: Record<number, string> = {
   504: 'UPSTREAM_UNAVAILABLE',
 };
 
+/** ตัด query string ออก (อาจมี token/คำค้นที่เป็นข้อมูลส่วนบุคคล) */
+const pathOnly = (url: string): string => url.split('?')[0];
+
+/**
+ * ข้อความเพื่อ log ของ error 5xx — ข้อความของ error (เช่น Prisma/pg) อาจมีค่าจริงของผู้ใช้ (อีเมลใน "duplicate key",
+ * พารามิเตอร์ของ query) จึง **ตัดออกใน production** เหลือชื่อ error, code (เช่น P2002) และ stack frames
+ * นอก production (dev/test) ยัง log เต็มเพื่อช่วยดีบั๊ก
+ */
+function describeError(exception: unknown): string {
+  if (!(exception instanceof Error)) return `${typeof exception} thrown (ไม่ใช่ Error)`;
+  if (process.env.NODE_ENV !== 'production') return exception.stack ?? `${exception.name}: ${exception.message}`;
+  const code = (exception as { code?: unknown }).code;
+  const frames = (exception.stack ?? '')
+    .split('\n')
+    .filter((line) => /^\s+at /.test(line))
+    .slice(0, 15)
+    .join('\n');
+  return `${exception.name}${typeof code === 'string' ? ` [${code}]` : ''}\n${frames}`;
+}
+
 /** แปลงทุก Exception เป็นรูปแบบเดียวกันทุก Service (docs/api-contract.md §2) */
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -64,8 +84,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
 
     if (status >= 500) {
       this.logger.error(
-        exception instanceof Error ? exception.stack : String(exception),
-        `${req.method} ${req.url}`,
+        `${describeError(exception)}\ncorrelation_id=${getCorrelationId(req)}`,
+        `${req.method} ${pathOnly(req.url)}`,
       );
     }
 

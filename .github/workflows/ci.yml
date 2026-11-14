@@ -18,11 +18,11 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Prisma Client ของแต่ละ Service ต้อง generate ก่อน lint/test/build
+      # Prisma Client ของทุก Service ต้อง generate ก่อน lint/test/build — ขั้นเดียวครอบทุก apps/* ที่มีสคริปต์ prisma:generate
+      # (Service ใหม่ไม่ต้องแก้ไฟล์นี้) ทุก Service ต้องตั้ง `output = "../generated/client"` ใน schema.prisma
+      # ไม่เช่นนั้น Client จะเขียนทับกัน — มีเทสต์ตรวจใน libs/common (test/repo/prisma-outputs.spec.ts)
       - name: Prisma generate
-        run: |
-          pnpm --filter @internpath/verification prisma:generate
-          pnpm --filter @internpath/identity prisma:generate
+        run: pnpm --filter "./apps/*" --if-present prisma:generate
       # รันเฉพาะแพ็กเกจที่เปลี่ยน (และที่พึ่งพามัน) เทียบกับ main
       - name: Lint
         run: pnpm --filter "...[origin/main]" --if-present lint

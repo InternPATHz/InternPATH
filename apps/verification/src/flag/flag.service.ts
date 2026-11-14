@@ -1,6 +1,6 @@
 import { OutboxWriter } from '@internpath/common';
 import { Inject, Injectable } from '@nestjs/common';
-import type { RejectionKind } from '@prisma/client';
+import type { RejectionKind } from '../../generated/client';
 import { asUuid } from '../common/uuid';
 import { emitCompanyFlagChanged } from '../events/company-flag-changed';
 import { LIMITS_CONFIG, LimitsConfig } from '../limits/limits.config';

@@ -15,6 +15,7 @@
     "format": "prettier --write .",
     "keys:generate": "node scripts/generate-jwt-keys.mjs",
     "infra:up": "docker compose --profile infra up -d",
+    "infra:topology": "pnpm --filter @internpath/common exec ts-node scripts/provision-topology.ts",
     "infra:down": "docker compose --profile infra down"
   },
   "pnpm": {

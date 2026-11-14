@@ -1,7 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../../generated/client';
 import { Client } from 'pg';
 
 /** ค่าเริ่มต้นตรงกับ .env.example (Postgres จาก `pnpm infra:up`); override ด้วย VERIFICATION_IT_ADMIN_URL */

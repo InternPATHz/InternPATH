@@ -28,6 +28,8 @@ export interface ApplicationStatusChangedPayload {
 export interface ReviewSubmittedPayload {
   review_id: string;
   application_id: string;
+  /** เจ้าของรีวิว (user_id) — Verification ส่งต่อใน E10 เพื่อให้ Notification แจ้งนักศึกษา */
+  student_user_id: string;
   company_id: string;
   content: { title?: string; body: string };
   rating: 1 | 2 | 3 | 4 | 5;
