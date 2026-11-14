@@ -6,12 +6,14 @@ import { AuthModule } from './modules/auth/auth.module';
 import { AdvisorLinkModule } from './modules/advisor-links/advisor-link.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { InternalModule } from './internal/internal.module';
 
 const infra = process.env.DISABLE_INFRA === 'true' ? [] : [
   PrismaModule,
   AdvisorLinkModule,
   CompaniesModule,
   AdminModule,
+  InternalModule,
   MessagingModule.register({ service: 'identity', publishes: { databaseUrlEnv: 'IDENTITY_DIRECT_URL' } }),
 ];
 
