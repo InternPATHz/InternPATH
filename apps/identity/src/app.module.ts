@@ -4,10 +4,12 @@ import { HealthModule, MessagingModule, createLoggingModule } from '@internpath/
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AdvisorLinkModule } from './modules/advisor-links/advisor-link.module';
+import { CompaniesModule } from './modules/companies/companies.module';
 
 const infra = process.env.DISABLE_INFRA === 'true' ? [] : [
   PrismaModule,
   AdvisorLinkModule,
+  CompaniesModule,
   MessagingModule.register({ service: 'identity', publishes: { databaseUrlEnv: 'IDENTITY_DIRECT_URL' } }),
 ];
 
