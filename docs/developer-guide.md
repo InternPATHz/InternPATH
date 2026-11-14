@@ -205,6 +205,41 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 | Port ชน (`EADDRINUSE`) | ตั้ง `PORT=xxxx` ก่อนรัน หรือปิดโปรเซสเดิม |
 | `docker` ใช้ไม่ได้บน Windows | เปิด WSL2: PowerShell (Administrator) `wsl --install --no-distribution` แล้วรีสตาร์ต |
 | ต่อ Postgres/RabbitMQ ช้า (~2 วินาทีต่อการเชื่อมต่อ) หรือ Prisma ขึ้น `Unable to start a transaction in the given time` | `docker-compose.yml` bind พอร์ตเฉพาะ `127.0.0.1` แต่ `localhost` บน Windows ถูกแปลงเป็น IPv6 (`::1`) ก่อน จึงต้องรอ timeout ก่อนถอยมา IPv4 → ใช้ `127.0.0.1` ใน `.env` (`.env.example` ปรับแล้ว; ถ้าคัดลอก `.env` ไว้ก่อนหน้า ให้แทน `localhost` เป็น `127.0.0.1` ใน URL ของ Postgres/RabbitMQ/MinIO) |
-| `Prisma Client did not initialize yet` / import `@prisma/client` ไม่ได้ | ยังไม่ได้ generate → `pnpm --filter @internpath/<service> prisma:generate` (CI รันขั้นนี้ก่อน lint/test/build ให้แล้ว) |
+| `Prisma Client did not initialize yet` / `Cannot find module '../../generated/client'` | ยังไม่ได้ generate → `pnpm --filter @internpath/<service> prisma:generate` หรือทั้งหมด `pnpm --filter "./apps/*" --if-present prisma:generate` (CI รันขั้นนี้ก่อน lint/test/build ให้แล้ว); Client ของแต่ละ Service อยู่ที่ `apps/<service>/generated/client` ดูกฎข้อ 9 |
+| Event ที่ส่งแล้วไม่ถึงผู้รับ / `/ready` ผ่านแต่ผู้รับไม่ได้ข้อความ | ยังไม่มีคิวของผู้รับ (ผู้ส่งเผยแพร่ก่อนผู้รับเคยเปิด) → รัน `pnpm infra:topology` หลัง `pnpm infra:up` ทุกครั้งที่ตั้ง RabbitMQ ใหม่ |
+| เทสต์ที่ใช้ Postgres/RabbitMQ ขึ้น pending หมด | Docker ยังไม่รัน → เปิด Docker Desktop แล้ว `pnpm infra:up` (Mocha ข้ามเทสต์เหล่านี้เองเมื่อต่อไม่ได้ ผลจึงเป็น pending ไม่ใช่ fail) |
 | Prisma ขึ้น error แปลกหลังอัปเกรด | โปรเจกต์ล็อก Prisma ไว้ที่ 6.x อย่าอัปเป็น 7+ โดยไม่ย้าย config ก่อน |
 | `pnpm install` แล้ว `prepare` ล้ม | ดู error ของ `tsc` ใน `libs/*`; ตรวจว่าใช้ TypeScript 5.6 (ล็อกด้วย `pnpm.overrides`) |
+
+## 9. สิ่งที่ต้องทำตามหลัง merge (บันทึกรายครั้ง)
+
+### 9.1 หลัง merge การตัดสินใจของ PM และการแยก Prisma output (2026-11-15)
+
+**ทุกคนทำหลัง `git pull` main (ตามลำดับ):**
+1. `pnpm install` (ถ้าเจอ `Cannot find module 'pg'` ใน Identity คือยังไม่ได้ทำขั้นนี้)
+2. `pnpm --filter "./apps/*" --if-present prisma:generate` — Prisma Client ย้ายไป `apps/<service>/generated/client` (ไม่ commit) ไม่ใช่ `@prisma/client` แล้ว (กฎข้อ 9 ข้างบน)
+3. `pnpm --filter "./libs/*" build`
+4. `pnpm infra:up` แล้วรัน **`pnpm infra:topology` หนึ่งครั้ง** เพื่อสร้างคิวผู้รับ Event ครบทุก Service ล่วงหน้า (33 คิว + DLQ + retry queue; รันซ้ำได้) — ไม่เช่นนั้น Event ที่ Service หนึ่งส่งก่อนที่ผู้รับจะเคยเปิดจะหาย
+5. ใครเริ่มใช้ Prisma ใน Service ใหม่ ต้องตั้ง `output = "../generated/client"` และ import จาก `../../generated/client` (ดูตัวอย่าง `apps/verification`) — เทสต์ใน `libs/common/test/repo/prisma-outputs.spec.ts` จะล้มถ้ามี Service ที่ใช้ค่าตั้งต้นเกิน 1 ตัว
+
+**Junior (Job และ Notification):**
+- **Job schema:** ตั้ง `output = "../generated/client"` + import จาก `../../generated/client` (ตอนนี้ Job เป็น Service เดียวที่ยังใช้ค่าตั้งต้นได้)
+- **ส่ง `JobStatusChanged` ทุกการเปลี่ยนสถานะ** รวมทุกแถวที่เข้า `VERIFYING` (ส่งคู่กับ `JobSubmitted` ใน transaction เดียว ส่ง `JobStatusChanged` ก่อน) พร้อม `company_id` และ `entity_version` ที่เพิ่มขึ้น; `application_effect`: `PUBLISHED → VERIFYING` = `FREEZE` อื่นๆ = `NONE` — ตาราง [data-schema.md](data-schema.md) §8.2
+- **รับ `JobVerified` เฉพาะที่ `submission_id = current_submission_id` และสถานะตรงกับที่คาดไว้** ทั้งสองเงื่อนไข
+- **`CLOSED → SUSPENDED`:** เมื่อรับ `ReportThresholdReached` จาก `CLOSED` ให้ระงับด้วย เก็บ `jobs.suspended_from_status`; `RESTORE` คืนสถานะเดิม (ถ้าเลย `application_deadline` ระหว่างระงับ ให้กลับเป็น `CLOSED`); `REMOVE` เป็น `REMOVED`
+- **บริษัทถูกระงับ (`CompanyStatusChanged = SUSPENDED`):** ไม่เปลี่ยน `jobs.status` ให้ซ่อนและปิดรับสมัครด้วยเงื่อนไข "ประกาศ `PUBLISHED` **และ** บริษัท `VERIFIED`" จาก `company_snapshots` ([data-schema.md](data-schema.md) §8.2.2)
+- **ตาราง `jobs` ใน migration แรก:** ฟิลด์เนื้อหา nullable + `CHECK (status = 'DRAFT' OR ฟิลด์บังคับครบ)`, `quota_reservations.reserved_at NOT NULL` ส่วน `confirmed_at`/`released_at` nullable, **ไม่ต้องมี `admin_audit_log`**, ค้นข้อความ (`pg_trgm`) แยกเป็น migration ภายหลัง
+- **Notification:** ทำตาม Recipient Matrix ของ E08 ([event-contract.md](event-contract.md) §6.1 — **ร่าง รอ Tester/PM ยืนยัน**) และนโยบายอีเมล (เขียน `delivery_logs` สถานะ `PENDING` ก่อนส่ง; retry หลังล้มให้ส่งซ้ำได้); แจ้งผู้ใช้เมื่อรีวิวถูก `HOLD`/`ADMIN_REMOVE` จาก `student_user_id` ใน E10 ไม่ต้องหาเจ้าของรีวิวเอง
+
+**SA (Identity และ Gateway):**
+- **Gateway:** เพิ่ม route `/admin/audit` → Verification และเทสต์ Routing ตามตารางใน [api-contract.md](api-contract.md) §3 (เพิ่มแถวนี้ในเอกสารแล้ว — ตรวจใน branch Gateway ของ SA ว่ามี route และเทสต์ตามแล้วหรือยัง)
+- **Anonymization:** trigger append-only ของ `status_history`/`admin_audit_log` ต้องยอมให้แก้เฉพาะ `actor_id`/`admin_id` ใน transaction ที่ตั้ง `internpath.anonymize` ([data-schema.md](data-schema.md) §2.3) — migration แรกของ Identity ตอนนี้ปฏิเสธ `UPDATE` ทุกกรณี ต้องเพิ่ม migration ใหม่ พร้อมเทสต์ทั้งกรณีที่ผ่านและกรณีที่ต้องถูกปฏิเสธ และ handler ของ `UserDeletionRequested`
+- **Identity:** Public Key ใช้ `JWT_PUBLIC_KEY` จาก env (ตัดสินแล้ว) และ SA ใช้ชนิด `AuthUser`/`UserMeResponse` ใน `libs/contracts` ได้
+
+**Tester (Lifecycle):**
+- ยืนยัน/แก้ Recipient Matrix ของ E08 ก่อนส่งให้ Notification
+- **บริษัทถูกระงับ:** Freeze ตัวนับ SLA ของใบสมัครที่ยังไม่ `IN_PROGRESS` ขณะบริษัทถูกระงับ และ Unfreeze เมื่อกลับเป็น `VERIFIED`; `IN_PROGRESS` ให้อาจารย์ตัดสินต่อ ([data-schema.md](data-schema.md) §8.2.2)
+- **รีวิว (E09):** payload ต้องมี `student_user_id`; รับ `ReviewModerationResult` (E10) ที่มี `student_user_id` กลับมา
+- ตั้ง `output` ของ Prisma ตามกฎข้อ 9 เมื่อเริ่มเขียน schema (ตั้งไว้ให้แล้วในไฟล์ `schema.prisma` ของ Lifecycle)
+
+**PM (Verification) — งานที่ยังค้าง:** trigger anonymization ใน migration ของ Verification + handler `UserDeletionRequested` (E15) · Minor ของ review สไลซ์ 2 (#5 `dismiss` พลิกรายงานที่เคย uphold, #6 ธงอาจติดผิดจาก E03 เก่ามาก, #7 ลำดับล็อกของ clear-flag, #8 `PUT` ธงไม่เช็กว่าบริษัทมีจริง, #10 เทสต์ไม่ log `detail`) · สไลซ์ 3 (ตรวจรีวิว E09/E10 และรายงานรีวิว)

@@ -74,4 +74,5 @@ pnpm --filter @internpath/web dev               # เว็บ http://localhost:
 - `libs/common` และ `libs/contracts` ต้อง build ก่อน (`dist/`) แอปถึง import ได้ — `pnpm install` ทำให้อัตโนมัติ ถ้าแก้โค้ดใน libs ให้รัน `pnpm --filter "./libs/*" build`
 - Migration ของ Prisma: **Verification** (สไลซ์ 1-2) และ **Identity** (ฐานข้อมูลพื้นฐาน) มีแล้ว ส่วน Job, Lifecycle และ Notification ยังมีแค่ตารางร่วม (`outbox_events`/`processed_events`) — เขียนตาม [data-schema.md](data-schema.md) และขั้นตอนใน [developer-guide.md](developer-guide.md) §6.2
 - Prisma Client ของแต่ละ Service generate ไป `apps/<service>/generated/client` (ไม่ commit) — รัน `pnpm --filter "./apps/*" --if-present prisma:generate` หลัง `pnpm install` และทุกครั้งที่ `schema.prisma` เปลี่ยน
+- เพิ่ง `git pull` แล้วเจอ error เรื่อง Prisma/คิว/โมดูลหาย → ดูขั้นตอนใน [developer-guide.md](developer-guide.md) §9 (สิ่งที่ต้องทำตามหลัง merge รายครั้ง)
 - หลัง `pnpm infra:up` ให้รัน `pnpm infra:topology` หนึ่งครั้ง เพื่อสร้างคิวผู้รับ Event ของทุก Service ล่วงหน้า (ไม่เช่นนั้น Event ที่ Service หนึ่งส่งก่อนที่ผู้รับจะเคยเปิดจะหาย)
