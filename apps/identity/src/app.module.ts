@@ -4,6 +4,7 @@ import { HealthModule, MessagingModule, createLoggingModule } from '@internpath/
 import { Prisma } from '../generated/client';
 import { InternalModule } from './internal/internal.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { AccountDeletionModule } from './modules/account-deletion/account-deletion.module';
 import { AdvisorLinkModule } from './modules/advisor-links/advisor-link.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { CompaniesModule } from './modules/companies/companies.module';
@@ -22,6 +23,7 @@ const infra = process.env.DISABLE_INFRA === 'true' ? [] : [
   AdvisorLinkModule,
   CompaniesModule,
   AdminModule,
+  AccountDeletionModule,
   InternalModule,
   CompanyMembersModule,
   UsersModule,
