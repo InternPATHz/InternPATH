@@ -12,7 +12,7 @@ import { Client } from 'pg';
 import request from 'supertest';
 import { CompanyMembersModule } from '../../src/modules/company-members/company-members.module';
 import { InvitationMailer } from '../../src/modules/company-members/invitation-mailer';
-import { verifyPassword } from '../../src/modules/company-members/password-hash';
+import { verifyPassword } from '../../src/modules/auth/password-hash';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
 

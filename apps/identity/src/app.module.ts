@@ -50,4 +50,3 @@ const infra = process.env.DISABLE_INFRA === 'true' ? [] : [
   ],
 })
 export class AppModule {}
-

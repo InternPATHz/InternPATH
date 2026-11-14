@@ -11,6 +11,7 @@ import * as jwt from 'jsonwebtoken';
 import { Client } from 'pg';
 import request from 'supertest';
 import { AdvisorLinkModule } from '../../src/modules/advisor-links/advisor-link.module';
+import { UsersModule } from '../../src/modules/users/users.module';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
@@ -65,7 +66,7 @@ describe('Identity advisor link (Postgres จริง)', function () {
     process.env.IDENTITY_DATABASE_URL = testUrl;
     process.env.IDENTITY_DIRECT_URL = testUrl;
     process.env.JWT_PUBLIC_KEY = publicKey;
-    const moduleRef = await Test.createTestingModule({ imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), PrismaModule, StubMessagingModule, AdvisorLinkModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), PrismaModule, StubMessagingModule, AdvisorLinkModule, UsersModule] }).compile();
     app = moduleRef.createNestApplication();
     configureApp(app);
     await app.init();

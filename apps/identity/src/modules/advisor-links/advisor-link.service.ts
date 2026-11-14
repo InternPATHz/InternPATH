@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException, OutboxWriter } from '@internpath/common';
-import type { AdminAdvisorListItem, AdvisorLinkChangedPayload, AdvisorLinkRequestItem, AdvisorListItem, LinkedStudentItem, UserMeResponse } from '@internpath/contracts';
+import type { AdminAdvisorListItem, AdvisorLinkChangedPayload, AdvisorLinkRequestItem, AdvisorListItem, LinkedStudentItem } from '@internpath/contracts';
 import { Prisma, StudentProfileIdentity, User } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminAdvisorQueryDto, AdvisorSearchDto } from './advisor-link.dto';
@@ -31,29 +31,6 @@ export class AdvisorLinkService {
     if (advisor.status !== 'ACTIVE' || !advisor.emailVerifiedAt) throw new AppException('STATE_CONFLICT', 'อาจารย์ยังไม่พร้อมรับคำขอ', 409);
     if (!universityId || advisor.universityId !== universityId) throw new AppException('FORBIDDEN_ROLE', 'อาจารย์ต้องอยู่สถาบันเดียวกัน', 403);
     return advisor;
-  }
-
-  async me(id: string): Promise<UserMeResponse> {
-    await this.actor(id);
-    const user = await this.db.user.findUniqueOrThrow({ where: { id }, include: {
-      studentProfile: true, advisorProfile: true, companyMember: { include: { company: true } },
-    } });
-    return {
-      id: user.id, email: user.email, full_name: user.fullName,
-      ...(user.phone ? { phone: user.phone } : {}), role: user.role, status: user.status,
-      email_verified: !!user.emailVerifiedAt, created_at: user.createdAt.toISOString(),
-      ...(user.studentProfile ? { student: {
-        student_code: user.studentProfile.studentCode, major: user.studentProfile.major,
-        year_level: user.studentProfile.yearLevel, advisor_link_status: user.studentProfile.advisorLinkStatus,
-        ...(user.studentProfile.advisorId ? { advisor_id: user.studentProfile.advisorId } : {}),
-        ...(user.studentProfile.pendingAdvisorId ? { pending_advisor_id: user.studentProfile.pendingAdvisorId } : {}),
-      } } : {}),
-      ...(user.advisorProfile ? { advisor: { department: user.advisorProfile.department } } : {}),
-      ...(user.companyMember ? { company: {
-        id: user.companyMember.companyId, name: user.companyMember.company.name,
-        status: user.companyMember.company.status, member_role: user.companyMember.memberRole,
-      } } : {}),
-    };
   }
 
   async advisors(studentId: string, query: AdvisorSearchDto): Promise<Page<AdvisorListItem>> {

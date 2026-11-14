@@ -6,7 +6,7 @@ import { Company, Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AcceptInvitationDto } from './company-members.dto';
 import { InvitationMailer } from './invitation-mailer';
-import { hashPassword } from './password-hash';
+import { hashPassword } from '../auth/password-hash';
 
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

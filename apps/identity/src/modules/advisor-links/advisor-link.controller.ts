@@ -8,9 +8,6 @@ import { AdvisorLinkService } from './advisor-link.service';
 export class IdentityMeController {
   constructor(private readonly service: AdvisorLinkService) {}
 
-  @Get()
-  me(@CurrentUser() actor: JwtClaims) { return this.service.me(actor.sub); }
-
   @Post('advisor-link')
   @UseGuards(RolesGuard) @Roles('STUDENT')
   request(@CurrentUser() actor: JwtClaims, @Body() body: AdvisorIdDto, @Headers('x-correlation-id') correlationId: string) {
