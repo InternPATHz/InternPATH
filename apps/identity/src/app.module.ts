@@ -2,8 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HealthModule, createLoggingModule } from '@internpath/common';
 import { PrismaModule } from './prisma/prisma.module';
+import { InternalModule } from './internal/internal.module';
 
-const infra = process.env.DISABLE_INFRA === 'true' ? [] : [PrismaModule];
+const infra = process.env.DISABLE_INFRA === 'true' ? [] : [PrismaModule, InternalModule];
 
 @Module({
   imports: [
