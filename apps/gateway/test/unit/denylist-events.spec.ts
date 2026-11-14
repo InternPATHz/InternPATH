@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { ConfigService } from '@nestjs/config';
 import type { UserSuspendedPayload } from '@internpath/contracts';
-import { DenylistService } from '../src/denylist.service';
+import { DenylistService } from '../../src/denylist/denylist.service';
 
 const payload = (version: number, suspended: boolean): UserSuspendedPayload => ({
   user_id: 'user-1', suspended, entity_version: version, at: '2026-11-15T00:00:00Z',

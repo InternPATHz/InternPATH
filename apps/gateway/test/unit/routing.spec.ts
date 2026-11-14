@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { isPublicRoute, resolveService } from '../src/routing';
+import { isPublicRoute, resolveService } from '../../src/routing/routing';
 
 describe('Gateway routing contract §3', () => {
   it('covers every path group and the overlapping resource actions', () => {

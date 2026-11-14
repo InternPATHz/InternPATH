@@ -6,8 +6,8 @@ import { ConfigService } from '@nestjs/config';
 import type { JwtClaims } from '@internpath/common';
 import * as jwt from 'jsonwebtoken';
 import type { Request, Response } from 'express';
-import { DenylistService } from './denylist.service';
-import { isPublicRoute, resolveService, ServiceName } from './routing';
+import { DenylistService } from './denylist/denylist.service';
+import { isPublicRoute, resolveService, ServiceName } from './routing/routing';
 
 const URL_ENV: Record<ServiceName, string> = {
   identity: 'IDENTITY_URL', job: 'JOB_URL', verification: 'VERIFICATION_URL',

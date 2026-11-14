@@ -6,9 +6,9 @@ import { Test } from '@nestjs/testing';
 import { expect } from 'chai';
 import * as jwt from 'jsonwebtoken';
 import request from 'supertest';
-import { AppModule } from '../src/app.module';
-import { configureGateway } from '../src/configure-gateway';
-import { DenylistService } from '../src/denylist.service';
+import { AppModule } from '../../src/app.module';
+import { configureGateway } from '../../src/configure-gateway';
+import { DenylistService } from '../../src/denylist/denylist.service';
 
 describe('Gateway proxy and security', function () {
   this.timeout(15_000);

@@ -3,8 +3,8 @@ import { expect } from 'chai';
 import { ConfigService } from '@nestjs/config';
 import { BrokerConnection } from '@internpath/common';
 import { EVENTS_EXCHANGE, routingKey } from '@internpath/contracts';
-import { DenylistService } from '../src/denylist.service';
-import { UserSuspendedConsumer } from '../src/user-suspended.consumer';
+import { DenylistService } from '../../src/denylist/denylist.service';
+import { UserSuspendedConsumer } from '../../src/events/consumers/user-suspended.consumer';
 
 const live = process.env.RUN_RABBITMQ_TESTS === 'true' ? describe : describe.skip;
 

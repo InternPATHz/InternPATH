@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { configureApp } from '@internpath/common';
-import { DenylistService } from './denylist.service';
+import { DenylistService } from './denylist/denylist.service';
 import { GatewayMiddleware } from './gateway.middleware';
 
 export function configureGateway(app: INestApplication): void {

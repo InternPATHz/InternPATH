@@ -2,7 +2,7 @@ import { Injectable, OnApplicationShutdown, OnModuleInit } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config';
 import { BrokerConnection, EventConsumer, type ProcessedEventsTx } from '@internpath/common';
 import type { ServiceName, UserSuspendedPayload } from '@internpath/contracts';
-import { DenylistService } from './denylist.service';
+import { DenylistService } from '../../denylist/denylist.service';
 
 // Gateway has no database. The entity version makes replayed events safe, while this
 // process-local marker avoids repeated work until the next restart and full HTTP pull.
