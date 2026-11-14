@@ -329,7 +329,7 @@
 | `JobStatusChanged` | Job Management | Lifecycle, Notification |
 | `ReportThresholdReached` | Verification | Job Management, Notification |
 | `CompanyStatusChanged` (แนบ Snapshot ชื่อ/โลโก้/ป้าย) | Identity | Job Management, Lifecycle, Verification, Notification |
-| `CompanyEntitlementChanged` | Identity | Job Management, Verification |
+| `CompanyEntitlementChanged` | Identity | Job Management |
 | `AdvisorLinkChanged` | Identity | Lifecycle, Notification |
 | `ApplicationStatusChanged` | Lifecycle | Notification |
 | `ReviewSubmitted` | Lifecycle | Verification |

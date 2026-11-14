@@ -219,7 +219,7 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 1. `pnpm install` (ถ้าเจอ `Cannot find module 'pg'` ใน Identity คือยังไม่ได้ทำขั้นนี้)
 2. `pnpm --filter "./apps/*" --if-present prisma:generate` — Prisma Client ย้ายไป `apps/<service>/generated/client` (ไม่ commit) ไม่ใช่ `@prisma/client` แล้ว (กฎข้อ 9 ข้างบน)
 3. `pnpm --filter "./libs/*" build`
-4. `pnpm infra:up` แล้วรัน **`pnpm infra:topology` หนึ่งครั้ง** เพื่อสร้างคิวผู้รับ Event ครบทุก Service ล่วงหน้า (33 คิว + DLQ + retry queue; รันซ้ำได้) — ไม่เช่นนั้น Event ที่ Service หนึ่งส่งก่อนที่ผู้รับจะเคยเปิดจะหาย
+4. `pnpm infra:up` แล้วรัน **`pnpm infra:topology` หนึ่งครั้ง** เพื่อสร้างคิวผู้รับ Event ครบทุก Service ล่วงหน้า (32 คิว + DLQ + retry queue; รันซ้ำได้) — ไม่เช่นนั้น Event ที่ Service หนึ่งส่งก่อนที่ผู้รับจะเคยเปิดจะหาย
 5. ใครเริ่มใช้ Prisma ใน Service ใหม่ ต้องตั้ง `output = "../generated/client"` และ import จาก `../../generated/client` (ดูตัวอย่าง `apps/verification`) — เทสต์ใน `libs/common/test/repo/prisma-outputs.spec.ts` จะล้มถ้ามี Service ที่ใช้ค่าตั้งต้นเกิน 1 ตัว
 
 **Junior (Job และ Notification):**
@@ -229,7 +229,7 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 - **`CLOSED → SUSPENDED`:** เมื่อรับ `ReportThresholdReached` จาก `CLOSED` ให้ระงับด้วย เก็บ `jobs.suspended_from_status`; `RESTORE` คืนสถานะเดิม (ถ้าเลย `application_deadline` ระหว่างระงับ ให้กลับเป็น `CLOSED`); `REMOVE` เป็น `REMOVED`
 - **บริษัทถูกระงับ (`CompanyStatusChanged = SUSPENDED`):** ไม่เปลี่ยน `jobs.status` ให้ซ่อนและปิดรับสมัครด้วยเงื่อนไข "ประกาศ `PUBLISHED` **และ** บริษัท `VERIFIED`" จาก `company_snapshots` ([data-schema.md](data-schema.md) §8.2.2)
 - **ตาราง `jobs` ใน migration แรก:** ฟิลด์เนื้อหา nullable + `CHECK (status = 'DRAFT' OR ฟิลด์บังคับครบ)`, `quota_reservations.reserved_at NOT NULL` ส่วน `confirmed_at`/`released_at` nullable, **ไม่ต้องมี `admin_audit_log`**, ค้นข้อความ (`pg_trgm`) แยกเป็น migration ภายหลัง
-- **Notification:** ทำตาม Recipient Matrix ของ E08 ([event-contract.md](event-contract.md) §6.1 — **ร่าง รอ Tester/PM ยืนยัน**) และนโยบายอีเมล (เขียน `delivery_logs` สถานะ `PENDING` ก่อนส่ง; retry หลังล้มให้ส่งซ้ำได้); แจ้งผู้ใช้เมื่อรีวิวถูก `HOLD`/`ADMIN_REMOVE` จาก `student_user_id` ใน E10 ไม่ต้องหาเจ้าของรีวิวเอง
+- **Notification:** ทำตาม Recipient Matrix ของ E08 ([event-contract.md](event-contract.md) §6.1 — **ยืนยันแล้ว (PM) v2**) และนโยบายอีเมล (เขียน `delivery_logs` สถานะ `PENDING` ก่อนส่ง; retry หลังล้มให้ส่งซ้ำได้); แจ้งผู้ใช้เมื่อรีวิวถูก `HOLD`/`ADMIN_REMOVE` จาก `student_user_id` ใน E10 ไม่ต้องหาเจ้าของรีวิวเอง
 
 **SA (Identity และ Gateway):**
 - **Gateway:** เพิ่ม route `/admin/audit` → Verification และเทสต์ Routing ตามตารางใน [api-contract.md](api-contract.md) §3 (เพิ่มแถวนี้ในเอกสารแล้ว — ตรวจใน branch Gateway ของ SA ว่ามี route และเทสต์ตามแล้วหรือยัง)
@@ -237,9 +237,21 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 - **Identity:** Public Key ใช้ `JWT_PUBLIC_KEY` จาก env (ตัดสินแล้ว) และ SA ใช้ชนิด `AuthUser`/`UserMeResponse` ใน `libs/contracts` ได้
 
 **Tester (Lifecycle):**
-- ยืนยัน/แก้ Recipient Matrix ของ E08 ก่อนส่งให้ Notification
+- ตรวจ Recipient Matrix ของ E08 v2 (PM ยืนยันแล้ว — [event-contract.md](event-contract.md) §6.1) ถ้ามีเหตุผลด้านโดเมนที่ต้องแก้ ให้แก้ตารางในเอกสารและแจ้งเจ้าของ Notification
 - **บริษัทถูกระงับ:** Freeze ตัวนับ SLA ของใบสมัครที่ยังไม่ `IN_PROGRESS` ขณะบริษัทถูกระงับ และ Unfreeze เมื่อกลับเป็น `VERIFIED`; `IN_PROGRESS` ให้อาจารย์ตัดสินต่อ ([data-schema.md](data-schema.md) §8.2.2)
 - **รีวิว (E09):** payload ต้องมี `student_user_id`; รับ `ReviewModerationResult` (E10) ที่มี `student_user_id` กลับมา
 - ตั้ง `output` ของ Prisma ตามกฎข้อ 9 เมื่อเริ่มเขียน schema (ตั้งไว้ให้แล้วในไฟล์ `schema.prisma` ของ Lifecycle)
 
 **PM (Verification) — งานที่ยังค้าง:** trigger anonymization ใน migration ของ Verification + handler `UserDeletionRequested` (E15) · Minor ของ review สไลซ์ 2 (#5 `dismiss` พลิกรายงานที่เคย uphold, #6 ธงอาจติดผิดจาก E03 เก่ามาก, #7 ลำดับล็อกของ clear-flag, #8 `PUT` ธงไม่เช็กว่าบริษัทมีจริง, #10 เทสต์ไม่ log `detail`) · สไลซ์ 3 (ตรวจรีวิว E09/E10 และรายงานรีวิว)
+
+### 9.2 เพิ่มเติมจากการตรวจ contract ฝั่ง Job (2026-11-15) — สำหรับ Junior
+
+ตัดสินแล้วและแก้ในเอกสารกับ `libs/contracts` แล้ว (ข้อ 1–5 กระทบ migration แรกของ Job):
+1. **เพิ่มคอลัมน์ `jobs.contact_notes text null`** (ข้อความอิสระ ไม่บังคับ; เห็นเฉพาะ HR เจ้าของและ Admin) — `JobSubmitted.content.contact_notes` มีอยู่แล้วแต่ตารางเดิมไม่มีคอลัมน์
+2. **ฟิลด์ที่บังคับก่อน `submit`** (ใช้เป็นเงื่อนไข `CHECK` และ `MISSING_REQUIRED_JOB_FIELDS`): `category`, `job_title`, `description`, `responsibilities`, `qualifications`, `location`, `work_mode`, `hours_per_week`, `allowance_type` (`AMOUNT` ต้องมีจำนวนเงิน > 0), `internship_period_start/_end`, `target_majors` (≥ 1), `quota` (≥ 1), `application_deadline`; ไม่บังคับ: `allowance_text`, `contact_notes` ([data-schema.md](data-schema.md) §4)
+3. **ฟิลด์ที่แก้แล้วต้องตรวจซ้ำ** (`PUBLISHED → VERIFYING` + `JobSubmitted(kind=EDIT)`): ทุกฟิลด์ที่ Verification ใช้ตัดสิน = `job_title`, `description`, `responsibilities`, `qualifications`, `allowance_*`, `location`, `contact_notes`, `work_mode`, `hours_per_week` — ฟิลด์ที่ **ไม่ตรวจซ้ำ**: `quota`, `application_deadline`, `target_majors`, `internship_period_*`, `category`, `featured`
+4. **`allowance_text` ใน E01 เป็น string เสมอ** ส่ง `''` เมื่อใน DB เป็น NULL
+5. **`PATCH /hr/jobs/{id}` แก้ได้เมื่อสถานะ** `DRAFT`/`PUBLISHED`/`AUTO_REJECTED`/`ADMIN_REJECTED` (และ `CLOSED` เฉพาะ `quota`, `application_deadline`, `target_majors`, ช่วงฝึก) สถานะอื่นตอบ `409 STATE_CONFLICT`; `submit` ทำได้จาก `DRAFT`/`AUTO_REJECTED`/`ADMIN_REJECTED` และคืน Job Object ที่ `status=VERIFYING`; body ของ `POST`/`PATCH` คือ `CreateJobRequest`/`UpdateJobRequest` ใน `@internpath/contracts` ([api-contract.md](api-contract.md) §5.1)
+6. **ชนิดใน `libs/contracts` เข้มขึ้น:** `JobStatusChangedPayload.from_status/to_status` เป็น `JobStatus` (ไม่ใช่ `string`) และ `application_effect` เป็น `ApplicationEffect` — ถ้าโค้ดของ JR ส่งสตริงทั่วไป TypeScript จะ error ให้ใช้ค่าจาก enum
+7. **ผู้รับ E06 (`CompanyEntitlementChanged`) มีแค่ Job** — Verification ไม่รับแล้ว เพราะใช้ `fast_track` ที่ Job ใส่ใน E01 เป็น snapshot ณ ตอนส่งตรวจ ดังนั้น Job ต้องใส่ `fast_track` จากสิทธิ์ล่าสุดทุกครั้งที่ส่ง `JobSubmitted` (มีเทสต์เทียบแคตตาล็อกกับเอกสาร ตอนนี้ 32 คิว)
+8. **Enum กลางตรวจอัตโนมัติ:** `libs/common/test/repo/contracts-docs.spec.ts` เทียบ `enums.ts` กับ data-schema §2.1 ถ้าเพิ่มค่า enum ต้องแก้ทั้งสองที่

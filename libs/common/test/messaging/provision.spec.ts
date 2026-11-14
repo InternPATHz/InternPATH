@@ -35,13 +35,13 @@ describe('EVENT_CATALOG เทียบกับ docs/event-contract.md §4', ()
 });
 
 describe('provisionAllTopology: สร้าง queue ของทุกผู้รับล่วงหน้า', () => {
-  it('ประกาศ exchange พื้นฐานและคิวของผู้รับครบตามแคตตาล็อก (33 คิว) พร้อม binding จากผู้ส่ง', async () => {
+  it('ประกาศ exchange พื้นฐานและคิวของผู้รับครบตามแคตตาล็อก (32 คิว) พร้อม binding จากผู้ส่ง', async () => {
     const { ch, exchanges, queues, bindings } = fakeChannel();
     const result = await provisionAllTopology(ch, EVENT_CATALOG);
     expect(exchanges).to.include.members(['internpath.events', 'internpath.dlx', 'internpath.retry-return']);
 
     const consumerQueues = EVENT_CATALOG.flatMap((e) => e.consumers.map((c) => ({ queue: `${c}.${e.type}`, key: `${e.producer}.${e.type}` })));
-    expect(consumerQueues).to.have.length(33);
+    expect(consumerQueues).to.have.length(32);
     expect(result.queues).to.have.members(consumerQueues.map((q) => q.queue));
     for (const { queue, key } of consumerQueues) {
       expect(queues.has(queue), queue).to.equal(true);
