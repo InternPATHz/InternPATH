@@ -4,8 +4,8 @@ import https from 'node:https';
 import { isIP } from 'node:net';
 import { ConfigService } from '@nestjs/config';
 import type { JwtClaims } from '@internpath/common';
-import * as jwt from 'jsonwebtoken';
 import type { Request, Response } from 'express';
+import { AccessTokenError, verifyAccessToken } from './auth/verify-access-token';
 import { DenylistService } from './denylist/denylist.service';
 import { RateLimiter } from './rate-limit/rate-limiter';
 import { isPublicRoute, resolveService, ServiceName } from './routing/routing';
@@ -14,7 +14,6 @@ const URL_ENV: Record<ServiceName, string> = {
   identity: 'IDENTITY_URL', job: 'JOB_URL', verification: 'VERIFICATION_URL',
   lifecycle: 'LIFECYCLE_URL', notification: 'NOTIFICATION_URL',
 };
-const ROLES = new Set(['STUDENT', 'COMPANY_HR', 'ADVISOR', 'PLATFORM_ADMIN']);
 const HOP_HEADERS = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
   'te', 'trailer', 'transfer-encoding', 'upgrade'];
 
@@ -51,17 +50,13 @@ export class GatewayMiddleware {
     const publicRoute = isPublicRoute(req.method, path);
     let user: JwtClaims | undefined;
     if (!publicRoute) {
-      const bearer = req.headers.authorization;
-      if (typeof bearer !== 'string' || !/^Bearer [^ ]+$/.test(bearer)) return this.error(req, res, 401, 'UNAUTHENTICATED');
+      if (typeof req.headers.authorization !== 'string') return this.error(req, res, 401, 'UNAUTHENTICATED');
       const key = (this.config.get<string>('JWT_PUBLIC_KEY') ?? '').replace(/\\n/g, '\n');
       if (!key) return this.error(req, res, 503, 'UPSTREAM_UNAVAILABLE');
       try {
-        const claims = jwt.verify(bearer.slice(7), key, { algorithms: ['RS256'] });
-        if (typeof claims !== 'object' || !claims.sub || !ROLES.has(claims.role) ||
-            typeof claims.jti !== 'string' || !claims.jti) throw new Error('Invalid claims');
-        user = claims as JwtClaims;
-      } catch (err) {
-        return this.error(req, res, 401, err instanceof jwt.TokenExpiredError ? 'TOKEN_EXPIRED' : 'UNAUTHENTICATED');
+        user = verifyAccessToken(req.headers.authorization, key);
+      } catch (error) {
+        return this.error(req, res, 401, error instanceof AccessTokenError ? error.code : 'UNAUTHENTICATED');
       }
       if (!this.denylist.isFresh()) return this.error(req, res, 503, 'UPSTREAM_UNAVAILABLE');
       if (this.denylist.has(user.sub)) return this.error(req, res, 401, 'ACCOUNT_SUSPENDED');
