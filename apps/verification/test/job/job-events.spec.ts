@@ -59,7 +59,7 @@ describe('JobEventsService: E03 → job_snapshots + นับการปฏิ�
   it('E03 ตัวเดียวกัน (event_id เดิม) ประมวลผลสองครั้ง ⇒ เหตุการณ์ปฏิเสธแถวเดียว', async () => {
     const companyId = randomUUID();
     const eventId = randomUUID();
-    const over = { company_id: companyId, from_status: 'VERIFYING', to_status: 'AUTO_REJECTED' };
+    const over = { company_id: companyId, from_status: 'VERIFYING' as const, to_status: 'AUTO_REJECTED' as const };
     await send({ ...over, job_id: randomUUID() }, eventId);
     await send({ ...over, job_id: randomUUID() }, eventId);
     expect(await rejections(companyId)).to.have.length(1);

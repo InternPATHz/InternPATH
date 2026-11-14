@@ -91,7 +91,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | ข้อมูล | เจ้าของ | สำเนาที่ | ฟิลด์ที่เก็บ | อัปเดตด้วย |
 | :--- | :--- | :--- | :--- | :--- |
 | ชื่อ/โลโก้/ป้ายบริษัท/สถานะ | identity | job, lifecycle, verification | `company_snapshots` | `CompanyStatusChanged` |
-| สิทธิ์ Featured/Fast-Track | identity | job, verification | `company_entitlements` | `CompanyEntitlementChanged` |
+| สิทธิ์ Featured/Fast-Track | identity | job | `company_entitlements` | `CompanyEntitlementChanged` |
 | ธง UNDER_REVIEW | verification | job | `company_flags` | `CompanyFlagChanged` |
 | ผูกอาจารย์ (`advisor_id`) | identity | lifecycle | `student_advisor_links` | `AdvisorLinkChanged` |
 | สถานะประกาศ/`target_majors`/โควตาเพื่อแสดง | job | lifecycle | `job_snapshots` | `JobStatusChanged` (+ ดึง API ตอนสมัคร) |
@@ -179,8 +179,9 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | qualifications | text | ข้อความอิสระ |
 | allowance_type | `AMOUNT`/`NONE` | ข้อความอิสระ (ถือเป็นข้อความ) |
 | allowance_amount_thb | int null | |
-| allowance_text | text null | ข้อความอิสระ |
+| allowance_text | text null | ข้อความอิสระ — `JobSubmitted.content.allowance_text` เป็น string เสมอ ส่ง `''` เมื่อเป็น NULL |
 | location | text | ข้อความอิสระ |
+| contact_notes | text null | ข้อความอิสระ ไม่บังคับ (ห้ามใส่ช่องทางติดต่อส่วนตัว — Verification สแกน); เห็นเฉพาะ HR เจ้าของและ Admin ไม่แสดงหน้าสาธารณะ |
 | work_mode | WorkMode | |
 | hours_per_week | int | |
 | internship_period_start / _end | date | ช่วงเวลาฝึกที่ประกาศ |
@@ -201,6 +202,10 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 
 **DRAFT ไม่ครบได้ (PM ตัดสิน 2026-11-15):** `POST /hr/jobs` สร้าง `DRAFT` ได้แม้กรอกไม่ครบ จึงให้ฟิลด์เนื้อหา/โครงสร้างข้างบน (ยกเว้น `id`, `company_id`, `created_by`, `status`, `version`, `entity_version`) เป็น nullable และมี `CHECK (status = 'DRAFT' OR (ฟิลด์ที่ README 5.1.5 บังคับทั้งหมดไม่เป็น NULL))` — ตรวจความครบตอน `actions/submit` (`400 MISSING_REQUIRED_JOB_FIELDS` + `details[]`)
+
+**ฟิลด์ที่ต้องครบก่อนส่งตรวจ (`actions/submit`, PM ตัดสิน 2026-11-15)** — ใช้เป็นเงื่อนไขของ `CHECK` ด้านบนและของ `400 MISSING_REQUIRED_JOB_FIELDS`: `category`, `job_title`, `description`, `responsibilities`, `qualifications`, `location`, `work_mode`, `hours_per_week`, `allowance_type` (ถ้าเป็น `AMOUNT` ต้องมี `allowance_amount_thb` > 0; `NONE` ไม่ต้องมีจำนวนเงิน), `internship_period_start`/`_end`, `target_majors` (≥ 1 สาขา), `quota` (≥ 1), `application_deadline` — ส่วน `allowance_text` และ `contact_notes` ไม่บังคับ (README 5.1.5 ไม่ได้ระบุ `description` และ `category` ไว้ แต่ Verification ใช้ `description` ตัดสิน และหน้าค้นหาแยกตาม `category` จึงบังคับ)
+
+**ฟิลด์ที่ต้องตรวจซ้ำเมื่อแก้หลัง `PUBLISHED` (PM ตัดสิน 2026-11-15):** หลักการ — ถ้าฟิลด์นั้นเป็นข้อมูลที่ Verification ใช้ตัดสิน (อยู่ใน payload ของ `JobSubmitted`) ต้องตรวจซ้ำ: `job_title`, `description`, `responsibilities`, `qualifications`, `allowance_*`, `location`, `contact_notes`, `work_mode`, `hours_per_week` ⇒ `PUBLISHED → VERIFYING` (กัน Post-Approval Bypass เช่นแก้ชั่วโมงเป็น 60 หลังอนุมัติ) — ฟิลด์ที่ **ไม่ตรวจซ้ำ** (ยังเป็น `PUBLISHED`) มีเฉพาะ `quota`, `application_deadline`, `target_majors`, `internship_period_*`, `category`, `featured`
 
 **ค้นหาข้อความ (PM ตัดสิน 2026-11-15):** แยกเป็น migration ภายหลัง (ไม่ต้องอยู่ใน migration แรก) ใช้ **trigram (`pg_trgm`)** ไม่ใช้ `tsvector` เพราะภาษาไทยไม่มีช่องว่างคั่นคำ — GIN index บน `job_title` เป็นหลัก (เพิ่ม `description`/`location` ถ้าจำเป็นหลังวัดผล) ใช้กับ `?q=` ของ `/search/jobs`
 
@@ -274,8 +279,6 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 **`company_rejection_events`**: `id`, `company_id`, `job_id`, `kind (AUTO_REJECTED|ADMIN_REJECTED|SUSPENDED|REMOVED)`, `occurred_at` (= `changed_at` ของ E03), `source_event_id uuid UNIQUE` (= `event_id` ของ E03 ที่ทำให้เกิดเหตุการณ์ — กันนับซ้ำเมื่อ Event ถูกส่งซ้ำ) — นับ 3 ครั้งใน 30 วัน ⇒ ติดธง; นับเฉพาะหลัง `company_flags.cleared_at` (เคลียร์ธงแล้วเริ่มนับใหม่) | index (`company_id`, `occurred_at`)
 
 **`company_flags`**: `company_id PK`, `under_review bool`, `set_by` (`SYSTEM`|`ADMIN`), `set_reason`, `set_at`, `trigger_count int null` (จำนวนเหตุการณ์ปฏิเสธที่ทำให้ติดธงอัตโนมัติ), `cleared_by null`, `cleared_at null`, `entity_version` (เพิ่มทีละ 1 ทุกครั้งที่ธงเปลี่ยน; ใช้เป็น `entity_version` ของ E18) — แถวถูกสร้างเมื่อมีเหตุการณ์/คำสั่งแรกของบริษัท; "เคยติดธง" = `set_at` ไม่ว่าง
-
-**`company_entitlements`**: (สำเนา) `company_id PK`, `fast_track_enabled`, `entity_version`
 
 **`review_moderations`**: `id`, `review_id unique`, `company_id`, `decision`, `reasons jsonb`, `status (PASSED|HELD|ADMIN_PUBLISHED|ADMIN_REMOVED)`, `queue_item_id null`, `created_at`
 

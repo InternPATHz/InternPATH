@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { EventEnvelope } from '@internpath/contracts';
+import type { EventEnvelope, JobStatus } from '@internpath/contracts';
 import { configureApp } from '@internpath/common';
 import { INestApplication } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
@@ -77,7 +77,7 @@ describe('e2e: รายงานประกาศ, ระงับอัตโ
   const http = () => request(app.getHttpServer());
   /** payload ของ Event ที่เก็บได้ (กรองตามชนิดและเงื่อนไข) */
   const msgs = (type: string, pred: (p: any) => boolean): any[] => collector.messages.filter((m) => m.type === type && pred(m.payload)).map((m) => m.payload);
-  const jobStatus = (jobId: string, companyId: string, to: string, from: string, version = 2) =>
+  const jobStatus = (jobId: string, companyId: string, to: JobStatus, from: JobStatus, version = 2) =>
     send('JobStatusChanged', envelope('JobStatusChanged', statusChanged({ job_id: jobId, company_id: companyId, from_status: from, to_status: to, reason_code: undefined, entity_version: version })));
 
   it('รายงาน 3 บัญชี → E04 → Admin ยกคำร้อง → JobVerified(RESTORE)', async () => {

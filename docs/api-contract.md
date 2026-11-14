@@ -140,15 +140,15 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
 | GET | `/hr/jobs` | H | งานของบริษัท `?status=` |
-| POST | `/hr/jobs` | H | สร้าง `DRAFT` (ต้องเป็นบริษัท `VERIFIED` มิฉะนั้น 403 `COMPANY_NOT_VERIFIED` — UAT-01) |
+| POST | `/hr/jobs` | H | สร้าง `DRAFT` (ต้องเป็นบริษัท `VERIFIED` มิฉะนั้น 403 `COMPANY_NOT_VERIFIED` — UAT-01) — body = ฟิลด์ที่แก้ได้ของ Job Object **ทุกฟิลด์ไม่บังคับ** (DRAFT ไม่ครบได้; ครบตอน `submit`) → `201` Job Object (`CreateJobRequest`) |
 | GET | `/hr/jobs/{id}` | H | รวมเหตุผลการตีกลับ (`reasons[]` จาก `JobVerified`) |
-| PATCH | `/hr/jobs/{id}` | H | แก้ไข: ฟิลด์ข้อความอิสระ ⇒ `PUBLISHED`→`VERIFYING`; ฟิลด์โครงสร้าง ⇒ ไม่ตรวจซ้ำ (README 5.1.2) • Response บอก `requires_reverification: bool` |
-| POST | `/hr/jobs/{id}/actions/submit` | H | ส่งตรวจ — `400 MISSING_REQUIRED_JOB_FIELDS` (+ `details[]`), `422 RATE_LIMIT_SUBMISSIONS_PER_DAY` (5/วัน) |
+| PATCH | `/hr/jobs/{id}` | H | แก้ไขบางฟิลด์ (`UpdateJobRequest`) — แก้ได้เมื่อ `DRAFT`/`PUBLISHED`/`AUTO_REJECTED`/`ADMIN_REJECTED` (และ `CLOSED` เฉพาะ `quota`, `application_deadline`, `target_majors`, `internship period` ฟิลด์อื่น ⇒ `409 STATE_CONFLICT`); สถานะอื่น ⇒ `409 STATE_CONFLICT`. เมื่อ `PUBLISHED` แก้ฟิลด์ที่ Verification ใช้ตัดสิน (data-schema §4 "ฟิลด์ที่ต้องตรวจซ้ำ") ⇒ `PUBLISHED`→`VERIFYING` และส่ง `JobSubmitted(kind=EDIT)`; ฟิลด์อื่น ⇒ ไม่ตรวจซ้ำ (README 5.1.2); สถานะ `AUTO_REJECTED`/`ADMIN_REJECTED` แก้แล้วคงสถานะเดิมจนกว่าจะ `submit` • Response: Job Object (มุมมอง HR) + `requires_reverification: bool` (`UpdateJobResponse`) |
+| POST | `/hr/jobs/{id}/actions/submit` | H | ส่งตรวจจาก `DRAFT`/`AUTO_REJECTED`/`ADMIN_REJECTED` (สถานะอื่น ⇒ `409 STATE_CONFLICT`) → `200` Job Object ที่ `status=VERIFYING` — `400 MISSING_REQUIRED_JOB_FIELDS` (+ `details[]` ระบุฟิลด์ที่ขาด; รายการฟิลด์บังคับใน data-schema §4), `422 RATE_LIMIT_SUBMISSIONS_PER_DAY` (5/วัน/บริษัท) |
 | POST | `/hr/jobs/{id}/actions/close` | H | → `CLOSED` |
 | POST | `/hr/jobs/{id}/actions/reopen` | H | `CLOSED`→`PUBLISHED` (ต้องยังไม่เลย deadline และโควตาเหลือ) |
 | PUT | `/hr/jobs/{id}/featured` | H | `{enabled}` — ต้องมี `featured_enabled` และงานเป็น `PUBLISHED` |
 
-**Job Object (ย่อ):** `id, company{id,name,logo_url,badges[]}, category, job_title, description, responsibilities, qualifications, allowance{type,amount_thb,text}, location, work_mode, hours_per_week, period{start,end}, target_majors[], quota, quota_available, application_deadline, status, featured, published_at`
+**Job Object (ย่อ):** `id, company{id,name,logo_url,badges[]}, category, job_title, description, responsibilities, qualifications, allowance{type,amount_thb,text}, location, work_mode, hours_per_week, period{start,end}, target_majors[], quota, quota_available, application_deadline, status, featured, published_at` — มุมมอง HR/Admin (`/hr/jobs/**`, `/admin/jobs`) เพิ่ม `contact_notes`, `reasons[]` (`GET /hr/jobs/{id}`) และ `suspended_from_status` ไม่แสดงในหน้าสาธารณะ (`/jobs/{id}`, `/search/jobs`)
 
 ### 5.2 Job Search (นักศึกษา/ทุก Role ที่ล็อกอิน)
 | Method | Path | Role | คำอธิบาย |
