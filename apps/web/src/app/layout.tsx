@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Noto_Sans_Thai } from 'next/font/google';
+import { AuthProvider } from '@/auth/session';
 import './globals.css';
 
 // README 8: Noto Sans Thai ชุดอักขระ thai + latin
@@ -17,7 +18,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="th" className={notoSansThai.variable}>
-      <body>{children}</body>
+      <body><AuthProvider>{children}</AuthProvider></body>
     </html>
   );
 }
