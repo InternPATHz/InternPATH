@@ -53,7 +53,7 @@
 | Gateway | `apps/gateway` | 3000 | SA | — | `UserSuspended` (อัปเดต Denylist) | — |
 | Identity & Organization | `apps/identity` | 3001 | SA | `identity_db` | `ReviewPublished` | `CompanyStatusChanged`, `CompanyEntitlementChanged`, `AdvisorLinkChanged`, `UserSuspended`, `UserDeletionRequested` |
 | Job Management | `apps/job` | 3002 | Junior | `job_db` | `JobVerified`, `ReportThresholdReached`, `CompanyStatusChanged`, `CompanyEntitlementChanged`, `CompanyFlagChanged`, `UserDeletionRequested` | `JobSubmitted`, `JobStatusChanged` |
-| Verification & Trust | `apps/verification` | 3003 | PM | `verification_db` | `JobSubmitted`, `JobStatusChanged`, `ReviewSubmitted`, `CompanyStatusChanged`, `CompanyEntitlementChanged`, `UserDeletionRequested` | `JobVerified`, `ReportThresholdReached`, `ReviewModerationResult`, `CompanyFlagChanged` |
+| Verification & Trust | `apps/verification` | 3003 | PM | `verification_db` | `JobSubmitted`, `JobStatusChanged`, `ReviewSubmitted`, `CompanyStatusChanged`, `UserDeletionRequested` | `JobVerified`, `ReportThresholdReached`, `ReviewModerationResult`, `CompanyFlagChanged` |
 | Student Experience & Lifecycle | `apps/lifecycle` | 3004 | Tester | `lifecycle_db` | `JobStatusChanged`, `CompanyStatusChanged`, `AdvisorLinkChanged`, `ReviewModerationResult`, `UserDeletionRequested` | `ApplicationStatusChanged`, `ReviewSubmitted`, `ReviewPublished`, `CertificateIssued`, `CertificateRevoked`, `ReminderDue`, `ProblemReportCreated` |
 | Notification | `apps/notification` | 3005 | Junior | `notification_db` | ทุก Event ที่ต้องแจ้งเตือน (ดู [event-contract.md](event-contract.md) §6) | — |
 | Web | `apps/web` | 3100 | ทุกคน (แยกหน้าตาม Role) | — | — | — |
@@ -186,7 +186,7 @@ Docker Compose Profiles: `infra` (Postgres, RabbitMQ, MinIO, Mailpit) + `identit
 | Token ฝั่ง Front | เริ่มจาก access token ในหน่วยความจำ + refresh token ใน `localStorage`; ถ้ามีเวลาให้ย้ายเป็น `httpOnly` cookie ที่ตั้งโดยฝั่ง server (ทำได้ง่ายเพราะ origin เดียวกัน) |
 | ลิงก์ในอีเมล | สร้างจาก `WEB_BASE_URL` (URL ของ Front บน Cloudflare) ไม่ใช่ `localhost` |
 | ข้อควรระวัง | เครื่องต้องเปิดและ Docker ต้องรันตลอดช่วงสาธิต; quick tunnel ไม่มี SLA; ข้อจำกัดของแผนฟรี ดู README 5.12 |
-| CloudAMQP | จำนวน queue ที่ต้องใช้: คิวของ Consumer ประมาณ 33 คิว (นับจาก [event-contract.md](event-contract.md) §4) — ใช้ retry queue ร่วมต่อ Service เพื่อไม่ให้ชนเพดานของแผนฟรี |
+| CloudAMQP | จำนวน queue ที่ต้องใช้: คิวของ Consumer ประมาณ 32 คิว (นับจาก [event-contract.md](event-contract.md) §4) — ใช้ retry queue ร่วมต่อ Service เพื่อไม่ให้ชนเพดานของแผนฟรี |
 
 > ตอนนี้ **ยังไม่มีโค้ด Worker proxy ใน repo** และตัวแปร `API_ORIGIN`, `EDGE_SHARED_SECRET`, `CORS_ALLOWED_ORIGINS`, `WEB_BASE_URL` ยังไม่มีโค้ดอ่าน — ระบุไว้ล่วงหน้าตามการตัดสินใจนี้
 

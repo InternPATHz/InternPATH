@@ -78,7 +78,7 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
 - คิวผู้รับตั้ง `x-dead-letter-exchange = internpath.dlx`, `x-dead-letter-routing-key = <ชื่อคิว>`; ผู้รับ `nack(requeue=false)` เมื่อครบ 3 ครั้งหรือข้อความเสีย (JSON พัง, ไม่มี `event_id`, `version` ที่ไม่รองรับ) ข้อความจึงเข้า `<ชื่อคิว>.dlq`
 - การแจ้ง Admin เมื่อเข้า DLQ: ตอนนี้ log ระดับ `error` (ไม่มี payload) และมี hook `onDeadLetter`; ยังไม่ผูก Notification
 
-> **เพดานแผนฟรีของ CloudAMQP:** จำนวน queue จำกัด (Consumer มีประมาณ 33 คิวตาม §4 และ DLQ อีกต่อคิว) จึงให้ใช้ **retry queue ร่วมต่อ Service** (หนึ่งชุด 5 วินาที / 30 วินาที / 2 นาที ต่อ Service แทนการแยกต่อ `<consumer>.<EventType>`) และตรวจตัวเลขเพดานจริงของแผนก่อนใช้งาน
+> **เพดานแผนฟรีของ CloudAMQP:** จำนวน queue จำกัด (Consumer มีประมาณ 32 คิวตาม §4 และ DLQ อีกต่อคิว) จึงให้ใช้ **retry queue ร่วมต่อ Service** (หนึ่งชุด 5 วินาที / 30 วินาที / 2 นาที ต่อ Service แทนการแยกต่อ `<consumer>.<EventType>`) และตรวจตัวเลขเพดานจริงของแผนก่อนใช้งาน
 
 ### 3.4 ลำดับ Event
 - Event ที่เป็น "สถานะล่าสุดของ entity" ต้องมี `entity_version` (integer เพิ่มทีละ 1 ต่อ entity ที่ผู้ส่ง) ใน Payload
@@ -100,7 +100,7 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
 | E03 | `JobStatusChanged` | job | lifecycle, notification, verification | 5.1.1, 5.1.2 |
 | E04 | `ReportThresholdReached` | verification | job, notification | 5.1.3 |
 | E05 | `CompanyStatusChanged` | identity | job, lifecycle, verification, notification | 5.6 |
-| E06 | `CompanyEntitlementChanged` | identity | job, verification | 3, 5.6 |
+| E06 | `CompanyEntitlementChanged` | identity | job | 3, 5.6 |
 | E07 | `AdvisorLinkChanged` | identity | lifecycle, notification | 5.6 |
 | E08 | `ApplicationStatusChanged` | lifecycle | notification | 5.2 |
 | E09 | `ReviewSubmitted` | lifecycle | verification | 5.5 |
@@ -137,7 +137,7 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
     description: string
     responsibilities: string
     qualifications: string
-    allowance_text: string
+    allowance_text: string           // ส่ง '' เมื่อไม่มีข้อความ (ฟิลด์ใน job_db เป็น NULL ได้)
     location: string
     contact_notes?: string
   }
@@ -224,11 +224,12 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
 
 `status = SUSPENDED`: Job/Lifecycle **ไม่เปลี่ยนสถานะประกาศ** แต่ซ่อนและปิดรับสมัครตามเงื่อนไขร่วม "ประกาศ `PUBLISHED` และบริษัท `VERIFIED`" และ Lifecycle Freeze SLA ของใบสมัครที่ยังไม่ `IN_PROGRESS` จนกว่าจะกลับเป็น `VERIFIED` ([data-schema.md](data-schema.md) §8.2.2)
 
-### E06 `CompanyEntitlementChanged`  (identity → job, verification)
+### E06 `CompanyEntitlementChanged`  (identity → job)
 ```ts
 { company_id: string, featured_enabled: boolean, fast_track_enabled: boolean,
   entity_version: number, changed_at: string }
 ```
+**ผู้รับมีแค่ Job** (PM ตัดสิน 2026-11-15): Job ใช้ `featured_enabled` ตอนเปิด Featured และใส่ `fast_track` ลงใน `JobSubmitted` เป็น snapshot ณ ตอนส่งตรวจ — Verification ใช้ค่านั้นจาก E01 จึงไม่ต้องรับ E06 และไม่เก็บสำเนา `company_entitlements`
 
 ### E07 `AdvisorLinkChanged`  (identity → lifecycle, notification)
 ```ts
@@ -380,7 +381,9 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 | `UserDeletionRequested` | — | ลบกล่องข้อความ/บันทึกส่ง |
 | `UserSuspended` | — | บันทึกเท่านั้น |
 
-### 6.1 Recipient Matrix ของ `ApplicationStatusChanged` (E08) — ร่างโดย PM 2026-11-15 รอ Tester/PM ยืนยันก่อนทำ Notification
+### 6.1 Recipient Matrix ของ `ApplicationStatusChanged` (E08) — **ยืนยันแล้ว (PM) 2026-11-15 (v2)**
+
+> Tester (เจ้าของ Lifecycle) แก้ได้ถ้ามีเหตุผลด้านโดเมน แต่ต้องแก้ตารางนี้ในเอกสารและแจ้งเจ้าของ Notification (กฎ "contract ล็อก" — developer-guide §4 ข้อ 8) v2 แก้จากร่างแรก: `HR_REJECTED` ไม่แจ้งอาจารย์, `ADVISOR_REJECTED` แจ้ง HR, `IN_PROGRESS` ส่งอีเมลถึงนักศึกษา และอาจารย์ได้รับแจ้งเรื่องถอน/ถอนข้อเสนอ/หมดเวลาเฉพาะเมื่อใบสมัครเคยถึงขั้นของอาจารย์
 
 ✉ = In-App + อีเมล • In-app = In-App อย่างเดียว • — = ไม่แจ้ง (ตามสถานะ `to_status`)
 
@@ -390,16 +393,22 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 | `HR_ACCEPTED` | ✉ | — | — |
 | `ADVISOR_PENDING` | — | In-app | ✉ |
 | `ADVISOR_APPROVED` | ✉ | ✉ | — |
-| `IN_PROGRESS` | In-app | — | In-app |
+| `IN_PROGRESS` | ✉ (HR ปรับ `start_date`/`end_date` ได้ตอนยืนยัน — UAT-35) | — | In-app |
 | `EVALUATED_PASS` | ✉ | — | In-app |
 | `EVALUATED_FAIL` | ✉ | — | ✉ |
 | `FAIL_DISPUTED` | — | In-app | ✉ |
 | `REEVALUATION_REQUESTED` | In-app | ✉ | — |
 | `COMPLETED`, `NO_EVALUATION` | In-app | In-app | In-app |
 | `TERMINATED` | ✉ | ✉ | ✉ |
-| `HR_REJECTED`, `ADVISOR_REJECTED`, `OFFER_RESCINDED`, `CANCELLED` | ✉ | — | In-app |
-| `STUDENT_DECLINED`, `WITHDRAWN` | — | In-app | In-app (เมื่อมีอาจารย์ผูกกับใบสมัคร) |
-| `EXPIRED` | In-app | In-app | — |
+| `HR_REJECTED` | ✉ | — | — |
+| `ADVISOR_REJECTED` | ✉ | In-app | — |
+| `OFFER_RESCINDED` | ✉ | — | In-app เฉพาะเมื่อ `from_status` ∈ {`ADVISOR_PENDING`, `ADVISOR_APPROVED`} |
+| `CANCELLED` (ประกาศถูกตีกลับ/ลบ — README 5.1.2) | ✉ | — | In-app (แจ้งเสมอ) |
+| `STUDENT_DECLINED` | — | In-app | — |
+| `WITHDRAWN` | — | In-app | In-app เฉพาะเมื่อ `from_status` ∈ {`ADVISOR_PENDING`, `ADVISOR_APPROVED`} |
+| `EXPIRED` | In-app | In-app | In-app เฉพาะเมื่อ `from_status = ADVISOR_APPROVED` |
+
+ผู้รับใช้ `advisor_user_id` ของ payload (ผูกกับใบสมัครตั้งแต่ตอนสมัคร) — การจำกัดอาจารย์ตาม `from_status` ในตารางเป็นการตัดสินเรื่องปริมาณการแจ้งเตือน ไม่ใช่ข้อจำกัดทางเทคนิค • Admin ไม่อยู่ใน E08 (Admin รับแจ้งจาก E04, E10, E14 ฯลฯ) • ใบรับรอง/รีวิว/เตือน SLA ใช้ E11–E14 ไม่ใช่ตารางนี้
 
 กฎกลาง: **ไม่แจ้งผู้กระทำเอง** (`actor_user_id`) • ผู้รับฝั่งบริษัทใช้ `hr_user_ids` ถ้ามี ไม่มีให้ดึงสมาชิกบริษัทจาก `GET /internal/v1/companies/{id}/members` • ผู้ใช้ที่ถูกระงับ/ลบไม่ได้รับ • 1 แถวต่อ (`source_event_id`, `user_id`, `type`) (`notifications` UNIQUE) • เมื่อ Event เดียวมีหลายผู้รับ ผู้รับแต่ละคนได้ 1 รายการ
 

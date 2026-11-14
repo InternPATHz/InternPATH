@@ -1,5 +1,9 @@
 // ต้องตรงกับ docs/event-contract.md (E01-E03) — ฟิลด์ snake_case ตามเอกสาร
 
+import type { JobStatus } from '../enums';
+
+export type ApplicationEffect = 'FREEZE' | 'UNFREEZE' | 'CANCEL_PRE_APPROVAL' | 'FLAG_POST_APPROVAL' | 'NONE';
+
 /** ฟิลด์ข้อความของประกาศที่ต้องสแกน (E01 content) */
 export interface JobContent {
   job_title: string;
@@ -62,8 +66,8 @@ export interface JobVerifiedPayload {
 export interface JobStatusChangedPayload {
   job_id: string;
   company_id: string;
-  from_status: string;
-  to_status: string;
+  from_status: JobStatus;
+  to_status: JobStatus;
   /** เช่น VERIFY_TIMEOUT (Fail-safe), REPORT_THRESHOLD, ADMIN_DISMISSED */
   reason_code?: string;
   reason?: string;
@@ -71,5 +75,6 @@ export interface JobStatusChangedPayload {
   submission_id?: string;
   entity_version: number;
   changed_at: string;
-  application_effect?: string;
+  /** คำแนะนำให้ Lifecycle (README 5.1.2) — Lifecycle เป็นผู้ตัดสินใจเปลี่ยนใบสมัครเอง */
+  application_effect?: ApplicationEffect;
 }

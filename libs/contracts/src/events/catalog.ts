@@ -16,7 +16,7 @@ export const EVENT_CATALOG: readonly EventCatalogEntry[] = [
   { id: 'E03', type: 'JobStatusChanged', producer: 'job', consumers: ['lifecycle', 'notification', 'verification'] },
   { id: 'E04', type: 'ReportThresholdReached', producer: 'verification', consumers: ['job', 'notification'] },
   { id: 'E05', type: 'CompanyStatusChanged', producer: 'identity', consumers: ['job', 'lifecycle', 'verification', 'notification'] },
-  { id: 'E06', type: 'CompanyEntitlementChanged', producer: 'identity', consumers: ['job', 'verification'] },
+  { id: 'E06', type: 'CompanyEntitlementChanged', producer: 'identity', consumers: ['job'] },
   { id: 'E07', type: 'AdvisorLinkChanged', producer: 'identity', consumers: ['lifecycle', 'notification'] },
   { id: 'E08', type: 'ApplicationStatusChanged', producer: 'lifecycle', consumers: ['notification'] },
   { id: 'E09', type: 'ReviewSubmitted', producer: 'lifecycle', consumers: ['verification'] },

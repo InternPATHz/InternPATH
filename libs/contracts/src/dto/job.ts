@@ -28,13 +28,39 @@ export interface HrJobsQuery {
   status?: JobStatus;
 }
 
-/** GET /hr/jobs/{id} = Job Object + เหตุผลการตีกลับ (`reasons[]` จาก `JobVerified`) */
+/** GET /hr/jobs/{id} = Job Object + มุมมอง HR/Admin (ไม่แสดงในหน้าสาธารณะ) + เหตุผลการตีกลับ (`reasons[]` จาก `JobVerified`) */
 export interface HrJobDetail extends JobObject {
+  contact_notes?: string;
+  suspended_from_status?: JobStatus;
   reasons?: Array<{ code: string; detail: string; matched_text?: string }>;
 }
 
-/** PATCH /hr/jobs/{id} — Response ส่ง `requires_reverification` */
-export interface UpdateJobResponse {
+/** ฟิลด์ที่ HR แก้ได้ของประกาศ (api-contract §5.1) — ฟิลด์ที่ต้องครบก่อน `submit` ดู data-schema §4 */
+export interface JobWritableFields {
+  category: JobCategory;
+  job_title: string;
+  description: string;
+  responsibilities: string;
+  qualifications: string;
+  allowance: { type: 'AMOUNT' | 'NONE'; amount_thb?: number; text?: string };
+  location: string;
+  contact_notes: string;
+  work_mode: WorkMode;
+  hours_per_week: number;
+  period: { start: string; end: string };
+  target_majors: string[];
+  quota: number;
+  application_deadline: string;
+}
+
+/** POST /hr/jobs — ทุกฟิลด์ไม่บังคับ (DRAFT ไม่ครบได้ ตรวจครบตอน `submit`) */
+export type CreateJobRequest = Partial<JobWritableFields>;
+
+/** PATCH /hr/jobs/{id} — ส่งเฉพาะฟิลด์ที่แก้ */
+export type UpdateJobRequest = Partial<JobWritableFields>;
+
+/** PATCH /hr/jobs/{id} — Job Object (มุมมอง HR) + `requires_reverification` */
+export interface UpdateJobResponse extends HrJobDetail {
   requires_reverification: boolean;
 }
 
