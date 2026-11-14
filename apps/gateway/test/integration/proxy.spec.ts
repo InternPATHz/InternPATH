@@ -105,10 +105,70 @@ describe('Gateway proxy and security', function () {
 
   it('limits repeated login attempts per trusted client IP', async () => {
     for (let index = 0; index < 10; index++) await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
-      .set('X-Client-IP', '203.0.113.77').send({ email: 'a@example.com' }).expect(200);
+      .set('X-Client-IP', '203.0.113.77').send({ email: `ip-${index}@example.com` }).expect(200);
     const limited = await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
-      .set('X-Client-IP', '203.0.113.77').send({ email: 'a@example.com' }).expect(429);
+      .set('X-Client-IP', '203.0.113.77').send({ email: 'new-ip-email@example.com' }).expect(429);
     expect(limited.body.error.code).to.equal('RATE_LIMITED');
     expect(Number(limited.headers['retry-after'])).to.be.greaterThan(0);
+  });
+
+  it('limits login attempts for one email across different IPs', async () => {
+    for (let index = 0; index < 10; index++) {
+      await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
+        .set('X-Client-IP', `203.0.113.${100 + index}`)
+        .send({ email: index % 2 ? 'TARGET@example.com' : ' target@example.com ' }).expect(200);
+    }
+    const blocked = await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
+      .set('X-Client-IP', '203.0.113.111').send({ email: 'target@example.com' }).expect(429);
+    expect(blocked.body.error.code).to.equal('RATE_LIMITED');
+    await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
+      .set('X-Client-IP', '203.0.113.111').send({ email: 'other@example.com' }).expect(200);
+  });
+
+  it('limits company registration by nested user email across IPs', async () => {
+    for (let index = 0; index < 5; index++) {
+      await edge(request(app.getHttpServer()).post('/api/v1/auth/register/company'))
+        .set('X-Client-IP', `198.51.100.${10 + index}`)
+        .send({ user: { email: 'hr@company.test' } }).expect(200);
+    }
+    await edge(request(app.getHttpServer()).post('/api/v1/auth/register/company'))
+      .set('X-Client-IP', '198.51.100.20')
+      .send({ user: { email: 'HR@company.test' } }).expect(429);
+  });
+
+  it('shares the account recovery limit across IPs and routes', async () => {
+    for (let index = 0; index < 5; index++) {
+      await edge(request(app.getHttpServer()).post('/api/v1/auth/password/forgot'))
+        .set('X-Client-IP', `192.0.2.${10 + index}`)
+        .send({ email: 'recover@example.com' }).expect(200);
+    }
+    await edge(request(app.getHttpServer()).post('/api/v1/auth/resend-verification'))
+      .set('X-Client-IP', '192.0.2.20').send({ email: 'RECOVER@example.com' }).expect(429);
+  });
+
+  it('limits attempts against one reset token across IPs', async () => {
+    for (let index = 0; index < 5; index++) {
+      await edge(request(app.getHttpServer()).post('/api/v1/auth/password/reset'))
+        .set('X-Client-IP', `192.0.2.${30 + index}`)
+        .send({ token: 'sample-reset-token', new_password: 'test' }).expect(200);
+    }
+    await edge(request(app.getHttpServer()).post('/api/v1/auth/password/reset'))
+      .set('X-Client-IP', '192.0.2.40')
+      .send({ token: 'sample-reset-token', new_password: 'test' }).expect(429);
+  });
+
+  it('rejects oversized auth bodies without forwarding them', async () => {
+    await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
+      .set('X-Client-IP', '198.51.100.30')
+      .send({ email: 'large@example.com', filler: 'x'.repeat(65 * 1024) }).expect(413);
+  });
+
+  it('limits public certificate checks per trusted client IP', async () => {
+    for (let index = 0; index < 30; index++) {
+      await edge(request(app.getHttpServer()).get('/api/v1/public/certificates/cert-123'))
+        .set('X-Client-IP', '198.51.100.60').expect(200);
+    }
+    await edge(request(app.getHttpServer()).get('/api/v1/public/certificates/cert-123'))
+      .set('X-Client-IP', '198.51.100.60').expect(429);
   });
 });

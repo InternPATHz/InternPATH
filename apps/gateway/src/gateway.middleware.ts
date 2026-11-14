@@ -7,6 +7,7 @@ import type { JwtClaims } from '@internpath/common';
 import * as jwt from 'jsonwebtoken';
 import type { Request, Response } from 'express';
 import { DenylistService } from './denylist/denylist.service';
+import { RateLimiter } from './rate-limit/rate-limiter';
 import { isPublicRoute, resolveService, ServiceName } from './routing/routing';
 
 const URL_ENV: Record<ServiceName, string> = {
@@ -17,14 +18,12 @@ const ROLES = new Set(['STUDENT', 'COMPANY_HR', 'ADVISOR', 'PLATFORM_ADMIN']);
 const HOP_HEADERS = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
   'te', 'trailer', 'transfer-encoding', 'upgrade'];
 
-type Limit = { count: number; resetAt: number };
-
 export class GatewayMiddleware {
-  private readonly limits = new Map<string, Limit>();
+  private readonly rateLimiter = new RateLimiter();
 
   constructor(private readonly config: ConfigService, private readonly denylist: DenylistService) {}
 
-  handle = (req: Request, res: Response): void => {
+  handle = async (req: Request, res: Response): Promise<void> => {
     const raw = req.originalUrl.slice('/api/v1'.length);
     const path = raw.split('?')[0];
     if (!path.startsWith('/') || /%|\\|\/\/|(?:^|\/)\.{1,2}(?:\/|$)/i.test(path))
@@ -68,39 +67,29 @@ export class GatewayMiddleware {
       if (this.denylist.has(user.sub)) return this.error(req, res, 401, 'ACCOUNT_SUSPENDED');
     }
 
-    const rate = this.rateRule(req.method, path);
+    const rate = this.rateLimiter.rule(req.method, path);
+    let body: Buffer | undefined;
     if (rate) {
-      const retry = this.limit(`${rate.name}:${clientIp}`, rate.max, rate.windowMs);
+      const retry = this.rateLimiter.checkIp(rate, clientIp);
       if (retry) { res.setHeader('Retry-After', String(retry)); return this.error(req, res, 429, 'RATE_LIMITED'); }
+      if (req.method === 'POST' && path.startsWith('/auth/')) {
+        try { body = await this.rateLimiter.readAuthBody(req); }
+        catch {
+          if (!res.destroyed) this.error(req, res, 413, 'VALIDATION_FAILED');
+          return;
+        }
+        const accountRetry = this.rateLimiter.checkAccount(rate, path, body);
+        if (accountRetry) {
+          res.setHeader('Retry-After', String(accountRetry));
+          return this.error(req, res, 429, 'RATE_LIMITED');
+        }
+      }
     }
-    this.proxy(req, res, service, raw, clientIp, user);
+    this.proxy(req, res, service, raw, clientIp, user, body);
   };
 
-  private rateRule(method: string, path: string): { name: string; max: number; windowMs: number } | undefined {
-    // README §5.7 fixes categories; these conservative defaults can be tuned by env later.
-    if (method === 'POST' && path === '/auth/login') return { name: 'login', max: 10, windowMs: 60_000 };
-    if (method === 'POST' && path.startsWith('/auth/register/')) return { name: 'register', max: 5, windowMs: 3_600_000 };
-    if (method === 'POST' && ['/auth/password/forgot', '/auth/password/reset', '/auth/resend-verification'].includes(path))
-      return { name: 'account-recovery', max: 5, windowMs: 3_600_000 };
-    if (method === 'GET' && /^\/public\/certificates\/[^/]+(?:\/verify-hash)?$/.test(path))
-      return { name: 'certificate', max: 30, windowMs: 60_000 };
-    return undefined;
-  }
-
-  private limit(key: string, max: number, windowMs: number): number {
-    const now = Date.now();
-    const previous = this.limits.get(key);
-    if (!previous || now >= previous.resetAt) {
-      if (this.limits.size >= 10_000) for (const [name, value] of this.limits) if (value.resetAt <= now) this.limits.delete(name);
-      if (this.limits.size >= 10_000 && !previous) return 60;
-      this.limits.set(key, { count: 1, resetAt: now + windowMs }); return 0;
-    }
-    if (previous.count >= max) return Math.ceil((previous.resetAt - now) / 1000);
-    previous.count++;
-    return 0;
-  }
-
-  private proxy(req: Request, res: Response, service: ServiceName, raw: string, clientIp: string, user?: JwtClaims): void {
+  private proxy(req: Request, res: Response, service: ServiceName, raw: string, clientIp: string,
+    user?: JwtClaims, body?: Buffer): void {
     let base: URL;
     try {
       base = new URL(this.config.get<string>(URL_ENV[service]) ?? '');
@@ -132,7 +121,8 @@ export class GatewayMiddleware {
       else res.destroy();
     });
     req.on('aborted', () => upstream.destroy());
-    req.pipe(upstream);
+    if (body) upstream.end(body);
+    else req.pipe(upstream);
   }
 
   private equal(a: string, b: string): boolean {
@@ -142,6 +132,7 @@ export class GatewayMiddleware {
 
   private error(req: Request, res: Response, status: number, code: string): void {
     const messages: Record<number, string> = { 400: 'ข้อมูลไม่ถูกต้อง', 401: 'ต้องเข้าสู่ระบบก่อน', 403: 'ไม่มีสิทธิ์',
+      413: 'ข้อมูลมีขนาดใหญ่เกินไป',
       404: 'ไม่พบข้อมูล', 429: 'ส่งคำขอบ่อยเกินไป', 503: 'บริการไม่พร้อมใช้งาน' };
     res.status(status).json({ error: { code, message: messages[status], correlation_id: req.headers['x-correlation-id'] } });
   }
