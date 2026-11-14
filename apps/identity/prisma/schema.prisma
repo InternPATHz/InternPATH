@@ -367,7 +367,7 @@ model ProcessedEvent {
   @@map("processed_events")
 }
 
-/// Append-only: migration trigger blocks UPDATE and DELETE.
+/// Append-only except the authorized actor_id anonymization in the migration trigger.
 model StatusHistory {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   entity        String
@@ -384,7 +384,7 @@ model StatusHistory {
   @@map("status_history")
 }
 
-/// Append-only: migration trigger blocks UPDATE and DELETE.
+/// Append-only except the authorized admin_id anonymization in the migration trigger.
 model AdminAuditLog {
   id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   adminId       String   @map("admin_id") @db.Uuid

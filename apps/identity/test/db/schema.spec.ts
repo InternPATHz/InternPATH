@@ -168,4 +168,74 @@ describe('identity_db migration (Postgres จริง)', function () {
     expect(await errorCode(() => pg.query(`UPDATE admin_audit_log SET reason = 'x' WHERE id = $1`, [audit]))).to.equal('P0001');
     expect(await errorCode(() => pg.query(`DELETE FROM admin_audit_log WHERE id = $1`, [audit]))).to.equal('P0001');
   });
+
+  it('anonymize ได้เฉพาะ actor ของทั้งสองตารางภายใน transaction ที่ได้รับอนุญาต', async () => {
+    const oldActor = randomUUID();
+    const anonymousActor = randomUUID();
+    const otherActor = randomUUID();
+    const correlation = randomUUID();
+    const history = (await pg.query(
+      `INSERT INTO status_history (entity, entity_id, to_status, actor_id, actor_role, reason, correlation_id)
+       VALUES ('USER', $1, 'DELETED', $2, 'PLATFORM_ADMIN', 'original', $3) RETURNING id`,
+      [randomUUID(), oldActor, correlation],
+    )).rows[0].id;
+    const audit = (await pg.query(
+      `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, reason, correlation_id)
+       VALUES ($1, 'DELETE_USER', 'USER', $2, 'original', $3) RETURNING id`,
+      [oldActor, randomUUID(), correlation],
+    )).rows[0].id;
+    const updateHistory = `UPDATE status_history SET actor_id = $1 WHERE id = $2`;
+    const updateAudit = `UPDATE admin_audit_log SET admin_id = $1 WHERE id = $2`;
+
+    const rejectedWithSettings = async (
+      sql: string, params: string[], flag: 'on' | 'off' = 'on', expectedActor?: string,
+    ): Promise<string | undefined> => {
+      await pg.query('BEGIN');
+      try {
+        await pg.query(`SET LOCAL internpath.anonymize = '${flag}'`);
+        if (expectedActor) await pg.query(
+          `SELECT set_config('internpath.anonymous_actor_id', $1, true)`, [expectedActor],
+        );
+        return await errorCode(() => pg.query(sql, params));
+      } finally {
+        await pg.query('ROLLBACK');
+      }
+    };
+
+    expect(await errorCode(() => pg.query(updateHistory, [anonymousActor, history]))).to.equal('P0001');
+    expect(await errorCode(() => pg.query(updateAudit, [anonymousActor, audit]))).to.equal('P0001');
+    expect(await rejectedWithSettings(updateHistory, [anonymousActor, history], 'off', anonymousActor)).to.equal('P0001');
+    expect(await rejectedWithSettings(updateHistory, [anonymousActor, history])).to.equal('P0001');
+    expect(await rejectedWithSettings(updateAudit, [anonymousActor, audit])).to.equal('P0001');
+    expect(await rejectedWithSettings(updateHistory, [otherActor, history], 'on', anonymousActor)).to.equal('P0001');
+    expect(await rejectedWithSettings(updateAudit, [otherActor, audit], 'on', anonymousActor)).to.equal('P0001');
+    expect(await rejectedWithSettings(
+      `UPDATE status_history SET actor_id = $1, reason = 'changed' WHERE id = $2`,
+      [anonymousActor, history], 'on', anonymousActor,
+    )).to.equal('P0001');
+    expect(await rejectedWithSettings(
+      `UPDATE admin_audit_log SET admin_id = $1, reason = 'changed' WHERE id = $2`,
+      [anonymousActor, audit], 'on', anonymousActor,
+    )).to.equal('P0001');
+    expect(await rejectedWithSettings(`DELETE FROM status_history WHERE id = $1`, [history], 'on', anonymousActor)).to.equal('P0001');
+    expect(await rejectedWithSettings(`DELETE FROM admin_audit_log WHERE id = $1`, [audit], 'on', anonymousActor)).to.equal('P0001');
+
+    await pg.query('BEGIN');
+    try {
+      await pg.query(`SET LOCAL internpath.anonymize = 'on'`);
+      await pg.query(`SELECT set_config('internpath.anonymous_actor_id', $1, true)`, [anonymousActor]);
+      await pg.query(updateHistory, [anonymousActor, history]);
+      await pg.query(updateAudit, [anonymousActor, audit]);
+      await pg.query('COMMIT');
+    } catch (error) {
+      await pg.query('ROLLBACK');
+      throw error;
+    }
+    const historyRow = (await pg.query(`SELECT actor_id, reason FROM status_history WHERE id = $1`, [history])).rows[0];
+    const auditRow = (await pg.query(`SELECT admin_id, reason FROM admin_audit_log WHERE id = $1`, [audit])).rows[0];
+    expect(historyRow).to.include({ actor_id: anonymousActor, reason: 'original' });
+    expect(auditRow).to.include({ admin_id: anonymousActor, reason: 'original' });
+    expect(await errorCode(() => pg.query(updateHistory, [oldActor, history]))).to.equal('P0001');
+    expect(await errorCode(() => pg.query(updateAudit, [oldActor, audit]))).to.equal('P0001');
+  });
 });
