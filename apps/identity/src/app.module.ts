@@ -9,7 +9,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { CompaniesModule } from './modules/companies/companies.module';
 import { CompanyMembersModule } from './modules/company-members/company-members.module';
 import { ConsentsModule } from './modules/consents/consents.module';
-import { DirectoryEventsModule } from './modules/directory/directory-events.module';
+import { DirectoryEventsModule } from './events/consumers/directory-events.module';
 import { DirectoryModule } from './modules/directory/directory.module';
 import { UsersModule } from './modules/users/users.module';
 import { PrismaModule } from './prisma/prisma.module';

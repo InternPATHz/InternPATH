@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { EventConsumer } from '@internpath/common';
 import type { ReviewPublishedPayload } from '@internpath/contracts';
 import { Prisma } from '../../../generated/client';
-import { DirectoryRatingService } from './directory-rating.service';
+import { DirectoryRatingService } from '../../modules/directory/directory-rating.service';
 
 @Injectable()
 export class ReviewPublishedConsumer implements OnModuleInit {
