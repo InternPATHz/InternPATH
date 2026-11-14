@@ -126,6 +126,8 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 4. Commit โฟลเดอร์ `prisma/migrations/` ด้วย
 5. รัน `pnpm --filter @internpath/<service> prisma:generate` เมื่อ schema เปลี่ยน
 > ลองรันจริงแล้วกับ `apps/verification` (2026-11-13): `prisma migrate dev --name init --create-only` ได้ migration แรก แล้วเพิ่ม **SQL มือต่อท้ายไฟล์** สำหรับสิ่งที่ Prisma ไม่รองรับ (partial unique index, trigger append-only ของ `status_history`/`admin_audit_log`) — `prisma migrate diff --from-migrations … --to-schema-datamodel …` รายงาน "No difference" จึงไม่ต้องกลัว drift แต่ห้ามลบ SQL มือเมื่อสร้าง migration ใหม่
+> `apps/identity` (2026-11-14): migration แรกสร้างจาก schema ด้วย `prisma migrate diff --from-empty --to-schema-datamodel prisma/schema.prisma --script` แล้วเพิ่ม `citext` ก่อนตาราง, partial unique index ของ Owner และ trigger append-only ด้วย SQL มือ; `test/db/schema.spec.ts` สร้างฐาน `id_it_<hex>` ใหม่แล้ว `migrate deploy` เพื่อตรวจ migration จริงก่อนลบฐานทิ้ง
+> Prisma Client ของ Identity generate ไปที่ `apps/identity/generated/client` (gitignore) และ CI generate ทั้ง Identity/Verification ก่อนตรวจ เพราะ output เริ่มต้นของ `@prisma/client` เป็นตำแหน่งร่วมที่ Service หนึ่งจะเขียนทับอีก Service; Service ถัดไปที่เพิ่ม Prisma ต้องกำหนด output ของตัวเองด้วย
 > - ค่าตั้งต้น (seed) ใส่ใน migration แยก (`*_seed_defaults`) แบบ `INSERT … ON CONFLICT DO NOTHING` เพื่อไม่ทับค่าที่ Admin แก้
 > - เทสต์ที่ต้องใช้ DB สร้างฐาน `ver_it_<hex>` ใหม่ต่อรอบ แล้วรัน `prisma migrate deploy` (ดู `apps/verification/test/support/db.ts`) และลบทิ้งตอนจบ
 > - เทสต์พื้นฐานตั้ง `DISABLE_INFRA=true` ใน `test/setup.ts` ให้ `AppModule` ไม่โหลดส่วนที่ต้องใช้ DB/RabbitMQ (CI จึงไม่ต้องมี infra)
@@ -176,7 +178,7 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 
 โครงตอนนี้ **รันได้และทดสอบผ่าน แต่ยังไม่มีโค้ดธุรกิจ** สิ่งที่ยังต้องสร้าง:
 
-- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification ทำแล้ว (สไลซ์ 1 และ 2: รายงานประกาศ, ตัวนับ/ระงับอัตโนมัติ, ธง `UNDER_REVIEW`; ค่า env `REPORT_THRESHOLD`, `REPORT_DAILY_LIMIT`, `REPORTER_DISMISS_STREAK`, `REJECTION_THRESHOLD`, `REJECTION_WINDOW_DAYS` ใน `.env.example`)**; Service อื่นยังมีแค่ `outbox_events` / `processed_events`
+- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification ทำแล้ว** (สไลซ์ 1 และ 2: รายงานประกาศ, ตัวนับ/ระงับอัตโนมัติ, ธง `UNDER_REVIEW`; ค่า env `REPORT_THRESHOLD`, `REPORT_DAILY_LIMIT`, `REPORTER_DISMISS_STREAK`, `REJECTION_THRESHOLD`, `REJECTION_WINDOW_DAYS` ใน `.env.example`); **Identity ทำ schema/migration พื้นฐานแล้ว** (ยังไม่มี Auth/ธุรกิจ); Job, Lifecycle และ Notification ยังมีแค่ `outbox_events` / `processed_events`
 - [x] Outbox relay และ Consumer — อยู่ใน `libs/common` (`OutboxWriter`, `OutboxRelay`, `EventConsumer`, `MessagingModule`); เหลือให้แต่ละ Service เรียกใช้ตาม §6.3 (โฟลเดอร์ `outbox/`, `events/` ของแต่ละ Service ยังว่าง)
 - [ ] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก
 - [ ] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit, Denylist (ตอนนี้มีแค่ health)
