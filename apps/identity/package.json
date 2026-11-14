@@ -37,6 +37,8 @@
   "devDependencies": {
     "@nestjs/testing": "^12.5.0",
     "@types/multer": "^2.3.0",
+    "@types/pg": "8.23.1",
+    "pg": "8.23.1",
     "prisma": "6.19.3"
   }
 }

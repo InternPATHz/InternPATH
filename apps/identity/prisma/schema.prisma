@@ -1,17 +1,350 @@
-// ตารางทั้งหมดให้เป็นไปตาม docs/data-schema.md (หัวข้อของ Service นี้)
+// Identity & Organization — docs/data-schema.md §2–3.
+// citext, partial unique index และ append-only triggers อยู่ใน migration SQL.
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated/client"
 }
 
 datasource db {
   provider  = "postgresql"
-  url       = env("IDENTITY_DATABASE_URL") // pooled (runtime)
-  directUrl = env("IDENTITY_DIRECT_URL")   // direct (migration)
+  url       = env("IDENTITY_DATABASE_URL")
+  directUrl = env("IDENTITY_DIRECT_URL")
 }
 
-// ตารางร่วม (docs/data-schema.md §2.2) — ตารางเฉพาะของ Service เพิ่มต่อจากนี้ตามหัวข้อของ Service
+// ค่าของ enum ที่ใช้ร่วมต้องตรงกับ libs/contracts/src/enums.ts.
+enum Role {
+  STUDENT
+  COMPANY_HR
+  ADVISOR
+  PLATFORM_ADMIN
+
+  @@map("role")
+}
+
+enum UserStatus {
+  PENDING_EMAIL
+  PENDING_APPROVAL
+  ACTIVE
+  SUSPENDED
+  DELETED
+
+  @@map("user_status")
+}
+
+enum CompanyStatus {
+  PENDING
+  NEED_MORE_INFO
+  VERIFIED
+  REJECTED
+  SUSPENDED
+
+  @@map("company_status")
+}
+
+enum CompanyMemberRole {
+  OWNER
+  MEMBER
+
+  @@map("company_member_role")
+}
+
+enum AdvisorLinkStatus {
+  NONE
+  ADVISOR_LINK_PENDING
+  LINKED
+
+  @@map("advisor_link_status")
+}
+
+enum OwnerTransferStatus {
+  PENDING
+  ACCEPTED
+  CANCELLED
+  EXPIRED
+
+  @@map("owner_transfer_status")
+}
+
+enum EmailTokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+
+  @@map("email_token_purpose")
+}
+
+enum ConsentType {
+  PRIVACY_POLICY
+  RESUME_SHARE
+
+  @@map("consent_type")
+}
+
+enum DeletionRequestStatus {
+  REQUESTED
+  BLOCKED
+  COMPLETED
+
+  @@map("deletion_request_status")
+}
+
+model University {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name        String
+  emailDomain String   @unique @map("email_domain")
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  users       User[]
+
+  @@map("universities")
+}
+
+model User {
+  id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email            String     @unique @db.Citext
+  passwordHash     String     @map("password_hash")
+  role             Role
+  status           UserStatus @default(PENDING_EMAIL)
+  emailVerifiedAt  DateTime?  @map("email_verified_at") @db.Timestamptz(6)
+  universityId     String?    @map("university_id") @db.Uuid
+  fullName         String     @map("full_name")
+  phone            String?
+  failedLoginCount Int        @default(0) @map("failed_login_count")
+  lockedUntil      DateTime?  @map("locked_until") @db.Timestamptz(6)
+  suspendedReason  String?    @map("suspended_reason")
+  deletedAt        DateTime?  @map("deleted_at") @db.Timestamptz(6)
+  version          Int        @default(1)
+  createdAt        DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime   @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  university       University?              @relation(fields: [universityId], references: [id])
+  studentProfile   StudentProfileIdentity?  @relation("student")
+  advisorProfile   AdvisorProfile?          @relation("advisor")
+  currentStudents  StudentProfileIdentity[] @relation("current_advisor")
+  pendingStudents  StudentProfileIdentity[] @relation("pending_advisor")
+  companyMember    CompanyMember?
+  emailTokens      EmailToken[]
+  refreshTokens    RefreshToken[]
+  denylistEntry    TokenDenylist?
+  consents         Consent[]
+  deletionRequests DeletionRequest[]
+
+  @@index([universityId, role, status])
+  @@map("users")
+}
+
+model StudentProfileIdentity {
+  userId               String            @id @map("user_id") @db.Uuid
+  studentCode          String            @map("student_code")
+  major                String
+  yearLevel            Int               @map("year_level")
+  advisorId            String?           @map("advisor_id") @db.Uuid
+  advisorLinkStatus    AdvisorLinkStatus @default(NONE) @map("advisor_link_status")
+  pendingAdvisorId     String?           @map("pending_advisor_id") @db.Uuid
+  advisorLinkUpdatedAt DateTime?         @map("advisor_link_updated_at") @db.Timestamptz(6)
+  createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user                 User              @relation("student", fields: [userId], references: [id])
+  advisor              User?             @relation("current_advisor", fields: [advisorId], references: [id])
+  pendingAdvisor       User?             @relation("pending_advisor", fields: [pendingAdvisorId], references: [id])
+
+  @@index([advisorId, advisorLinkStatus])
+  @@index([pendingAdvisorId, advisorLinkStatus])
+  @@map("student_profiles_identity")
+}
+
+model AdvisorProfile {
+  userId     String    @id @map("user_id") @db.Uuid
+  department String
+  approvedBy String?   @map("approved_by") @db.Uuid
+  approvedAt DateTime? @map("approved_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user       User      @relation("advisor", fields: [userId], references: [id])
+
+  @@map("advisor_profiles")
+}
+
+model Company {
+  id                String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name              String
+  registrationNo    String              @unique @map("registration_no")
+  emailDomain       String              @map("email_domain")
+  website           String?
+  phone             String?
+  logoKey           String?             @map("logo_key")
+  status            CompanyStatus       @default(PENDING)
+  reviewNote        String?             @map("review_note")
+  universityPartner Boolean             @default(false) @map("university_partner")
+  featuredEnabled   Boolean             @default(false) @map("featured_enabled")
+  fastTrackEnabled  Boolean             @default(false) @map("fast_track_enabled")
+  version           Int                 @default(1)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  members           CompanyMember[]
+  invitations       CompanyInvitation[]
+  ownerTransfers    OwnerTransfer[]
+  documents         CompanyDocument[]
+  consents          Consent[]
+  ratingStats       CompanyRatingStats?
+
+  @@index([status, createdAt])
+  @@map("companies")
+}
+
+model CompanyMember {
+  id         String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId  String            @map("company_id") @db.Uuid
+  userId     String            @unique @map("user_id") @db.Uuid
+  memberRole CompanyMemberRole @default(MEMBER) @map("member_role")
+  invitedBy  String?           @map("invited_by") @db.Uuid
+  joinedAt   DateTime          @default(now()) @map("joined_at") @db.Timestamptz(6)
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  company    Company           @relation(fields: [companyId], references: [id])
+  user       User              @relation(fields: [userId], references: [id])
+
+  @@index([companyId, memberRole])
+  @@map("company_members")
+}
+
+model CompanyInvitation {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId  String    @map("company_id") @db.Uuid
+  email      String    @db.Citext
+  tokenHash  String    @unique @map("token_hash")
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(6)
+  invitedBy  String    @map("invited_by") @db.Uuid
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  company    Company   @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, email])
+  @@map("company_invitations")
+}
+
+model OwnerTransfer {
+  id          String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId   String              @map("company_id") @db.Uuid
+  fromUserId  String              @map("from_user_id") @db.Uuid
+  toUserId    String              @map("to_user_id") @db.Uuid
+  status      OwnerTransferStatus @default(PENDING)
+  requestedAt DateTime            @default(now()) @map("requested_at") @db.Timestamptz(6)
+  respondedAt DateTime?           @map("responded_at") @db.Timestamptz(6)
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime            @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  company     Company             @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, status])
+  @@map("owner_transfers")
+}
+
+model CompanyDocument {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  companyId  String   @map("company_id") @db.Uuid
+  docType    String   @map("doc_type")
+  objectKey  String   @map("object_key")
+  mime       String
+  sizeBytes  Int      @map("size_bytes")
+  uploadedBy String   @map("uploaded_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  company    Company  @relation(fields: [companyId], references: [id])
+
+  @@index([companyId, createdAt])
+  @@map("company_documents")
+}
+
+model EmailToken {
+  id        String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String            @map("user_id") @db.Uuid
+  purpose   EmailTokenPurpose
+  tokenHash String            @unique @map("token_hash")
+  expiresAt DateTime          @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime?         @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user      User              @relation(fields: [userId], references: [id])
+
+  @@index([userId, purpose, expiresAt])
+  @@map("email_tokens")
+}
+
+model RefreshToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  familyId  String    @map("family_id") @db.Uuid
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  rotatedAt DateTime? @map("rotated_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user      User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, familyId])
+  @@map("refresh_tokens")
+}
+
+model TokenDenylist {
+  userId    String   @id @map("user_id") @db.Uuid
+  reason    String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("token_denylist")
+}
+
+model Consent {
+  id              String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String      @map("user_id") @db.Uuid
+  type            ConsentType
+  policyVersion   String      @map("policy_version")
+  targetCompanyId String?     @map("target_company_id") @db.Uuid
+  // application_id อ้าง Lifecycle Service: ห้ามทำ FK ข้ามฐานข้อมูล
+  applicationId   String?     @map("application_id") @db.Uuid
+  grantedAt       DateTime    @default(now()) @map("granted_at") @db.Timestamptz(6)
+  revokedAt       DateTime?   @map("revoked_at") @db.Timestamptz(6)
+  createdAt       DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime    @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user            User        @relation(fields: [userId], references: [id])
+  targetCompany   Company?    @relation(fields: [targetCompanyId], references: [id])
+
+  @@index([userId, type, targetCompanyId, revokedAt])
+  @@map("consents")
+}
+
+model DeletionRequest {
+  id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String                @map("user_id") @db.Uuid
+  status        DeletionRequestStatus @default(REQUESTED)
+  blockedReason String?               @map("blocked_reason")
+  requestedAt   DateTime              @default(now()) @map("requested_at") @db.Timestamptz(6)
+  completedAt   DateTime?             @map("completed_at") @db.Timestamptz(6)
+  createdAt     DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user          User                  @relation(fields: [userId], references: [id])
+
+  @@index([userId, status])
+  @@map("deletion_requests")
+}
+
+model CompanyRatingStats {
+  companyId     String   @id @map("company_id") @db.Uuid
+  reviewCount   Int      @default(0) @map("review_count")
+  ratingSum     Int      @default(0) @map("rating_sum")
+  entityVersion Int      @default(0) @map("entity_version")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  company       Company  @relation(fields: [companyId], references: [id])
+
+  @@map("company_rating_stats")
+}
+
 model OutboxEvent {
-  id            String    @id @default(uuid()) @db.Uuid
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   type          String
   version       Int       @default(1)
   aggregateId   String    @map("aggregate_id") @db.Uuid
@@ -32,4 +365,38 @@ model ProcessedEvent {
 
   @@id([eventId, consumer])
   @@map("processed_events")
+}
+
+/// Append-only: migration trigger blocks UPDATE and DELETE.
+model StatusHistory {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entity        String
+  entityId      String   @map("entity_id") @db.Uuid
+  fromStatus    String?  @map("from_status")
+  toStatus      String   @map("to_status")
+  actorId       String?  @map("actor_id") @db.Uuid
+  actorRole     String   @map("actor_role")
+  reason        String?
+  correlationId String   @map("correlation_id") @db.Uuid
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([entity, entityId, occurredAt])
+  @@map("status_history")
+}
+
+/// Append-only: migration trigger blocks UPDATE and DELETE.
+model AdminAuditLog {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adminId       String   @map("admin_id") @db.Uuid
+  action        String
+  targetType    String   @map("target_type")
+  targetId      String   @map("target_id")
+  before        Json?
+  after         Json?
+  reason        String?
+  correlationId String   @map("correlation_id") @db.Uuid
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([occurredAt])
+  @@map("admin_audit_log")
 }

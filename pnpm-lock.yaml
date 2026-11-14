@@ -190,6 +190,12 @@ importers:
       '@types/multer':
         specifier: ^2.3.0
         version: 2.3.0
+      '@types/pg':
+        specifier: 8.23.1
+        version: 8.23.1
+      pg:
+        specifier: 8.23.1
+        version: 8.23.1
       prisma:
         specifier: 6.19.3
         version: 6.19.3(typescript@5.6.3)
@@ -4380,7 +4386,7 @@ snapshots:
 
   '@types/pg@8.23.1':
     dependencies:
-      '@types/node': 26.6.6
+      '@types/node': 20.19.43
       pg-protocol: 1.16.1
       pg-types: 2.2.0
 

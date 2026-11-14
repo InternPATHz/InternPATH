@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HealthModule, createLoggingModule } from '@internpath/common';
+import { PrismaModule } from './prisma/prisma.module';
+
+const infra = process.env.DISABLE_INFRA === 'true' ? [] : [PrismaModule];
 
 @Module({
   imports: [
@@ -8,6 +11,7 @@ import { HealthModule, createLoggingModule } from '@internpath/common';
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../../.env'] }),
     createLoggingModule('identity'),
     HealthModule.register({ service: 'identity', databaseUrlEnv: 'IDENTITY_DATABASE_URL', requireBroker: true }),
+    ...infra,
     // TODO: ต่อ modules/* ตาม docs/architecture.md §2
   ],
 })
