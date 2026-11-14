@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { AppException, JwtClaims, OutboxWriter } from '@internpath/common';
 import { Inject, Injectable } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/client';
 import { lockScope } from '../common/locks';
 import { emitReportThresholdReached } from '../events/report-threshold';
 import { LIMITS_CONFIG, LimitsConfig } from '../limits/limits.config';

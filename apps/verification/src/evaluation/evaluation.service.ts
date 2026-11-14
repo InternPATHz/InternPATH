@@ -1,7 +1,7 @@
 import type { EventEnvelope, JobStatusChangedPayload, JobSubmittedPayload } from '@internpath/contracts';
 import { OutboxWriter } from '@internpath/common';
 import { Injectable, Logger } from '@nestjs/common';
-import type { Prisma } from '@prisma/client';
+import type { Prisma } from '../../generated/client';
 import { emitJobVerified } from '../events/job-verified';
 import type { Tx } from '../prisma/types';
 import { QueueService } from '../queue/queue.service';
