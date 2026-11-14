@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HealthModule, createLoggingModule } from '@internpath/common';
+import { DenylistService } from './denylist.service';
 
 @Module({
   imports: [
@@ -8,7 +9,7 @@ import { HealthModule, createLoggingModule } from '@internpath/common';
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../../.env'] }),
     createLoggingModule('gateway'),
     HealthModule.register({ service: 'gateway' }),
-    // TODO: ต่อ modules/* ตาม docs/architecture.md §2
   ],
+  providers: [DenylistService],
 })
 export class AppModule {}
