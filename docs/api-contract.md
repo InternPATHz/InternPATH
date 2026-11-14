@@ -81,6 +81,8 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/auth/password/reset` | Public | `{token, new_password}` ใช้ได้ครั้งเดียว |
 | GET | `/.well-known/jwks.json` | Public | Public Key (ถ้าเลือกใช้ JWKS — Open Decision #2) |
 
+ข้อกำหนดของ Auth รอบแรก: `POST /auth/register/advisor` รับ `{email(@ac.th), password, full_name, department, accept_privacy:true}`; รหัสผ่านของทุกบทบาทยาวอย่างน้อย 12 ตัวอักษรและเก็บแบบ Argon2id; บันทึก `PRIVACY_POLICY` consent เมื่อสมัคร. ลิงก์ยืนยันอีเมลหมดอายุใน 24 ชั่วโมง, ลิงก์รีเซ็ตรหัสผ่านหมดอายุใน 30 นาทีและใช้ได้ครั้งเดียว; Refresh Token อยู่ได้ 30 วันและหมุนทุกครั้งที่ใช้. ล็อกบัญชี 15 นาทีเมื่อรหัสผ่านผิดครบ 5 ครั้ง. `resend-verification` และ `password/forgot` คืน 204 แม้อีเมลไม่มีในระบบ เพื่อไม่เปิดเผยรายชื่อบัญชี; จำกัดการขอซ้ำต่อบัญชีอย่างน้อย 60 วินาที (Gateway ยังต้องจำกัดต่อ IP ตาม README §5.7). ลิงก์อีเมลสร้างจาก `WEB_BASE_URL` และส่งผ่าน SMTP ที่ตั้งค่าไว้.
+
 ### 4.2 ผู้ใช้และโปรไฟล์ระบุตัวตน
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |

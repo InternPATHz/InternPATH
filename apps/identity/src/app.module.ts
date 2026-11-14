@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HealthModule, createLoggingModule } from '@internpath/common';
 import { PrismaModule } from './prisma/prisma.module';
+import { AuthModule } from './modules/auth/auth.module';
 
 const infra = process.env.DISABLE_INFRA === 'true' ? [] : [PrismaModule];
 
@@ -12,6 +13,7 @@ const infra = process.env.DISABLE_INFRA === 'true' ? [] : [PrismaModule];
     createLoggingModule('identity'),
     HealthModule.register({ service: 'identity', databaseUrlEnv: 'IDENTITY_DATABASE_URL', requireBroker: true }),
     ...infra,
+    ...(process.env.DISABLE_INFRA === 'true' ? [] : [AuthModule]),
     // TODO: ต่อ modules/* ตาม docs/architecture.md §2
   ],
 })
