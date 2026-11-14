@@ -2,6 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HealthModule, createLoggingModule } from '@internpath/common';
 import { DenylistService } from './denylist.service';
+import { UserSuspendedConsumer } from './user-suspended.consumer';
+
+const eventConsumers = process.env.DISABLE_INFRA === 'true' ? [] : [UserSuspendedConsumer];
 
 @Module({
   imports: [
@@ -10,6 +13,6 @@ import { DenylistService } from './denylist.service';
     createLoggingModule('gateway'),
     HealthModule.register({ service: 'gateway' }),
   ],
-  providers: [DenylistService],
+  providers: [DenylistService, ...eventConsumers],
 })
 export class AppModule {}
