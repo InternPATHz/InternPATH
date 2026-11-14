@@ -1,6 +1,6 @@
 import { Injectable, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '../../generated/client';
 
 /** PrismaClient ของ verification_db (เชื่อมต่อแบบ lazy; ปิดตอน shutdown) */
 @Injectable()

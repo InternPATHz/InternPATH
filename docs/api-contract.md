@@ -53,7 +53,7 @@
 | :--- | :--- |
 | `/auth/**`, `/.well-known/**`, `/users/**`, `/advisors`, `/advisor-links/**`, `/companies/me/**`, `/directory/**`, `/admin/companies/**`, `/admin/advisors/**`, `/admin/students/**`, `/admin/users/**`, `/admin/audit-logs` | identity |
 | `/hr/jobs/**`, `/jobs/**`, `/search/**`, `/admin/jobs/**` | job |
-| `/verification/**`, `/admin/queue/**`, `/admin/blacklist/**`, `/admin/risk-rules`, `/admin/flags/**`, `/jobs/{id}/reports`, `/reviews/{id}/reports` | verification |
+| `/verification/**`, `/admin/queue/**`, `/admin/blacklist/**`, `/admin/risk-rules`, `/admin/flags/**`, `/admin/audit`, `/jobs/{id}/reports`, `/reviews/{id}/reports` | verification |
 | `/applications/**`, `/me/**`, `/hr/applications/**`, `/hr/certificates/**`, `/hr/reviews/**`, `/advisor/**`, `/me/certificates/**`, `/companies/{id}/reviews`, `/problem-reports/**`, `/admin/lifecycle/**`, `/public/**` | lifecycle |
 | `/notifications/**` | notification |
 | `/internal/**` | **ไม่ Route** |

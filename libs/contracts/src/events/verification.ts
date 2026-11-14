@@ -20,6 +20,8 @@ export interface ReviewModerationReason {
 /** E10 `ReviewModerationResult` (verification → lifecycle, notification) — `HOLD` = พักรีวิวเข้าคิว Admin ไม่ตีกลับ */
 export interface ReviewModerationResultPayload {
   review_id: string;
+  /** ส่งต่อจาก E09 — Notification ใช้แจ้งนักศึกษา (HOLD / ADMIN_REMOVE) */
+  student_user_id: string;
   decision: 'PUBLISH' | 'HOLD' | 'ADMIN_PUBLISH' | 'ADMIN_REMOVE';
   reasons: ReviewModerationReason[];
   decided_by: 'SYSTEM' | 'ADMIN';

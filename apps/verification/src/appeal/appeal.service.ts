@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { JobVerifiedReason } from '@internpath/contracts';
 import { AppException, JwtClaims, OutboxWriter } from '@internpath/common';
 import { Injectable } from '@nestjs/common';
-import type { Evaluation } from '@prisma/client';
+import type { Evaluation } from '../../generated/client';
 import { emitJobVerified } from '../events/job-verified';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Tx } from '../prisma/types';

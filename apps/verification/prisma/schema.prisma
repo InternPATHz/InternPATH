@@ -3,6 +3,7 @@
 // เขียนเป็น SQL มือใน migration (Prisma ไม่รองรับ) — อย่าลบเมื่อสร้าง migration ใหม่
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated/client"
 }
 
 datasource db {

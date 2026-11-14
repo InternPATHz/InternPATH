@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '@internpath/common';
-import { Prisma } from '@prisma/client';
+import { Prisma } from '../../generated/client';
 import { AuditService } from '../audit/audit.service';
 import { Page, skipOf } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';

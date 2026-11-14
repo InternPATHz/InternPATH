@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { PrismaClient } from '@prisma/client';
+import type { PrismaClient } from '../../generated/client';
 import type { Rules } from '../screening/types';
 
 type Db = Pick<PrismaClient, 'blacklistTerm' | 'negationCue' | 'riskRule'>;

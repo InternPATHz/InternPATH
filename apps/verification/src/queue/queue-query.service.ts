@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException } from '@internpath/common';
-import type { Prisma, QueueItem } from '@prisma/client';
+import type { Prisma, QueueItem } from '../../generated/client';
 import { Page, skipOf } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import type { MatchedKeyword } from '../screening/types';

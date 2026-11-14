@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { QueueItem, QueueItemType } from '@prisma/client';
+import type { QueueItem, QueueItemType } from '../../generated/client';
 import { asUuid } from '../common/uuid';
 import type { Tx } from '../prisma/types';
 import { SLA_CONFIG, SlaConfig, computeDueAt } from './sla';

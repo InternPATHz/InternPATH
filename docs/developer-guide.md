@@ -73,6 +73,8 @@ apps/<service>/
 6. **ห้าม commit** `.env`, คีย์ JWT, รหัสผ่านจริง (มีแค่ `.env.example`)
 7. ตรวจสิทธิ์ที่ **ทุก Service** ด้วย Guard (อย่าพึ่ง Gateway อย่างเดียว) และตรวจความเป็นเจ้าของข้อมูล เช่น `company_id` ใน Token ต้องตรงกับทรัพยากร
 8. **Contract ล็อกแล้ว — ใช้ชนิดข้อมูลจาก `@internpath/contracts` เท่านั้น** (Event E01-E18 ทุกตัวและ Enum ใน `data-schema.md` §2.1 อยู่ใน `libs/contracts/src/`) ห้ามประกาศ payload/enum ซ้ำในแอป การเปลี่ยนชื่อ/ชนิด/ความหมายของฟิลด์หรือค่า Enum ต้องบอกใน PR (ติดป้าย "contract change"), แก้ `docs/` และ `libs/contracts` พร้อมกัน และให้ PM อนุมัติ — เพิ่มฟิลด์ที่ไม่บังคับ (`?`) ได้โดยไม่ต้องรออนุมัติ แต่ต้องบอกใน PR
+9. **ทุก Service ที่ใช้ Prisma ต้องตั้ง `output = "../generated/client"` ใน `generator client` ของ `schema.prisma`** และ import `PrismaClient`/ชนิดจาก `../../generated/client` (ไม่ใช่ `@prisma/client`) — output ค่าตั้งต้นเป็นที่เดียวกันของทุก Service ทำให้ Client เขียนทับกันตอน generate ทั้ง repo ใน CI (`apps/*/generated/` ถูก gitignore) มีเทสต์ตรวจใน `libs/common/test/repo/prisma-outputs.spec.ts` (ยอมให้ใช้ค่าตั้งต้นได้ไม่เกิน 1 Service ระหว่างที่ Service นั้นยังไม่ได้ย้าย — ปัจจุบันคือ `job`)
+10. **ส่ง E03 ทุกการเปลี่ยนสถานะประกาศ** พร้อม `company_id` และ `entity_version` ที่เพิ่มขึ้น (รวมทุกแถวที่เข้า `VERIFYING` ซึ่งส่งคู่กับ `JobSubmitted`) และตรวจ `submission_id === current_submission_id` ก่อนรับ `JobVerified` — รายละเอียดใน [data-schema.md](data-schema.md) §8.2
 
 ## 5. Workflow การทำงาน
 

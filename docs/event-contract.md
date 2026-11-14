@@ -188,6 +188,8 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
 ```
 `application_effect` เป็นคำแนะนำให้ Lifecycle ตามตาราง README 5.1.2 (Lifecycle เป็นผู้ตัดสินใจเปลี่ยนใบสมัครเอง)
 
+**Job ต้องส่ง E03 ทุกการเปลี่ยนสถานะ** รวมทุกแถวที่เข้า `VERIFYING` (ส่งคู่กับ E01 ใน transaction เดียว ส่ง E03 ก่อน) — ค่า `application_effect` ของแถวเหล่านั้น: `PUBLISHED → VERIFYING` = `FREEZE` (มีใบสมัครค้างได้), `DRAFT`/`AUTO_REJECTED`/`ADMIN_REJECTED → VERIFYING` = `NONE`; `→ SUSPENDED` = `FREEZE`; `SUSPENDED → PUBLISHED|CLOSED` (RESTORE) = `UNFREEZE` (ดู [data-schema.md](data-schema.md) §8.2) — PM ตัดสิน 2026-11-15
+
 ### E04 `ReportThresholdReached`  (verification → job, notification)
 ```ts
 {
@@ -219,6 +221,8 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
 }
 ```
 ส่งทุกครั้งที่ **สถานะ หรือ Snapshot (ชื่อ/โลโก้/ป้าย Partner)** เปลี่ยน
+
+`status = SUSPENDED`: Job/Lifecycle **ไม่เปลี่ยนสถานะประกาศ** แต่ซ่อนและปิดรับสมัครตามเงื่อนไขร่วม "ประกาศ `PUBLISHED` และบริษัท `VERIFIED`" และ Lifecycle Freeze SLA ของใบสมัครที่ยังไม่ `IN_PROGRESS` จนกว่าจะกลับเป็น `VERIFIED` ([data-schema.md](data-schema.md) §8.2.2)
 
 ### E06 `CompanyEntitlementChanged`  (identity → job, verification)
 ```ts
@@ -265,6 +269,7 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
 {
   review_id: string
   application_id: string
+  student_user_id: string                       // เจ้าของรีวิว (ใช้ส่งต่อใน E10 เพื่อแจ้งนักศึกษา — เป็น user_id ไม่ใช่ข้อมูลส่วนบุคคล)
   company_id: string
   content: { title?: string, body: string }     // สแกน Blacklist + ข้อมูลติดต่อส่วนตัว
   rating: 1 | 2 | 3 | 4 | 5
@@ -277,6 +282,7 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
 ```ts
 {
   review_id: string
+  student_user_id: string                    // ส่งต่อจาก E09 — Notification ใช้แจ้งนักศึกษา (ไม่ต้องหาเจ้าของรีวิวเอง)
   decision: 'PUBLISH' | 'HOLD' | 'ADMIN_PUBLISH' | 'ADMIN_REMOVE'
   reasons: Array<{ code: 'BLACKLIST' | 'PERSONAL_CONTACT' | 'REPORTED' | 'ADMIN', detail?: string }>
   decided_by: 'SYSTEM' | 'ADMIN'
@@ -332,7 +338,7 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
 { user_id: string, role: string, company_id?: string, requested_at: string,
   mode: 'DELETE_AND_ANONYMIZE', anonymous_actor_id: string }
 ```
-`anonymous_actor_id` คือรหัสนิรนามที่ทุก Service ใช้แทน `actor_id` ใน `status_history` / `admin_audit_log` (README 5.11) ผู้รับตอบกลับด้วย Log เท่านั้น (ไม่ต้องมี Event ตอบรับ ในเฟสนี้)
+`anonymous_actor_id` คือรหัสนิรนามที่ทุก Service ใช้แทน `actor_id` ใน `status_history` / `admin_audit_log` (README 5.11) ผู้รับตอบกลับด้วย Log เท่านั้น (ไม่ต้องมี Event ตอบรับ ในเฟสนี้) — การแทนค่าทำได้ภายใต้ Authorized Anonymization Operation เท่านั้น (trigger append-only ยอมให้แก้เฉพาะคอลัมน์ actor ภายใน transaction ที่ตั้ง `internpath.anonymize`; ดู [data-schema.md](data-schema.md) §2.3)
 
 ### E16 `UserSuspended`  (identity → gateway, notification)
 ```ts
@@ -364,8 +370,8 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 | `ReportThresholdReached` | Admin | เสมอ |
 | `CompanyStatusChanged` | HR Owner | เมื่อสถานะ = `VERIFIED` / `NEED_MORE_INFO` / `REJECTED` / `SUSPENDED` |
 | `AdvisorLinkChanged` | อาจารย์ใหม่ (`LINKED` รอยืนยัน), นักศึกษา | ตาม `link_status` |
-| `ApplicationStatusChanged` | ตามตาราง Template ใน Notification Service (แยกตาม `to_status`) | ผู้รับ: นักศึกษา, HR, อาจารย์ ตามสถานะ |
-| `ReviewModerationResult` | นักศึกษา (เมื่อ `HOLD`/`ADMIN_REMOVE`), Admin (เมื่อ `HOLD`) | — |
+| `ApplicationStatusChanged` | ตาม **Recipient Matrix §6.1** (แยกตาม `to_status`) | ผู้รับ: นักศึกษา, HR, อาจารย์ ตามสถานะ |
+| `ReviewModerationResult` | นักศึกษา (`student_user_id` ใน payload; เมื่อ `HOLD`/`ADMIN_REMOVE`), Admin (เมื่อ `HOLD` — รายชื่อจาก `GET /internal/v1/admins`) | — |
 | `ReviewPublished` | HR ของบริษัท | มีรีวิวใหม่ |
 | `CertificateIssued` / `CertificateRevoked` | นักศึกษา | — |
 | `ReminderDue` | `audience` ใน Payload | — |
@@ -373,6 +379,31 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 | `CompanyFlagChanged` | Admin | `active=true` |
 | `UserDeletionRequested` | — | ลบกล่องข้อความ/บันทึกส่ง |
 | `UserSuspended` | — | บันทึกเท่านั้น |
+
+### 6.1 Recipient Matrix ของ `ApplicationStatusChanged` (E08) — ร่างโดย PM 2026-11-15 รอ Tester/PM ยืนยันก่อนทำ Notification
+
+✉ = In-App + อีเมล • In-app = In-App อย่างเดียว • — = ไม่แจ้ง (ตามสถานะ `to_status`)
+
+| `to_status` | นักศึกษา | HR | อาจารย์ |
+| :--- | :-: | :-: | :-: |
+| `PENDING` | — | ✉ | — |
+| `HR_ACCEPTED` | ✉ | — | — |
+| `ADVISOR_PENDING` | — | In-app | ✉ |
+| `ADVISOR_APPROVED` | ✉ | ✉ | — |
+| `IN_PROGRESS` | In-app | — | In-app |
+| `EVALUATED_PASS` | ✉ | — | In-app |
+| `EVALUATED_FAIL` | ✉ | — | ✉ |
+| `FAIL_DISPUTED` | — | In-app | ✉ |
+| `REEVALUATION_REQUESTED` | In-app | ✉ | — |
+| `COMPLETED`, `NO_EVALUATION` | In-app | In-app | In-app |
+| `TERMINATED` | ✉ | ✉ | ✉ |
+| `HR_REJECTED`, `ADVISOR_REJECTED`, `OFFER_RESCINDED`, `CANCELLED` | ✉ | — | In-app |
+| `STUDENT_DECLINED`, `WITHDRAWN` | — | In-app | In-app (เมื่อมีอาจารย์ผูกกับใบสมัคร) |
+| `EXPIRED` | In-app | In-app | — |
+
+กฎกลาง: **ไม่แจ้งผู้กระทำเอง** (`actor_user_id`) • ผู้รับฝั่งบริษัทใช้ `hr_user_ids` ถ้ามี ไม่มีให้ดึงสมาชิกบริษัทจาก `GET /internal/v1/companies/{id}/members` • ผู้ใช้ที่ถูกระงับ/ลบไม่ได้รับ • 1 แถวต่อ (`source_event_id`, `user_id`, `type`) (`notifications` UNIQUE) • เมื่อ Event เดียวมีหลายผู้รับ ผู้รับแต่ละคนได้ 1 รายการ
+
+**นโยบายอีเมลและการส่งซ้ำ (PM ตัดสิน 2026-11-15):** ก่อนส่งอีเมลให้เขียนแถว `delivery_logs` (unique ต่อ `notification_id` + `channel`) สถานะ `PENDING` แล้วจึงส่ง เมื่อส่งสำเร็จอัปเดตเป็น `SENT` — ถ้า Consumer ล้มหลังส่งแต่ก่อนบันทึกผล การ retry จะเห็นแถว `PENDING` และ **ส่งซ้ำ** (ยอมรับอีเมลซ้ำนานๆ ครั้ง ดีกว่าให้แจ้งเตือนเรื่อง deadline หาย); แถวที่เป็น `SENT` แล้วต้องไม่ส่งอีก
 
 ---
 
