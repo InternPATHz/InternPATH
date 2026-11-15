@@ -1,4 +1,4 @@
-// ตารางทั้งหมดให้เป็นไปตาม docs/data-schema.md (หัวข้อของ Service นี้)
+// Lifecycle Service — docs/data-schema.md §2, §6, §8.
 generator client {
   provider = "prisma-client-js"
   output   = "../generated/client"
@@ -10,9 +10,156 @@ datasource db {
   directUrl = env("LIFECYCLE_DIRECT_URL")   // direct (migration)
 }
 
-// ตารางร่วม (docs/data-schema.md §2.2) — ตารางเฉพาะของ Service เพิ่มต่อจากนี้ตามหัวข้อของ Service
+// ---------- Enums (ตรงกับ libs/contracts/src/enums.ts) ----------
+enum CompanyStatus {
+  PENDING
+  NEED_MORE_INFO
+  VERIFIED
+  REJECTED
+  SUSPENDED
+
+  @@map("company_status")
+}
+
+enum AdvisorLinkStatus {
+  NONE
+  ADVISOR_LINK_PENDING
+  LINKED
+
+  @@map("advisor_link_status")
+}
+
+enum JobStatus {
+  DRAFT
+  VERIFYING
+  PUBLISHED
+  PENDING_REVIEW
+  AUTO_REJECTED
+  ADMIN_REJECTED
+  SUSPENDED
+  REMOVED
+  CLOSED
+
+  @@map("job_status")
+}
+
+enum ApplicationStatus {
+  PENDING
+  HR_ACCEPTED
+  ADVISOR_PENDING
+  ADVISOR_APPROVED
+  IN_PROGRESS
+  EVALUATED_PASS
+  EVALUATED_FAIL
+  FAIL_DISPUTED
+  REEVALUATION_REQUESTED
+  COMPLETED
+  TERMINATED
+  NO_EVALUATION
+  HR_REJECTED
+  STUDENT_DECLINED
+  ADVISOR_REJECTED
+  OFFER_RESCINDED
+  WITHDRAWN
+  EXPIRED
+  CANCELLED
+
+  @@map("application_status")
+}
+
+enum AcademicResult {
+  ACADEMIC_PASS
+  ACADEMIC_FAIL
+  REPEAT_REQUIRED
+
+  @@map("academic_result")
+}
+
+enum TerminatedBy {
+  COMPANY
+  STUDENT
+  ADVISOR
+  ADMIN
+
+  @@map("terminated_by")
+}
+
+enum CertificateStatus {
+  VALID
+  REVOKED
+
+  @@map("certificate_status")
+}
+
+enum ReviewStatus {
+  SUBMITTED
+  PUBLISHED
+  HELD
+  REMOVED
+
+  @@map("review_status")
+}
+
+enum ProblemReportStatus {
+  OPEN
+  ACKNOWLEDGED
+  RESOLVED
+
+  @@map("problem_report_status")
+}
+
+enum CompanySuspendedDecision {
+  PENDING
+  CONTINUE
+  TERMINATE
+
+  @@map("company_suspended_decision")
+}
+
+enum EvaluationResult {
+  PASS
+  FAIL
+
+  @@map("evaluation_result")
+}
+
+enum DisputeDecision {
+  REEVALUATE
+  UPHOLD
+
+  @@map("dispute_decision")
+}
+
+enum ReviewOutcomeLabel {
+  PASS
+  FAIL
+  TERMINATED
+  NO_EVALUATION
+
+  @@map("review_outcome_label")
+}
+
+enum ProblemReportCategory {
+  WORKLOAD_OR_HOURS
+  NO_ALLOWANCE_AS_PROMISED
+  UNSAFE_OR_HARASSMENT
+  DIFFERENT_FROM_JOB_POST
+  OTHER
+
+  @@map("problem_report_category")
+}
+
+enum ProblemFollowUpAction {
+  MONITOR_COMPANY
+  TERMINATE
+  ESCALATE_COMPANY_REVIEW
+
+  @@map("problem_follow_up_action")
+}
+
+// ---------- ตารางร่วม (docs/data-schema.md §2.2) ----------
 model OutboxEvent {
-  id            String    @id @default(uuid()) @db.Uuid
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   type          String
   version       Int       @default(1)
   aggregateId   String    @map("aggregate_id") @db.Uuid
@@ -33,4 +180,322 @@ model ProcessedEvent {
 
   @@id([eventId, consumer])
   @@map("processed_events")
+}
+
+model StatusHistory {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entity        String   @db.Text
+  entityId      String   @map("entity_id") @db.Uuid
+  fromStatus    String?  @map("from_status") @db.Text
+  toStatus      String   @map("to_status") @db.Text
+  actorId       String?  @map("actor_id") @db.Uuid
+  actorRole     String   @map("actor_role") @db.Text
+  reason        String?  @db.Text
+  correlationId String   @map("correlation_id") @db.Uuid
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([entity, entityId, occurredAt])
+  @@map("status_history")
+}
+
+model AdminAuditLog {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  adminId       String   @map("admin_id") @db.Uuid
+  action        String   @db.Text
+  targetType    String   @map("target_type") @db.Text
+  targetId      String   @map("target_id") @db.Text
+  before        Json?    @map("before")
+  after         Json?    @map("after")
+  reason        String?  @db.Text
+  correlationId String   @map("correlation_id") @db.Uuid
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([targetType, targetId])
+  @@index([occurredAt])
+  @@map("admin_audit_log")
+}
+
+// ---------- ตารางเฉพาะของ Lifecycle Service (docs/data-schema.md §6) ----------
+model StudentProfile {
+  userId       String   @id @map("user_id") @db.Uuid
+  headline     String?  @db.Text
+  skills       String[] @default([])
+  bio          String?  @db.Text
+  portfolioUrl String?  @map("portfolio_url") @db.Text
+  major        String   @db.Text
+  yearLevel    Int      @map("year_level")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("student_profiles")
+}
+
+model Resume {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentUserId String    @map("student_user_id") @db.Uuid
+  objectKey     String    @map("object_key") @db.Text
+  mime          String    @default("application/pdf") @db.Text
+  sizeBytes     Int       @map("size_bytes")
+  isPrimary     Boolean   @default(false) @map("is_primary")
+  uploadedAt    DateTime  @default(now()) @map("uploaded_at") @db.Timestamptz(6)
+  deletedAt     DateTime? @map("deleted_at") @db.Timestamptz(6)
+
+  @@index([studentUserId])
+  @@map("resumes")
+}
+
+model StudentAdvisorLink {
+  studentUserId String            @id @map("student_user_id") @db.Uuid
+  advisorUserId String?           @map("advisor_user_id") @db.Uuid
+  linkStatus    AdvisorLinkStatus @default(NONE) @map("link_status")
+  entityVersion Int               @default(1) @map("entity_version")
+  updatedAt     DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("student_advisor_links")
+}
+
+model CompanySnapshot {
+  companyId         String        @id @map("company_id") @db.Uuid
+  name              String        @db.Text
+  logoKey           String?       @map("logo_key") @db.Text
+  status            CompanyStatus @map("status")
+  universityPartner Boolean       @default(false) @map("university_partner")
+  entityVersion     Int           @default(1) @map("entity_version")
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("company_snapshots")
+}
+
+model JobSnapshot {
+  jobId         String    @id @map("job_id") @db.Uuid
+  companyId     String    @map("company_id") @db.Uuid
+  status        JobStatus @map("status")
+  targetMajors  String[]  @default([]) @map("target_majors")
+  title         String    @db.Text
+  entityVersion Int       @default(1) @map("entity_version")
+  updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("job_snapshots")
+}
+
+model Application {
+  id                       String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId                    String                    @map("job_id") @db.Uuid
+  companyId                String                    @map("company_id") @db.Uuid
+  studentUserId            String                    @map("student_user_id") @db.Uuid
+  advisorUserId            String?                   @map("advisor_user_id") @db.Uuid
+  resumeId                 String?                   @map("resume_id") @db.Uuid
+  resumeConsentId          String?                   @map("resume_consent_id") @db.Uuid
+  coverLetter              String?                   @map("cover_letter") @db.Text
+  majorMismatch            Boolean                   @default(false) @map("major_mismatch")
+  status                   ApplicationStatus         @default(PENDING) @map("status")
+  frozen                   Boolean                   @default(false) @map("frozen")
+  frozenAt                 DateTime?                 @map("frozen_at") @db.Timestamptz(6)
+  slaPausedSeconds         Int                       @default(0) @map("sla_paused_seconds")
+  companySuspendedDecision CompanySuspendedDecision? @map("company_suspended_decision")
+  flaggedForAdvisor        Boolean                   @default(false) @map("flagged_for_advisor")
+  startDate                DateTime?                 @map("start_date") @db.Date
+  endDate                  DateTime?                 @map("end_date") @db.Date
+  actualStartDate          DateTime?                 @map("actual_start_date") @db.Date
+  actualEndDate            DateTime?                 @map("actual_end_date") @db.Date
+  quotaReserved            Boolean                   @default(false) @map("quota_reserved")
+  statusChangedAt          DateTime                  @default(now()) @map("status_changed_at") @db.Timestamptz(6)
+  terminatedBy             TerminatedBy?             @map("terminated_by")
+  terminateReason          String?                   @map("terminate_reason") @db.Text
+  withdrawnReason          String?                   @map("withdrawn_reason") @db.Text
+  rescindReason            String?                   @map("rescind_reason") @db.Text
+  advisorRejectReason      String?                   @map("advisor_reject_reason") @db.Text
+  academicResult           AcademicResult?           @map("academic_result")
+  academicNote             String?                   @map("academic_note") @db.Text
+  academicRecordedAt       DateTime?                 @map("academic_recorded_at") @db.Timestamptz(6)
+  reevaluationUsed         Boolean                   @default(false) @map("reevaluation_used")
+  version                  Int                       @default(1) @map("version")
+  entityVersion            Int                       @default(1) @map("entity_version")
+  createdAt                DateTime                  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt                DateTime                  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  evaluations              Evaluation[]
+  failDisputes             FailDispute[]
+  certificate              Certificate?
+  review                   Review?
+  problemReports           ProblemReport[]
+
+  @@index([status, statusChangedAt])
+  @@index([advisorUserId, status])
+  @@index([companyId, status])
+  @@index([studentUserId, status])
+  @@map("applications")
+}
+
+model Evaluation {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String           @map("application_id") @db.Uuid
+  round         Int              @map("round")
+  result        EvaluationResult @map("result")
+  reason        String?          @map("reason") @db.Text
+  scoreNote     String?          @map("score_note") @db.Text
+  evaluatedBy   String           @map("evaluated_by") @db.Uuid
+  evaluatedAt   DateTime         @default(now()) @map("evaluated_at") @db.Timestamptz(6)
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  application   Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@unique([applicationId, round])
+  @@map("evaluations")
+}
+
+model FailDispute {
+  id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String           @map("application_id") @db.Uuid
+  statement     String           @db.Text
+  createdBy     String           @map("created_by") @db.Uuid
+  createdAt     DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  decision      DisputeDecision? @map("decision")
+  decidedBy     String?          @map("decided_by") @db.Uuid
+  decidedAt     DateTime?        @map("decided_at") @db.Timestamptz(6)
+  decisionNote  String?          @map("decision_note") @db.Text
+  updatedAt     DateTime         @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  application   Application      @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId])
+  @@map("fail_disputes")
+}
+
+model Certificate {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  certificateCode     String            @unique @map("certificate_code") @db.Text
+  applicationId       String            @unique @map("application_id") @db.Uuid
+  studentUserId       String            @map("student_user_id") @db.Uuid
+  companyId           String            @map("company_id") @db.Uuid
+  holderNameSnapshot  String            @map("holder_name_snapshot") @db.Text
+  companyNameSnapshot String            @map("company_name_snapshot") @db.Text
+  jobTitleSnapshot    String            @map("job_title_snapshot") @db.Text
+  periodStart         DateTime          @map("period_start") @db.Date
+  periodEnd           DateTime          @map("period_end") @db.Date
+  actualDays          Int               @map("actual_days")
+  pdfObjectKey        String            @map("pdf_object_key") @db.Text
+  pdfSha256           String            @map("pdf_sha256") @db.VarChar(64)
+  status              CertificateStatus @default(VALID) @map("status")
+  issuedBy            String            @map("issued_by") @db.Uuid
+  issuedAt            DateTime          @default(now()) @map("issued_at") @db.Timestamptz(6)
+  revokedBy           String?           @map("revoked_by") @db.Uuid
+  revokedByRole       String?           @map("revoked_by_role") @db.Text
+  revokeReason        String?           @map("revoke_reason") @db.Text
+  revokedAt           DateTime?         @map("revoked_at") @db.Timestamptz(6)
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  application         Application       @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+
+  @@index([studentUserId])
+  @@index([companyId])
+  @@map("certificates")
+}
+
+model Review {
+  id            String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId String             @unique @map("application_id") @db.Uuid
+  companyId     String             @map("company_id") @db.Uuid
+  studentUserId String             @map("student_user_id") @db.Uuid
+  rating        Int                @map("rating")
+  title         String?            @map("title") @db.Text
+  body          String             @map("body") @db.Text
+  anonymous     Boolean            @default(false) @map("anonymous")
+  displayMajor  String?            @map("display_major") @db.Text
+  displayYear   Int?               @map("display_year")
+  outcomeLabel  ReviewOutcomeLabel @map("outcome_label")
+  status        ReviewStatus       @default(SUBMITTED) @map("status")
+  publishedAt   DateTime?          @map("published_at") @db.Timestamptz(6)
+  createdAt     DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  application   Application        @relation(fields: [applicationId], references: [id], onDelete: Restrict)
+  reply         ReviewReply?
+
+  @@index([companyId, status])
+  @@index([studentUserId])
+  @@map("reviews")
+}
+
+model ReviewReply {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reviewId  String   @unique @map("review_id") @db.Uuid
+  companyId String   @map("company_id") @db.Uuid
+  repliedBy String   @map("replied_by") @db.Uuid
+  body      String   @map("body") @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@map("review_replies")
+}
+
+model CompanyReviewStats {
+  companyId     String   @id @map("company_id") @db.Uuid
+  reviewCount   Int      @default(0) @map("review_count")
+  ratingSum     Int      @default(0) @map("rating_sum")
+  entityVersion Int      @default(1) @map("entity_version")
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("company_review_stats")
+}
+
+model ProblemReport {
+  id             String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId  String                 @map("application_id") @db.Uuid
+  studentUserId  String                 @map("student_user_id") @db.Uuid
+  advisorUserId  String?                @map("advisor_user_id") @db.Uuid
+  category       ProblemReportCategory  @map("category")
+  detail         String                 @map("detail") @db.Text
+  status         ProblemReportStatus    @default(OPEN) @map("status")
+  acknowledgedBy String?                @map("acknowledged_by") @db.Uuid
+  acknowledgedAt DateTime?              @map("acknowledged_at") @db.Timestamptz(6)
+  resolvedBy     String?                @map("resolved_by") @db.Uuid
+  resolvedAt     DateTime?              @map("resolved_at") @db.Timestamptz(6)
+  resolutionNote String?                @map("resolution_note") @db.Text
+  followUpAction ProblemFollowUpAction? @map("follow_up_action")
+  dueAt          DateTime               @map("due_at") @db.Timestamptz(6)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  application    Application            @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([advisorUserId, status])
+  @@index([status, dueAt])
+  @@map("problem_reports")
+}
+
+model ReapplyUnlock {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  studentUserId String    @map("student_user_id") @db.Uuid
+  unlockedBy    String    @map("unlocked_by") @db.Uuid
+  reason        String    @map("reason") @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  usedAt        DateTime? @map("used_at") @db.Timestamptz(6)
+
+  @@index([studentUserId])
+  @@map("reapply_unlocks")
+}
+
+model ReminderLog {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entityId  String   @map("entity_id") @db.Uuid
+  type      String   @map("type") @db.Text
+  dueDate   DateTime @map("due_date") @db.Date
+  sentAt    DateTime @default(now()) @map("sent_at") @db.Timestamptz(6)
+
+  @@unique([entityId, type, dueDate])
+  @@map("reminder_log")
+}
+
+model ConfigOverride {
+  key         String   @id @db.Text
+  value       String   @db.Text
+  description String?  @db.Text
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("config_overrides")
 }
