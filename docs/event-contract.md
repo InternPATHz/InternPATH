@@ -203,6 +203,12 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
 }
 ```
 **ผลต่อประกาศ (Job):** `PUBLISHED → SUSPENDED` และ `CLOSED → SUSPENDED` (PM ตัดสิน 2026-11-15: ประกาศ `CLOSED` รายงานได้ตาม R5-G01) — Job เก็บสถานะเดิมใน `suspended_from_status` (`PUBLISHED` หรือ `CLOSED`) แล้วส่ง E03 (`application_effect=FREEZE`, `reason_code=REPORT_THRESHOLD`); `JobVerified.RESTORE` คืนสถานะเดิมตาม `suspended_from_status` (ถ้าเลย `application_deadline` ระหว่างระงับ ⇒ `CLOSED`), `REMOVE` ⇒ `REMOVED` — ตาราง Map ใน [data-schema.md](data-schema.md) §8.2
+
+**คีย์ของรอบรายงาน (Job — PM ตัดสิน 2026-11-16):** `queue_item_id` คือตัวระบุรอบที่ไม่ซ้ำกัน (หนึ่งรอบ = หนึ่งรายการคิว) ไม่ใช่ `event_id` Job เก็บทุก `queue_item_id` ที่เคยรับของแต่ละประกาศ พร้อมสถานะ `ACTIVE`/`CLOSED` และ `reached_at` (เช่นตาราง `report_rounds`) แล้วใช้กติกานี้ — ข้ามพร้อม log ไม่ throw ไม่ retry ทุกกรณี:
+1. **E04 ซ้ำ:** `queue_item_id` เคยรับแล้ว (รอบ `ACTIVE` หรือ `CLOSED`) ⇒ ข้าม แม้ส่งซ้ำด้วย `event_id` ใหม่และแม้ไม่มีรอบ `ACTIVE` แล้ว (เช่นหลัง `RESTORE`)
+2. **E04 มาช้าข้ามรอบ:** `reached_at` เก่ากว่ารอบล่าสุดที่เคยรับของประกาศเดียวกัน ⇒ ข้าม
+3. **E04 ใหม่ที่ผ่านข้อ 1–2:** ประกาศอยู่ `PUBLISHED`/`CLOSED` ⇒ ระงับและเปิดรอบ `ACTIVE`; สถานะอื่นให้ข้ามพร้อม log
+4. **E02 `REMOVE`/`RESTORE`:** ปิดรอบ (`ACTIVE → CLOSED`) เฉพาะเมื่อ `queue_item_id` ตรงกับรอบ `ACTIVE` ของประกาศนั้น — ไม่ตรง ไม่มีรอบ `ACTIVE` หรือประกาศไม่ได้ถูกระงับอยู่ ⇒ ข้าม
 > **หมายเหตุ:** การแจ้ง "อาจารย์ที่ปรึกษาของนักศึกษาที่มีใบสมัครกับประกาศนั้น" ทำโดย Lifecycle เมื่อรับ `JobStatusChanged` (to=`SUSPENDED`) เพราะ Lifecycle รู้ใบสมัคร Notification ที่รับ E04 แจ้งเฉพาะ Admin
 
 ### E05 `CompanyStatusChanged`  (identity → job, lifecycle, verification, notification)
