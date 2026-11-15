@@ -84,7 +84,8 @@ export class AuthService {
       if (isUniqueError(error)) throw new AppException('ACCOUNT_EXISTS', 'อีเมลนี้ลงทะเบียนแล้ว', 409);
       throw error;
     }
-    await this.mailer.send(normalized, 'verify-email', token);
+    try { await this.mailer.send(normalized, 'verify-email', token); }
+    catch { /* The account is committed; do not report registration as failed. */ }
   }
 
   registerStudent(body: RegisterStudentRequest): Promise<void> {
@@ -118,7 +119,8 @@ export class AuthService {
       if (isUniqueError(error)) throw new AppException('ACCOUNT_OR_COMPANY_EXISTS', 'อีเมลหรือเลขทะเบียนนี้มีในระบบแล้ว', 409);
       throw error;
     }
-    await this.mailer.send(email, 'verify-email', token);
+    try { await this.mailer.send(email, 'verify-email', token); }
+    catch { /* The account is committed; do not report registration as failed. */ }
   }
 
   async verifyEmail(token: string): Promise<void> {

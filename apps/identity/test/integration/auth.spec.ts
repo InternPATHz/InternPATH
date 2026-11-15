@@ -35,7 +35,12 @@ describe('Identity Auth API (Postgres จริง)', function () {
   let app: INestApplication;
   let db: PrismaService;
   const emails: Array<{ email: string; purpose: string; token: string }> = [];
-  const mailer = { send: async (email: string, purpose: string, token: string) => { emails.push({ email, purpose, token }); } };
+  let failVerificationEmail = false;
+  let failedSendAttempts = 0;
+  const mailer = { send: async (email: string, purpose: string, token: string) => {
+    if (failVerificationEmail && purpose === 'verify-email') { failedSendAttempts++; throw new Error('SMTP unavailable'); }
+    emails.push({ email, purpose, token });
+  } };
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
 
   before(async function () {
@@ -124,6 +129,37 @@ describe('Identity Auth API (Postgres จริง)', function () {
     expect(claims.company_role).to.equal('OWNER');
     await request(app.getHttpServer()).post('/v1/auth/logout').set('Authorization', `Bearer ${login.body.access_token}`).send({ refresh_token: login.body.refresh_token }).expect(204);
     await request(app.getHttpServer()).post('/v1/auth/refresh').send({ refresh_token: login.body.refresh_token }).expect(401);
+  });
+
+  it('keeps committed student, advisor and company accounts when verification email fails', async () => {
+    const cases = [
+      { route: 'student', email: 'mail-fail-student@test.ac.th', conflict: 'ACCOUNT_EXISTS', body: {
+        email: 'mail-fail-student@test.ac.th', password: 'correct horse battery', full_name: 'Student Mail Failure',
+        student_code: 'MAIL-FAIL-STUDENT', major: 'Computer Science', year_level: 3, accept_privacy: true,
+      } },
+      { route: 'advisor', email: 'mail-fail-advisor@test.ac.th', conflict: 'ACCOUNT_EXISTS', body: {
+        email: 'mail-fail-advisor@test.ac.th', password: 'correct horse battery', full_name: 'Advisor Mail Failure',
+        department: 'Science', accept_privacy: true,
+      } },
+      { route: 'company', email: 'mail-fail-owner@test-company.com', conflict: 'ACCOUNT_OR_COMPANY_EXISTS', body: {
+        company: { name: 'Mail Failure Company', registration_no: 'MAIL-FAIL-COMPANY' },
+        user: { email: 'mail-fail-owner@test-company.com', password: 'correct horse battery', full_name: 'Owner Mail Failure' },
+        accept_privacy: true,
+      } },
+    ];
+    const attemptsBefore = failedSendAttempts;
+    failVerificationEmail = true;
+    try {
+      for (const item of cases) {
+        await request(app.getHttpServer()).post(`/v1/auth/register/${item.route}`).send(item.body).expect(201);
+        const user = await db.user.findUniqueOrThrow({ where: { email: item.email } });
+        expect(user.status).to.equal('PENDING_EMAIL');
+        expect(await db.emailToken.count({ where: { userId: user.id, purpose: 'VERIFY_EMAIL' } })).to.equal(1);
+        const retry = await request(app.getHttpServer()).post(`/v1/auth/register/${item.route}`).send(item.body).expect(409);
+        expect(retry.body.error.code).to.equal(item.conflict);
+      }
+    } finally { failVerificationEmail = false; }
+    expect(failedSendAttempts - attemptsBefore).to.equal(cases.length);
   });
 
   it('password reset is one-time and revokes sessions; unknown address gets same response', async () => {
