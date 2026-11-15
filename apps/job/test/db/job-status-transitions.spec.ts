@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { OutboxWriter, processDelivery } from '@internpath/common';
-import type { EventEnvelope, JobStatusChangedPayload } from '@internpath/contracts';
+import type { EventEnvelope, JobStatus, JobStatusChangedPayload } from '@internpath/contracts';
 import { expect } from 'chai';
 import sinon from 'sinon';
 import { JobStatusTransitionService } from '../../src/status/job-status-transition.service';
 import type { Tx } from '../../src/prisma/types';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
 import { jobVerified, NOW, seedJob } from '../support/job-events';
+
+const TIMESTAMPS = {
+  publishedAt: new Date('2026-11-14T10:00:00.000Z'),
+  verifyingSince: new Date('2026-11-15T09:00:00.000Z'),
+};
 
 describe('Job atomic status/history/outbox foundation (PostgreSQL)', function () {
   this.timeout(60000);
@@ -44,8 +49,10 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
     });
 
   it('commits the status, one version increment, history, typed E03 and processed marker together', async () => {
-    const before = await seedJob(db.prisma);
+    const before = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
     const env = jobVerified(before.id, before.currentSubmissionId!);
+    // The supplied transaction timestamp must win over the current wall clock.
+    sandbox.clock.tick(1000);
     const result = await deliver(env, async (tx) => {
       expect(
         await transitions.change(
@@ -55,9 +62,10 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
             to: 'PUBLISHED',
             correlationId: env.correlation_id,
             historyReason: 'APPROVE',
+            actorRole: 'SYSTEM',
             applicationEffect: 'UNFREEZE',
           },
-          new Date(),
+          NOW,
         ),
       ).to.equal(true);
     });
@@ -67,6 +75,9 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
       entityVersion: 11,
       version: 5,
     });
+    const after = await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.publishedAt).to.deep.equal(NOW);
+    expect(after.verifyingSince).to.equal(null);
     expect(await counts(before.id, env.event_id)).to.deep.equal({
       history: 1,
       outbox: 1,
@@ -108,7 +119,7 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
 
   for (const stage of ['history', 'outbox', 'after-outbox'] as const) {
     it(`rolls back status, history, outbox and processed marker when ${stage} fails`, async () => {
-      const before = await seedJob(db.prisma);
+      const before = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
       const env = jobVerified(before.id, before.currentSubmissionId!);
       if (stage === 'outbox')
         sandbox.stub(writer, 'add').rejects(new Error('Intentional outbox failure'));
@@ -134,6 +145,7 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
             to: 'PUBLISHED',
             correlationId: env.correlation_id,
             historyReason: 'APPROVE',
+            actorRole: 'SYSTEM',
           },
           new Date(),
         );
@@ -152,7 +164,7 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
   }
 
   it('does not lose a current decision when an unrelated edit changes optimistic version', async () => {
-    const before = await seedJob(db.prisma);
+    const before = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
     const env = jobVerified(before.id, before.currentSubmissionId!);
     await db.prisma.job.update({
       where: { id: before.id },
@@ -166,11 +178,15 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
           to: 'PUBLISHED',
           correlationId: env.correlation_id,
           historyReason: 'APPROVE',
+          actorRole: 'SYSTEM',
         },
         new Date(),
       );
     });
     expect(result).to.deep.equal({ kind: 'retry', nextCount: 1 });
+    const unchanged = await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } });
+    expect(unchanged.publishedAt).to.deep.equal(before.publishedAt);
+    expect(unchanged.verifyingSince).to.deep.equal(before.verifyingSince);
     expect(await counts(before.id, env.event_id)).to.deep.equal({
       history: 0,
       outbox: 0,
@@ -186,6 +202,7 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
             to: 'PUBLISHED',
             correlationId: env.correlation_id,
             historyReason: 'APPROVE',
+            actorRole: 'SYSTEM',
           },
           new Date(),
         );
@@ -197,10 +214,13 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
       version: 6,
       entityVersion: 11,
     });
+    const after = await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.publishedAt).to.deep.equal(NOW);
+    expect(after.verifyingSince).to.equal(null);
   });
 
   it('stale status/submission observations cannot write history, outbox or another increment', async () => {
-    const before = await seedJob(db.prisma);
+    const before = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
     await db.prisma.job.update({
       where: { id: before.id },
       data: { currentSubmissionId: randomUUID(), version: { increment: 1 } },
@@ -216,6 +236,7 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
               to: 'PUBLISHED',
               correlationId: env.correlation_id,
               historyReason: 'APPROVE',
+              actorRole: 'SYSTEM',
             },
             new Date(),
           ),
@@ -230,6 +251,71 @@ describe('Job atomic status/history/outbox foundation (PostgreSQL)', function ()
     expect(await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } })).to.include({
       status: 'VERIFYING',
       entityVersion: 10,
+    });
+    const after = await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.publishedAt).to.deep.equal(before.publishedAt);
+    expect(after.verifyingSince).to.deep.equal(before.verifyingSince);
+  });
+
+  for (const [from, to] of [
+    ['SUSPENDED', 'PUBLISHED'],
+    ['PUBLISHED', 'CLOSED'],
+  ] as const satisfies ReadonlyArray<readonly [JobStatus, JobStatus]>) {
+    it(`${from} -> ${to} preserves publication and verification timestamps`, async () => {
+      // Exercise the generic helper only; no RESTORE consumer path is registered.
+      const before = await seedJob(db.prisma, from, TIMESTAMPS);
+      const env = jobVerified(before.id, before.currentSubmissionId!);
+      expect(
+        await deliver(env, async (tx) => {
+          expect(
+            await transitions.change(
+              tx,
+              before,
+              {
+                to,
+                correlationId: env.correlation_id,
+                historyReason: 'Timestamp preservation regression',
+                actorRole: 'SYSTEM',
+              },
+              NOW,
+            ),
+          ).to.equal(true);
+        }),
+      ).to.deep.equal({ kind: 'ack' });
+      const after = await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } });
+      expect(after.status).to.equal(to);
+      expect(after.publishedAt).to.deep.equal(before.publishedAt);
+      expect(after.verifyingSince).to.deep.equal(before.verifyingSince);
+    });
+  }
+
+  it('a no-op transition preserves all timestamps without history or outbox writes', async () => {
+    const before = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
+    const env = jobVerified(before.id, before.currentSubmissionId!);
+    expect(
+      await deliver(env, async (tx) => {
+        expect(
+          await transitions.change(
+            tx,
+            before,
+            {
+              to: 'VERIFYING',
+              correlationId: env.correlation_id,
+              historyReason: 'No-op regression',
+              actorRole: 'SYSTEM',
+            },
+            NOW,
+          ),
+        ).to.equal(false);
+      }),
+    ).to.deep.equal({ kind: 'ack' });
+    expect(await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } })).to.deep.equal(
+      before,
+    );
+    expect(await counts(before.id, env.event_id)).to.deep.equal({
+      history: 0,
+      outbox: 0,
+      marker: 1,
     });
   });
 });

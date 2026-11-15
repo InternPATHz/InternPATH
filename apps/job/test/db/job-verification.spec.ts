@@ -5,7 +5,7 @@ import {
   type EventConsumer,
   type Subscription,
 } from '@internpath/common';
-import type { JobStatus, JobVerifiedPayload } from '@internpath/contracts';
+import type { ApplicationEffect, JobStatus, JobVerifiedPayload } from '@internpath/contracts';
 import { Logger } from '@nestjs/common';
 import { expect } from 'chai';
 import sinon from 'sinon';
@@ -20,15 +20,30 @@ const CASES: Array<{
   decision: JobVerifiedPayload['decision'];
   from: JobStatus;
   to: JobStatus;
-  effect?: string;
+  effect: ApplicationEffect;
 }> = [
   { decision: 'APPROVE', from: 'VERIFYING', to: 'PUBLISHED', effect: 'UNFREEZE' },
   { decision: 'PENDING_REVIEW', from: 'VERIFYING', to: 'PENDING_REVIEW', effect: 'FREEZE' },
-  { decision: 'AUTO_REJECT', from: 'VERIFYING', to: 'AUTO_REJECTED' },
+  {
+    decision: 'AUTO_REJECT',
+    from: 'VERIFYING',
+    to: 'AUTO_REJECTED',
+    effect: 'CANCEL_PRE_APPROVAL',
+  },
   { decision: 'APPEAL_ACCEPTED', from: 'AUTO_REJECTED', to: 'PENDING_REVIEW', effect: 'FREEZE' },
   { decision: 'ADMIN_APPROVE', from: 'PENDING_REVIEW', to: 'PUBLISHED', effect: 'UNFREEZE' },
-  { decision: 'ADMIN_REJECT', from: 'PENDING_REVIEW', to: 'ADMIN_REJECTED' },
+  {
+    decision: 'ADMIN_REJECT',
+    from: 'PENDING_REVIEW',
+    to: 'ADMIN_REJECTED',
+    effect: 'CANCEL_PRE_APPROVAL',
+  },
 ];
+
+const TIMESTAMPS = {
+  publishedAt: new Date('2026-11-14T10:00:00.000Z'),
+  verifyingSince: new Date('2026-11-15T09:00:00.000Z'),
+};
 
 describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer transactions)', function () {
   this.timeout(60000);
@@ -75,45 +90,56 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
   });
 
   for (const c of CASES) {
-    it(`${c.decision}: ${c.from} -> ${c.to}, one increment/history/E03; stale distinct repeat is a no-op`, async () => {
-      const before = await seedJob(db.prisma, c.from);
-      const env = jobVerified(before.id, before.currentSubmissionId!, c.decision);
-      // Input reasons may contain sensitive matched content; do not forward them to E03 or logs.
-      env.payload.reasons = [
-        { code: 'TEST', detail: 'Private decision detail', matched_text: 'Private match' },
-      ];
-      expect(await deliver(env)).to.deep.equal({ kind: 'ack' });
-      const after = await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } });
-      expect(after).to.include({ status: c.to, version: 5, entityVersion: 11 });
-      const rows = await writes(before.id);
-      expect(rows.history).to.have.length(1);
-      expect(rows.outbox).to.have.length(1);
-      expect(rows.history[0]).to.include({
-        fromStatus: c.from,
-        toStatus: c.to,
-        reason: c.decision,
-        correlationId: env.correlation_id,
+    for (const decidedBy of ['SYSTEM', 'ADMIN'] as const) {
+      it(`${c.decision} by ${decidedBy}: ${c.from} -> ${c.to}, timestamps/actor/effect and idempotent repeats`, async () => {
+        const before = await seedJob(db.prisma, c.from, TIMESTAMPS);
+        const env = jobVerified(before.id, before.currentSubmissionId!, c.decision);
+        env.payload.decided_by = decidedBy;
+        // Input reasons may contain sensitive matched content; do not forward them to E03 or logs.
+        env.payload.reasons = [
+          { code: 'TEST', detail: 'Private decision detail', matched_text: 'Private match' },
+        ];
+        expect(await deliver(env)).to.deep.equal({ kind: 'ack' });
+        const after = await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } });
+        expect(after).to.include({ status: c.to, version: 5, entityVersion: 11 });
+        expect(after.publishedAt).to.deep.equal(c.to === 'PUBLISHED' ? NOW : before.publishedAt);
+        expect(after.verifyingSince).to.deep.equal(
+          c.from === 'VERIFYING' ? null : before.verifyingSince,
+        );
+        const rows = await writes(before.id);
+        expect(rows.history).to.have.length(1);
+        expect(rows.outbox).to.have.length(1);
+        expect(rows.history[0]).to.include({
+          fromStatus: c.from,
+          toStatus: c.to,
+          reason: c.decision,
+          correlationId: env.correlation_id,
+          actorRole: decidedBy === 'ADMIN' ? 'PLATFORM_ADMIN' : 'SYSTEM',
+          actorId: null,
+        });
+        expect(rows.outbox[0].payload).to.deep.equal({
+          job_id: before.id,
+          company_id: before.companyId,
+          from_status: c.from,
+          to_status: c.to,
+          entity_version: 11,
+          changed_at: NOW.toISOString(),
+          application_effect: c.effect,
+        });
+        expect(rows.outbox[0].correlationId).to.equal(env.correlation_id);
+        sandbox.clock.tick(1000);
+        expect(await deliver(env)).to.deep.equal({ kind: 'ack' });
+        expect(await deliver({ ...env, event_id: randomUUID() })).to.deep.equal({ kind: 'ack' });
+        expect(await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } })).to.deep.equal(
+          after,
+        );
+        expect(await writes(before.id)).to.deep.equal(rows);
+        expect(warn.calledOnce).to.equal(true);
       });
-      expect(rows.outbox[0].payload).to.deep.equal({
-        job_id: before.id,
-        company_id: before.companyId,
-        from_status: c.from,
-        to_status: c.to,
-        entity_version: 11,
-        changed_at: NOW.toISOString(),
-        ...(c.effect ? { application_effect: c.effect } : {}),
-      });
-      expect(rows.outbox[0].correlationId).to.equal(env.correlation_id);
-      expect(await deliver({ ...env, event_id: randomUUID() })).to.deep.equal({ kind: 'ack' });
-      expect(await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } })).to.deep.equal(
-        after,
-      );
-      expect(await writes(before.id)).to.deep.equal(rows);
-      expect(warn.calledOnce).to.equal(true);
-    });
+    }
 
     it(`${c.decision}: mismatched current_submission_id is ignored without transition writes`, async () => {
-      const before = await seedJob(db.prisma, c.from);
+      const before = await seedJob(db.prisma, c.from, TIMESTAMPS);
       const env = jobVerified(before.id, randomUUID(), c.decision);
       expect(await deliver(env)).to.deep.equal({ kind: 'ack' });
       expect(await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } })).to.deep.equal(
@@ -127,7 +153,7 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
     });
 
     it(`${c.decision}: mismatched status is ignored without transition writes`, async () => {
-      const before = await seedJob(db.prisma, 'DRAFT');
+      const before = await seedJob(db.prisma, 'DRAFT', TIMESTAMPS);
       expect(
         await deliver(jobVerified(before.id, before.currentSubmissionId!, c.decision)),
       ).to.deep.equal({ kind: 'ack' });
@@ -140,7 +166,7 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
   }
 
   it('concurrent duplicate event IDs produce one transition and one processed marker', async () => {
-    const before = await seedJob(db.prisma);
+    const before = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
     const env = jobVerified(before.id, before.currentSubmissionId!);
     const outcomes = await Promise.all(Array.from({ length: 8 }, () => deliver(env)));
     expect(outcomes.every((o) => o.kind === 'ack')).to.equal(true);
@@ -150,13 +176,18 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
       entityVersion: 11,
       version: 5,
     });
+    const after = await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.publishedAt).to.deep.equal(NOW);
+    expect(after.verifyingSince).to.equal(null);
     const rows = await writes(before.id);
     expect(rows.history).to.have.length(1);
     expect(rows.outbox).to.have.length(1);
   });
 
   it('conflicting APPROVE/AUTO_REJECT decisions commit exactly one transition for each of 40 Jobs', async () => {
-    const jobs = await Promise.all(Array.from({ length: 40 }, () => seedJob(db.prisma)));
+    const jobs = await Promise.all(
+      Array.from({ length: 40 }, () => seedJob(db.prisma, 'VERIFYING', TIMESTAMPS)),
+    );
     const outcomes = await Promise.all(
       jobs.flatMap((job) => [
         deliver(jobVerified(job.id, job.currentSubmissionId!, 'APPROVE')),
@@ -172,7 +203,10 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
         (r) =>
           r.entityVersion === 11 &&
           r.version === 5 &&
-          ['PUBLISHED', 'AUTO_REJECTED'].includes(r.status),
+          ['PUBLISHED', 'AUTO_REJECTED'].includes(r.status) &&
+          r.verifyingSince === null &&
+          r.publishedAt?.getTime() ===
+            (r.status === 'PUBLISHED' ? NOW : TIMESTAMPS.publishedAt).getTime(),
       ),
     ).to.equal(true);
     expect(await db.prisma.statusHistory.count({ where: { entityId: { in: ids } } })).to.equal(40);
@@ -180,7 +214,7 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
   });
 
   it('a submission replaced after the actual read is still rejected by the conditional update', async () => {
-    const before = await seedJob(db.prisma);
+    const before = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
     let read = false;
     let readReady!: () => void;
     const firstRead = new Promise<void>((resolve) => {
@@ -234,6 +268,9 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
       status: 'VERIFYING',
       entityVersion: 10,
     });
+    const after = await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } });
+    expect(after.publishedAt).to.deep.equal(before.publishedAt);
+    expect(after.verifyingSince).to.deep.equal(before.verifyingSince);
   });
 
   for (const decision of ['RESTORE', 'REMOVE', 'UNKNOWN_DECISION'] as const) {

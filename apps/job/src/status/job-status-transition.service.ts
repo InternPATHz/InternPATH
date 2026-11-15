@@ -1,5 +1,10 @@
 import { asUuid, OutboxWriter } from '@internpath/common';
-import type { ApplicationEffect, JobStatus, JobStatusChangedPayload } from '@internpath/contracts';
+import type {
+  ActorRole,
+  ApplicationEffect,
+  JobStatus,
+  JobStatusChangedPayload,
+} from '@internpath/contracts';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Job } from '../../generated/client';
 import type { Tx } from '../prisma/types';
@@ -8,6 +13,7 @@ interface Transition {
   to: JobStatus;
   correlationId: string;
   historyReason: string;
+  actorRole: Extract<ActorRole, 'SYSTEM' | 'PLATFORM_ADMIN'>;
   reasonCode?: string;
   applicationEffect?: ApplicationEffect;
   suspendedFromStatus?: JobStatus | null;
@@ -38,6 +44,11 @@ export class JobStatusTransitionService {
         status: transition.to,
         version: { increment: 1 },
         entityVersion: { increment: 1 },
+        ...((before.status === 'VERIFYING' || before.status === 'PENDING_REVIEW') &&
+        transition.to === 'PUBLISHED'
+          ? { publishedAt: now }
+          : {}),
+        ...(before.status === 'VERIFYING' ? { verifyingSince: null } : {}),
         ...(transition.suspendedFromStatus === undefined
           ? {}
           : { suspendedFromStatus: transition.suspendedFromStatus }),
@@ -64,9 +75,9 @@ export class JobStatusTransitionService {
         entityId: before.id,
         fromStatus: before.status,
         toStatus: transition.to,
-        // The local SYSTEM applies an event; E02/E04 do not carry an actor user ID.
+        // E02 identifies the deciding role, but does not carry the actor's user ID.
         actorId: null,
-        actorRole: 'SYSTEM',
+        actorRole: transition.actorRole,
         reason: transition.historyReason,
         correlationId,
         occurredAt: now,

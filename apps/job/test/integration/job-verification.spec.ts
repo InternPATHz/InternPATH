@@ -23,6 +23,11 @@ import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../sup
 import { jobVerified, seedJob } from '../support/job-events';
 import { eventually } from '../support/wait';
 
+const TIMESTAMPS = {
+  publishedAt: new Date('2026-11-14T10:00:00.000Z'),
+  verifyingSince: new Date('2026-11-15T09:00:00.000Z'),
+};
+
 describe('E02 -> atomic Job transition -> E03 shared relay (real RabbitMQ + PostgreSQL)', function () {
   this.timeout(60000);
   let db: TestDatabase;
@@ -175,16 +180,17 @@ describe('E02 -> atomic Job transition -> E03 shared relay (real RabbitMQ + Post
 
   it('all six independent E02 decisions persist and publish typed E03 with the expected routing/correlation', async () => {
     const cases = [
-      ['APPROVE', 'VERIFYING', 'PUBLISHED'],
-      ['PENDING_REVIEW', 'VERIFYING', 'PENDING_REVIEW'],
-      ['AUTO_REJECT', 'VERIFYING', 'AUTO_REJECTED'],
-      ['APPEAL_ACCEPTED', 'AUTO_REJECTED', 'PENDING_REVIEW'],
-      ['ADMIN_APPROVE', 'PENDING_REVIEW', 'PUBLISHED'],
-      ['ADMIN_REJECT', 'PENDING_REVIEW', 'ADMIN_REJECTED'],
+      ['APPROVE', 'VERIFYING', 'PUBLISHED', 'SYSTEM', 'UNFREEZE'],
+      ['PENDING_REVIEW', 'VERIFYING', 'PENDING_REVIEW', 'SYSTEM', 'FREEZE'],
+      ['AUTO_REJECT', 'VERIFYING', 'AUTO_REJECTED', 'SYSTEM', 'CANCEL_PRE_APPROVAL'],
+      ['APPEAL_ACCEPTED', 'AUTO_REJECTED', 'PENDING_REVIEW', 'ADMIN', 'FREEZE'],
+      ['ADMIN_APPROVE', 'PENDING_REVIEW', 'PUBLISHED', 'ADMIN', 'UNFREEZE'],
+      ['ADMIN_REJECT', 'PENDING_REVIEW', 'ADMIN_REJECTED', 'ADMIN', 'CANCEL_PRE_APPROVAL'],
     ] as const;
-    for (const [decision, from, to] of cases) {
-      const job = await seedJob(db.prisma, from);
+    for (const [decision, from, to, decidedBy, effect] of cases) {
+      const job = await seedJob(db.prisma, from, TIMESTAMPS);
       const env = jobVerified(job.id, job.currentSubmissionId!, decision);
+      env.payload.decided_by = decidedBy;
       await send(env);
       await eventually(async () => emitted(job.id).length > 0);
       const stored = await db.prisma.outboxEvent.findFirstOrThrow({
@@ -209,19 +215,33 @@ describe('E02 -> atomic Job transition -> E03 shared relay (real RabbitMQ + Post
         from_status: from,
         to_status: to,
         entity_version: 11,
+        application_effect: effect,
       });
       expect(actual.env.payload).to.deep.equal(stored.payload);
       expect(actual.messageId).to.equal(stored.id);
       expect(actual.correlationId).to.equal(env.correlation_id);
+      const after = await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } });
+      const history = await db.prisma.statusHistory.findFirstOrThrow({
+        where: { entityId: job.id },
+      });
+      const changedAt = new Date(actual.env.payload.changed_at);
+      expect(after.publishedAt).to.deep.equal(to === 'PUBLISHED' ? changedAt : job.publishedAt);
+      expect(after.verifyingSince).to.deep.equal(from === 'VERIFYING' ? null : job.verifyingSince);
+      expect(history.occurredAt).to.deep.equal(changedAt);
+      expect(history).to.include({
+        actorRole: decidedBy === 'ADMIN' ? 'PLATFORM_ADMIN' : 'SYSTEM',
+        actorId: null,
+      });
     }
     expect(visibilityChecks).to.be.at.least(6);
   });
 
   it('duplicate IDs and stale distinct IDs ACK without extra status/history/outbox writes', async () => {
-    const job = await seedJob(db.prisma);
+    const job = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
     const env = jobVerified(job.id, job.currentSubmissionId!);
     await send(env);
     await eventually(async () => emitted(job.id).length > 0);
+    const accepted = await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } });
     const before = ackCount;
     await send(env);
     await send(env);
@@ -238,10 +258,13 @@ describe('E02 -> atomic Job transition -> E03 shared relay (real RabbitMQ + Post
     expect(
       (await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).entityVersion,
     ).to.equal(11);
+    expect(await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).to.deep.equal(
+      accepted,
+    );
   });
 
   it('failure after E03 insertion rolls back every write, then the real retry queue recovers and publishes E03', async () => {
-    const job = await seedJob(db.prisma);
+    const job = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
     const env = jobVerified(job.id, job.currentSubmissionId!);
     const service = moduleRef.get(JobStatusTransitionService);
     const original = service.change.bind(service);

@@ -18,10 +18,18 @@ interface DecisionTransition {
 const TRANSITIONS: Record<ScreeningDecision, DecisionTransition> = {
   APPROVE: { from: 'VERIFYING', to: 'PUBLISHED', applicationEffect: 'UNFREEZE' },
   PENDING_REVIEW: { from: 'VERIFYING', to: 'PENDING_REVIEW', applicationEffect: 'FREEZE' },
-  AUTO_REJECT: { from: 'VERIFYING', to: 'AUTO_REJECTED' },
+  AUTO_REJECT: {
+    from: 'VERIFYING',
+    to: 'AUTO_REJECTED',
+    applicationEffect: 'CANCEL_PRE_APPROVAL',
+  },
   APPEAL_ACCEPTED: { from: 'AUTO_REJECTED', to: 'PENDING_REVIEW', applicationEffect: 'FREEZE' },
   ADMIN_APPROVE: { from: 'PENDING_REVIEW', to: 'PUBLISHED', applicationEffect: 'UNFREEZE' },
-  ADMIN_REJECT: { from: 'PENDING_REVIEW', to: 'ADMIN_REJECTED' },
+  ADMIN_REJECT: {
+    from: 'PENDING_REVIEW',
+    to: 'ADMIN_REJECTED',
+    applicationEffect: 'CANCEL_PRE_APPROVAL',
+  },
 };
 
 @Injectable()
@@ -64,8 +72,8 @@ export class JobVerificationService {
         to: transition.to,
         correlationId: env.correlation_id,
         historyReason: p.decision,
-        // Rejections affect both pre/post-approval applications. No single effect is
-        // specified for them; leave the optional hint absent for Lifecycle to interpret.
+        actorRole: p.decided_by === 'ADMIN' ? 'PLATFORM_ADMIN' : 'SYSTEM',
+        // Lifecycle owns cancellation before approval and advisor flagging afterward.
         applicationEffect: transition.applicationEffect,
       },
       new Date(),
