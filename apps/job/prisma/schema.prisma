@@ -1,12 +1,193 @@
 // ตารางทั้งหมดให้เป็นไปตาม docs/data-schema.md (หัวข้อของ Service นี้)
 generator client {
   provider = "prisma-client-js"
+  output   = "../generated/client"
 }
 
 datasource db {
   provider  = "postgresql"
   url       = env("JOB_DATABASE_URL") // pooled (runtime)
-  directUrl = env("JOB_DIRECT_URL")   // direct (migration)
+  directUrl = env("JOB_DIRECT_URL") // direct (migration)
+}
+
+// Database enums follow docs/data-schema.md §2.1 and @internpath/contracts.
+enum JobStatus {
+  DRAFT
+  VERIFYING
+  PUBLISHED
+  PENDING_REVIEW
+  AUTO_REJECTED
+  ADMIN_REJECTED
+  SUSPENDED
+  REMOVED
+  CLOSED
+
+  @@map("job_status")
+}
+
+enum WorkMode {
+  ONSITE
+  REMOTE
+  HYBRID
+
+  @@map("work_mode")
+}
+
+enum JobCategory {
+  TECH_IT
+  BUSINESS_MARKETING
+  CORPORATE_SERVICES
+
+  @@map("job_category")
+}
+
+enum QuotaReservationStatus {
+  RESERVED
+  CONFIRMED
+  RELEASED
+
+  @@map("quota_reservation_status")
+}
+
+enum CompanyStatus {
+  PENDING
+  NEED_MORE_INFO
+  VERIFIED
+  REJECTED
+  SUSPENDED
+
+  @@map("company_status")
+}
+
+// Domain values specified inline in docs/data-schema.md §4.
+enum AllowanceType {
+  AMOUNT
+  NONE
+
+  @@map("allowance_type")
+}
+
+enum JobSubmissionKind {
+  NEW
+  EDIT
+  RESUBMIT
+
+  @@map("job_submission_kind")
+}
+
+// Job Management tables (docs/data-schema.md §4).
+// Phase 1B must enforce non-DRAFT completeness and quota invariants with CHECKs.
+model Job {
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  // Identity references only: no cross-service foreign keys.
+  companyId             String             @map("company_id") @db.Uuid
+  createdBy             String             @map("created_by") @db.Uuid
+  category              JobCategory?
+  jobTitle              String?            @map("job_title")
+  description           String?
+  responsibilities      String?
+  qualifications        String?
+  allowanceType         AllowanceType?     @map("allowance_type")
+  allowanceAmountThb    Int?               @map("allowance_amount_thb")
+  allowanceText         String?            @map("allowance_text")
+  location              String?
+  contactNotes          String?            @map("contact_notes")
+  workMode              WorkMode?          @map("work_mode")
+  hoursPerWeek          Int?               @map("hours_per_week")
+  internshipPeriodStart DateTime?          @map("internship_period_start") @db.Date
+  internshipPeriodEnd   DateTime?          @map("internship_period_end") @db.Date
+  // Prisma has no optional-list syntax; retain text[] without an invented default.
+  // Phase 1B must verify SQL nullability and require >= 1 major outside DRAFT.
+  targetMajors          String[]           @map("target_majors")
+  quota                 Int?
+  quotaReserved         Int?               @default(0) @map("quota_reserved")
+  quotaConfirmed        Int?               @default(0) @map("quota_confirmed")
+  status                JobStatus
+  suspendedFromStatus   JobStatus?         @map("suspended_from_status")
+  featured              Boolean?           @default(false)
+  currentSubmissionId   String?            @map("current_submission_id") @db.Uuid
+  verifyingSince        DateTime?          @map("verifying_since") @db.Timestamptz(6)
+  publishedAt           DateTime?          @map("published_at") @db.Timestamptz(6)
+  closedAt              DateTime?          @map("closed_at") @db.Timestamptz(6)
+  applicationDeadline   DateTime?          @map("application_deadline") @db.Date
+  entityVersion         Int                @map("entity_version")
+  version               Int
+  createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt             DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  submissions           JobSubmission[]
+  quotaReservations     QuotaReservation[]
+
+  @@index([status, featured(sort: Desc), publishedAt(sort: Desc)])
+  @@index([targetMajors], type: Gin)
+  @@map("jobs")
+}
+
+model JobSubmission {
+  id             String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId          String            @map("job_id") @db.Uuid
+  kind           JobSubmissionKind
+  changedFields  String[]          @map("changed_fields")
+  submittedBy    String            @map("submitted_by") @db.Uuid
+  submittedAt    DateTime          @map("submitted_at") @db.Timestamptz(6)
+  // Store the decision from JobVerified; application code uses the shared contract type.
+  resultDecision String?           @map("result_decision")
+  resolvedAt     DateTime?         @map("resolved_at") @db.Timestamptz(6)
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  job            Job               @relation(fields: [jobId], references: [id])
+
+  @@map("job_submissions")
+}
+
+model QuotaReservation {
+  // Lifecycle reference and idempotency key only: no cross-service foreign key.
+  applicationId String                 @id @map("application_id") @db.Uuid
+  jobId         String                 @map("job_id") @db.Uuid
+  status        QuotaReservationStatus
+  reservedAt    DateTime               @map("reserved_at") @db.Timestamptz(6)
+  confirmedAt   DateTime?              @map("confirmed_at") @db.Timestamptz(6)
+  releasedAt    DateTime?              @map("released_at") @db.Timestamptz(6)
+  releaseReason String?                @map("release_reason")
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  job           Job                    @relation(fields: [jobId], references: [id])
+
+  @@map("quota_reservations")
+}
+
+model CompanySnapshot {
+  companyId         String        @id @map("company_id") @db.Uuid
+  name              String
+  logoKey           String?       @map("logo_key")
+  status            CompanyStatus
+  universityPartner Boolean       @map("university_partner")
+  verifiedBadge     Boolean       @map("verified_badge")
+  entityVersion     Int           @map("entity_version")
+  createdAt         DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt         DateTime      @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("company_snapshots")
+}
+
+model CompanyEntitlement {
+  companyId        String   @id @map("company_id") @db.Uuid
+  featuredEnabled  Boolean  @map("featured_enabled")
+  fastTrackEnabled Boolean  @map("fast_track_enabled")
+  entityVersion    Int      @map("entity_version")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("company_entitlements")
+}
+
+model CompanyFlag {
+  companyId     String   @id @map("company_id") @db.Uuid
+  underReview   Boolean  @map("under_review")
+  entityVersion Int      @map("entity_version")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("company_flags")
 }
 
 // ตารางร่วม (docs/data-schema.md §2.2) — ตารางเฉพาะของ Service เพิ่มต่อจากนี้ตามหัวข้อของ Service
@@ -32,4 +213,22 @@ model ProcessedEvent {
 
   @@id([eventId, consumer])
   @@map("processed_events")
+}
+
+/// Append-only except authorized actor_id anonymization (docs/data-schema.md §2.3).
+/// Phase 1B must enforce this with a migration trigger.
+model StatusHistory {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  entity        String
+  entityId      String   @map("entity_id") @db.Uuid
+  fromStatus    String?  @map("from_status")
+  toStatus      String   @map("to_status")
+  actorId       String?  @map("actor_id") @db.Uuid
+  actorRole     String   @map("actor_role")
+  reason        String?
+  correlationId String   @map("correlation_id") @db.Uuid
+  occurredAt    DateTime @default(now()) @map("occurred_at") @db.Timestamptz(6)
+
+  @@index([entity, entityId, occurredAt])
+  @@map("status_history")
 }
