@@ -254,7 +254,7 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 
 **SA (Identity และ Gateway):**
 - **Gateway:** เพิ่ม route `/admin/audit` → Verification และเทสต์ Routing ตามตารางใน [api-contract.md](api-contract.md) §3 (เพิ่มแถวนี้ในเอกสารแล้ว — ตรวจใน branch Gateway ของ SA ว่ามี route และเทสต์ตามแล้วหรือยัง)
-- **Anonymization:** trigger append-only ของ `status_history`/`admin_audit_log` ต้องยอมให้แก้เฉพาะ `actor_id`/`admin_id` ใน transaction ที่ตั้ง `internpath.anonymize` ([data-schema.md](data-schema.md) §2.3) — migration แรกของ Identity ตอนนี้ปฏิเสธ `UPDATE` ทุกกรณี ต้องเพิ่ม migration ใหม่ พร้อมเทสต์ทั้งกรณีที่ผ่านและกรณีที่ต้องถูกปฏิเสธ และ handler ของ `UserDeletionRequested`
+- **Anonymization:** trigger append-only ของ `status_history`/`admin_audit_log` ต้องยอมให้แก้เฉพาะ `actor_id`/`admin_id` ใน transaction ที่ตั้ง `internpath.anonymize` และ `internpath.anonymous_actor_id` ([data-schema.md](data-schema.md) §2.3) — Identity (`20261115120000_authorized_history_anonymization`) และ Verification (`20261115130000_authorized_history_anonymization` + handler `UserAnonymizationService`) ทำแล้ว ส่วน Service อื่นที่มีสองตารางนี้ (Job, Lifecycle) ต้องเพิ่ม migration แบบเดียวกัน พร้อมเทสต์ทั้งกรณีที่ผ่านและกรณีที่ต้องถูกปฏิเสธ และ handler ของ `UserDeletionRequested`
 - **Identity:** Public Key ใช้ `JWT_PUBLIC_KEY` จาก env (ตัดสินแล้ว) และ SA ใช้ชนิด `AuthUser`/`UserMeResponse` ใน `libs/contracts` ได้
 
 **Tester (Lifecycle):**
@@ -263,7 +263,7 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 - **รีวิว (E09):** payload ต้องมี `student_user_id`; รับ `ReviewModerationResult` (E10) ที่มี `student_user_id` กลับมา
 - ตั้ง `output` ของ Prisma ตามกฎข้อ 9 เมื่อเริ่มเขียน schema (ตั้งไว้ให้แล้วในไฟล์ `schema.prisma` ของ Lifecycle)
 
-**PM (Verification) — งานที่ยังค้าง:** trigger anonymization ใน migration ของ Verification + handler `UserDeletionRequested` (E15) · Minor ของ review สไลซ์ 2 (#5 `dismiss` พลิกรายงานที่เคย uphold, #6 ธงอาจติดผิดจาก E03 เก่ามาก, #7 ลำดับล็อกของ clear-flag, #8 `PUT` ธงไม่เช็กว่าบริษัทมีจริง, #10 เทสต์ไม่ log `detail`) · สไลซ์ 3 (ตรวจรีวิว E09/E10 และรายงานรีวิว)
+**PM (Verification) — งานที่ยังค้าง:** Minor ของ review สไลซ์ 2 (#5 `dismiss` พลิกรายงานที่เคย uphold, #6 ธงอาจติดผิดจาก E03 เก่ามาก, #7 ลำดับล็อกของ clear-flag, #8 `PUT` ธงไม่เช็กว่าบริษัทมีจริง, #10 เทสต์ไม่ log `detail`) · สไลซ์ 3 (ตรวจรีวิว E09/E10 และรายงานรีวิว)
 
 ### 9.2 เพิ่มเติมจากการตรวจ contract ฝั่ง Job (2026-11-15) — สำหรับ Junior
 

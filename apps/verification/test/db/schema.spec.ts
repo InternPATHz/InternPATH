@@ -124,6 +124,105 @@ describe('verification_db schema (Postgres จริง)', function () {
     }
   });
 
+  describe('Authorized Anonymization Operation (data-schema §2.3)', () => {
+    const actor = randomUUID();
+    const anonymous = randomUUID();
+
+    const seedRows = async (): Promise<{ historyId: string; auditId: string }> => {
+      const history = await pg.query(
+        `INSERT INTO status_history (entity, entity_id, to_status, actor_id, actor_role, correlation_id)
+         VALUES ('QUEUE_ITEM', $1, 'OPEN', $2, 'PLATFORM_ADMIN', $3) RETURNING id`,
+        [randomUUID(), actor, randomUUID()],
+      );
+      const audit = await pg.query(
+        `INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, correlation_id)
+         VALUES ($1, 'TEST', 'x', $2, $3) RETURNING id`,
+        [actor, randomUUID(), randomUUID()],
+      );
+      return { historyId: history.rows[0].id, auditId: audit.rows[0].id };
+    };
+
+    /** รัน sql ใน Transaction ที่ตั้งค่า setting (ตามที่ระบุ) แล้วคืนข้อความ error ('' เมื่อผ่าน) — rollback เสมอเพื่อไม่ให้เทสต์กระทบกัน */
+    const attempt = async (sql: string, params: unknown[], settings: Record<string, string> = {}): Promise<string> => {
+      await pg.query('BEGIN');
+      try {
+        for (const [name, value] of Object.entries(settings)) await pg.query('SELECT set_config($1, $2, true)', [name, value]);
+        await pg.query(sql, params);
+        return '';
+      } catch (e) {
+        return (e as Error).message;
+      } finally {
+        await pg.query('ROLLBACK');
+      }
+    };
+
+    const both = { 'internpath.anonymize': 'on', 'internpath.anonymous_actor_id': anonymous };
+
+    it('ผ่าน: เปลี่ยนเฉพาะ actor_id/admin_id เป็น anonymous_actor_id ใน Transaction ที่ตั้งครบทั้งสอง setting', async () => {
+      const { historyId, auditId } = await seedRows();
+      expect(await attempt('UPDATE status_history SET actor_id = $1 WHERE id = $2', [anonymous, historyId], both)).to.equal('');
+      expect(await attempt('UPDATE admin_audit_log SET admin_id = $1 WHERE id = $2', [anonymous, auditId], both)).to.equal('');
+    });
+
+    it('ผ่านแล้วค่าต้องเปลี่ยนจริงเมื่อ COMMIT และ setting หมดอายุพร้อม Transaction (ไม่ค้างข้ามคำสั่งถัดไป)', async () => {
+      const { historyId } = await seedRows();
+      await pg.query('BEGIN');
+      try {
+        for (const [n, v] of Object.entries(both)) await pg.query('SELECT set_config($1, $2, true)', [n, v]);
+        await pg.query('UPDATE status_history SET actor_id = $1 WHERE id = $2', [anonymous, historyId]);
+        await pg.query('COMMIT');
+      } catch (e) {
+        await pg.query('ROLLBACK');
+        throw e;
+      }
+      expect((await pg.query('SELECT actor_id FROM status_history WHERE id = $1', [historyId])).rows[0].actor_id).to.equal(anonymous);
+      let message = '';
+      try {
+        await pg.query("UPDATE status_history SET to_status = 'X' WHERE id = $1", [historyId]);
+      } catch (e) {
+        message = (e as Error).message;
+      }
+      expect(message).to.match(/append-only/i);
+    });
+
+    it('ปฏิเสธ: ไม่มี setting, มีแค่ anonymize, มีแค่ anonymous_actor_id, หรือ anonymize ไม่ใช่ on', async () => {
+      const { historyId } = await seedRows();
+      const sql = 'UPDATE status_history SET actor_id = $1 WHERE id = $2';
+      const cases: Array<Record<string, string>> = [
+        {},
+        { 'internpath.anonymize': 'on' },
+        { 'internpath.anonymous_actor_id': anonymous },
+        { 'internpath.anonymize': 'off', 'internpath.anonymous_actor_id': anonymous },
+      ];
+      for (const settings of cases) {
+        expect(await attempt(sql, [anonymous, historyId], settings), JSON.stringify(settings)).to.match(/append-only/i);
+      }
+    });
+
+    it('ปฏิเสธ: ค่าใหม่ไม่ตรงกับ anonymous_actor_id, แก้คอลัมน์อื่นร่วมด้วย, หรือแถวเดิมไม่มี actor (SYSTEM)', async () => {
+      const { historyId, auditId } = await seedRows();
+      expect(await attempt('UPDATE status_history SET actor_id = $1 WHERE id = $2', [randomUUID(), historyId], both)).to.match(/append-only/i);
+      expect(
+        await attempt("UPDATE status_history SET actor_id = $1, to_status = 'X' WHERE id = $2", [anonymous, historyId], both),
+      ).to.match(/append-only/i);
+      expect(
+        await attempt("UPDATE admin_audit_log SET admin_id = $1, action = 'X' WHERE id = $2", [anonymous, auditId], both),
+      ).to.match(/append-only/i);
+      const system = await pg.query(
+        `INSERT INTO status_history (entity, entity_id, to_status, actor_role, correlation_id)
+         VALUES ('QUEUE_ITEM', $1, 'OPEN', 'SYSTEM', $2) RETURNING id`,
+        [randomUUID(), randomUUID()],
+      );
+      expect(await attempt('UPDATE status_history SET actor_id = $1 WHERE id = $2', [anonymous, system.rows[0].id], both)).to.match(/append-only/i);
+    });
+
+    it('ปฏิเสธ DELETE แม้ตั้ง setting ครบ', async () => {
+      await seedRows();
+      expect(await attempt('DELETE FROM status_history', [], both)).to.match(/append-only/i);
+      expect(await attempt('DELETE FROM admin_audit_log', [], both)).to.match(/append-only/i);
+    });
+  });
+
   it('evaluations.submission_id และ appeals.job_id เป็น UNIQUE', async () => {
     const defs = (
       await pg.query(
