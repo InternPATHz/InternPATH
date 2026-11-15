@@ -1,0 +1,36 @@
+import { Module } from '@nestjs/common';
+import { MessagingModule } from '@internpath/common';
+import { LifecycleConfigModule } from './config/lifecycle-config.module';
+import { StorageModule } from './common/storage/storage.module';
+import { InternalModule } from './internal/internal.module';
+import { PrismaModule } from './prisma/prisma.module';
+import { PrismaService } from './prisma/prisma.service';
+import type { Tx } from './prisma/types';
+
+/**
+ * โมดูลหลักของ Lifecycle Service (โหลดเมื่อไม่ได้ตั้ง DISABLE_INFRA=true)
+ * ลงทะเบียน MessagingModule:
+ * - publishes: relay อ่าน outbox_events ผ่าน LIFECYCLE_DIRECT_URL
+ * - consumes: จัดการ processed_events และ runInTransaction ด้วย Prisma.$transaction
+ */
+@Module({
+  imports: [
+    PrismaModule,
+    LifecycleConfigModule,
+    StorageModule,
+    InternalModule,
+    MessagingModule.register<Tx>({
+      service: 'lifecycle',
+      publishes: { databaseUrlEnv: 'LIFECYCLE_DIRECT_URL' },
+      imports: [PrismaModule],
+      consumes: {
+        inject: [PrismaService],
+        useFactory: (prisma: PrismaService) => ({
+          runInTransaction: <T>(fn: (tx: Tx) => Promise<T>): Promise<T> => prisma.$transaction(fn),
+        }),
+      },
+    }),
+  ],
+  exports: [PrismaModule, LifecycleConfigModule, StorageModule, InternalModule],
+})
+export class LifecycleModule {}
