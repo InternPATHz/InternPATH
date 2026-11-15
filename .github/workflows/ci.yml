@@ -30,3 +30,52 @@ jobs:
         run: pnpm --filter "...[origin/main]" --if-present test
       - name: Build
         run: pnpm --filter "...[origin/main]" --if-present build
+
+  identity-gateway-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: internpath
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: internpath
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U internpath -d internpath"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      rabbitmq:
+        image: rabbitmq:3.13-management
+        env:
+          RABBITMQ_DEFAULT_USER: internpath
+          RABBITMQ_DEFAULT_PASS: ci-only-password
+        ports:
+          - 5672:5672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      IDENTITY_IT_ADMIN_URL: postgresql://internpath:ci-only-password@127.0.0.1:5432/postgres
+      RABBITMQ_URL: amqp://internpath:ci-only-password@127.0.0.1:5672
+      RUN_RABBITMQ_TESTS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm --filter @internpath/identity prisma:generate
+      # --forbid-pending ทำให้ job ล้มถ้า suite ข้ามเพราะต่อ Postgres/RabbitMQ ไม่ได้
+      - name: Identity integration tests
+        run: pnpm --filter @internpath/identity exec mocha --forbid-pending
+      - name: Gateway RabbitMQ integration tests
+        run: pnpm --filter @internpath/gateway exec mocha --forbid-pending
