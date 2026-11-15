@@ -6,6 +6,7 @@ export * from './health/health.module';
 export * from './auth/claims';
 export * from './auth/decorators';
 export * from './auth/jwt-auth.guard';
+export * from './auth/pem';
 export * from './auth/roles.guard';
 export * from './auth/service-token';
 export * from './bootstrap/configure-app';
