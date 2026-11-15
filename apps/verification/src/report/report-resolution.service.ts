@@ -86,14 +86,14 @@ export class ReportResolutionService {
             update: { consecutiveDismissed: { increment: 1 } },
           });
         }
-        if (suspended) await this.emit(tx, item.targetId, item.submissionId!, 'RESTORE', 'REPORT_DISMISSED', reason ?? 'ผู้ดูแลระบบยกคำร้อง', cid, now);
+        if (suspended) await this.emit(tx, item.targetId, item.submissionId!, item.id, 'RESTORE', 'REPORT_DISMISSED', reason ?? 'ผู้ดูแลระบบยกคำร้อง', cid, now);
       } else {
         await tx.jobReport.updateMany({ where: { id: { in: ids } }, data: { status: 'UPHELD', counted: true, resolvedAt: now } });
         for (const userId of reporters) {
           await tx.reporterStat.upsert({ where: { userId }, create: { userId, consecutiveDismissed: 0 }, update: { consecutiveDismissed: 0 } });
         }
         if (suspended) {
-          await this.emit(tx, item.targetId, item.submissionId!, 'REMOVE', 'REPORT_UPHELD', reason ?? 'ผู้ดูแลระบบยืนยันว่าประกาศผิดกฎ', cid, now);
+          await this.emit(tx, item.targetId, item.submissionId!, item.id, 'REMOVE', 'REPORT_UPHELD', reason ?? 'ผู้ดูแลระบบยืนยันว่าประกาศผิดกฎ', cid, now);
         } else {
           // ทุกรายงานของรอบนี้นับได้แล้ว ⇒ ตัวนับ = จำนวนรายงานของรอบ; ครบเกณฑ์ก็ระงับตามปกติ
           await tx.jobReportCounter.upsert({
@@ -124,6 +124,7 @@ export class ReportResolutionService {
     tx: Parameters<typeof emitJobVerified>[1],
     jobId: string,
     submissionId: string,
+    queueItemId: string,
     decision: 'RESTORE' | 'REMOVE',
     code: string,
     detail: string,
@@ -133,7 +134,7 @@ export class ReportResolutionService {
     const reasons: JobVerifiedReason[] = [{ code, detail }];
     return emitJobVerified(this.outbox, tx, {
       correlationId: asUuid(correlationId),
-      payload: { job_id: jobId, submission_id: submissionId, decision, reasons, is_appeal: false, decided_by: 'ADMIN', decided_at: now.toISOString() },
+      payload: { job_id: jobId, submission_id: submissionId, decision, reasons, is_appeal: false, decided_by: 'ADMIN', decided_at: now.toISOString(), queue_item_id: queueItemId },
     });
   }
 }

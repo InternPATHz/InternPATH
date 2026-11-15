@@ -166,8 +166,10 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
   is_appeal: boolean
   decided_by: 'SYSTEM' | 'ADMIN'
   decided_at: string
+  queue_item_id?: string            // บังคับเมื่อ decision = REMOVE | RESTORE: รายการคิวรายงานที่ตัดสิน (= queue_item_id ของ E04 ที่ระงับประกาศ)
 }
 ```
+**กันเหตุการณ์ข้ามรอบ (REMOVE/RESTORE):** Job เก็บ `queue_item_id` ของ E04 ที่ระงับประกาศอยู่ แล้วรับ `REMOVE`/`RESTORE` เฉพาะที่ `queue_item_id` ตรงกัน — ไม่ตรงหรือประกาศไม่ได้ถูกระงับอยู่ให้ข้ามพร้อม log ไม่ throw/retry (ผลตัดสินของรอบเก่าที่มาช้าจึงไม่กระทบการระงับรอบใหม่); ค่านี้ส่งเฉพาะ `REMOVE`/`RESTORE`
 การระงับชั่วคราว (`SUSPENDED`) เกิดจาก E04 `ReportThresholdReached` ไม่ใช่ `JobVerified`
 Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไว้>` ตามตาราง Map ใน [data-schema.md](data-schema.md) §8.2
 
@@ -196,10 +198,11 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
   job_id: string
   company_id: string
   report_count: number          // นับเฉพาะรายงานที่นับเข้าเกณฑ์
-  queue_item_id: string         // รายการคิว Admin ที่สร้างแล้ว
+  queue_item_id: string         // รายการคิว Admin ที่สร้างแล้ว (Job เก็บไว้เทียบกับ `queue_item_id` ของ E02 REMOVE/RESTORE — กันเหตุการณ์ข้ามรอบ)
   reached_at: string
 }
 ```
+**ผลต่อประกาศ (Job):** `PUBLISHED → SUSPENDED` และ `CLOSED → SUSPENDED` (PM ตัดสิน 2026-11-15: ประกาศ `CLOSED` รายงานได้ตาม R5-G01) — Job เก็บสถานะเดิมใน `suspended_from_status` (`PUBLISHED` หรือ `CLOSED`) แล้วส่ง E03 (`application_effect=FREEZE`, `reason_code=REPORT_THRESHOLD`); `JobVerified.RESTORE` คืนสถานะเดิมตาม `suspended_from_status` (ถ้าเลย `application_deadline` ระหว่างระงับ ⇒ `CLOSED`), `REMOVE` ⇒ `REMOVED` — ตาราง Map ใน [data-schema.md](data-schema.md) §8.2
 > **หมายเหตุ:** การแจ้ง "อาจารย์ที่ปรึกษาของนักศึกษาที่มีใบสมัครกับประกาศนั้น" ทำโดย Lifecycle เมื่อรับ `JobStatusChanged` (to=`SUSPENDED`) เพราะ Lifecycle รู้ใบสมัคร Notification ที่รับ E04 แจ้งเฉพาะ Admin
 
 ### E05 `CompanyStatusChanged`  (identity → job, lifecycle, verification, notification)

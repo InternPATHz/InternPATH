@@ -99,7 +99,8 @@ describe('e2e: รายงานประกาศ, ระงับอัตโ
     expect(item.id).to.equal(e04.queue_item_id);
     await http().post(`/v1/admin/queue/${item.id}/actions/dismiss-report`).set(admin()).send({ reason: 'ประกาศปกติ' }).expect(204);
     await waitFor(() => msgs('JobVerified', (x) => x.job_id === p.job_id && x.decision === 'RESTORE').length === 1, 'RESTORE');
-    expect(msgs('JobVerified', (x) => x.decision === 'RESTORE')[0]).to.include({ decided_by: 'ADMIN', is_appeal: false });
+    // กันเหตุการณ์ข้ามรอบ: RESTORE ต้องอ้างรายการคิวเดียวกับ E04 ที่ระงับประกาศ
+    expect(msgs('JobVerified', (x) => x.decision === 'RESTORE')[0]).to.include({ decided_by: 'ADMIN', is_appeal: false, queue_item_id: e04.queue_item_id });
   });
 
   it('บริษัทถูกตีกลับ 3 ครั้ง → E18 active → E01 ถัดไปคะแนนต่ำได้ผลเหลือง → Admin เคลียร์ธง → E18 inactive', async () => {

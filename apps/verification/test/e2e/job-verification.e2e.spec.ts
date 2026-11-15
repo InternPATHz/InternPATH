@@ -88,6 +88,7 @@ describe('e2e: ตรวจประกาศงานผ่าน RabbitMQ จ�
     await waitFor(() => [green, yellow, red].every((p) => verifiedFor(p.job_id).length === 1), 'JobVerified ครบสามฉบับ');
     const decision = (p: typeof green) => verifiedFor(p.job_id)[0].payload;
     expect(decision(green)).to.deep.include({ decision: 'APPROVE', risk_level: 'LOW', decided_by: 'SYSTEM' });
+    expect(decision(green), 'queue_item_id ส่งเฉพาะ REMOVE/RESTORE').to.not.have.property('queue_item_id');
     expect(decision(yellow)).to.deep.include({ decision: 'PENDING_REVIEW', risk_level: 'MEDIUM' });
     expect(decision(red)).to.deep.include({ decision: 'AUTO_REJECT', risk_level: 'HIGH' });
     expect(decision(red).reasons.find((r: any) => r.code === 'BLACKLIST_HARD').matched_text).to.equal('ค่ามัดจำ');
