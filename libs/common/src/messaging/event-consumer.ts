@@ -151,16 +151,26 @@ export class EventConsumer<Tx extends ProcessedEventsTx> {
    */
   async subscribe<P>(sub: Subscription<Tx, P>): Promise<void> {
     const queue = consumerQueueName(this.o.service, sub.type);
-    const state: { live?: Channel } = {};
+    // live = channel ที่ consume อยู่; setting = setup กำลังทำงาน (กัน setup ซ้อนก่อนที่ live จะถูกตั้ง); timer = resubscribe ที่นัดไว้ (รวมเหลือใบเดียว)
+    const state: { live?: Channel; setting?: boolean; timer?: NodeJS.Timeout } = {};
 
     const setup = async (): Promise<void> => {
-      if (this.closed || state.live) return; // มี subscription ใช้งานอยู่แล้ว
+      if (this.closed || state.live || state.setting) return; // มี subscription ใช้งานอยู่แล้ว หรือกำลังตั้งอยู่
+      state.setting = true;
+      try {
+        await attach();
+      } finally {
+        state.setting = false;
+      }
+    };
+
+    const attach = async (): Promise<void> => {
       const ch = await this.broker.createChannel();
       ch.on('error', (e: Error) => this.log.warn(`channel error on ${queue}: ${e.message}`));
       ch.on('close', () => {
         this.channels.delete(ch);
         if (state.live === ch) state.live = undefined;
-        this.scheduleResubscribe(run);
+        this.scheduleResubscribe(state, run);
       });
       try {
         await ch.prefetch(this.o.prefetch ?? 10);
@@ -188,7 +198,7 @@ export class EventConsumer<Tx extends ProcessedEventsTx> {
         await setup();
       } catch (e) {
         this.log.error(`subscribe on ${queue} failed: ${messageOf(e)}`);
-        this.scheduleResubscribe(run);
+        this.scheduleResubscribe(state, run);
       }
     };
 
@@ -206,12 +216,15 @@ export class EventConsumer<Tx extends ProcessedEventsTx> {
   }
 
   /** ถ้า broker ไม่ได้ต่ออยู่ตอนหน่วงครบ ปล่อยให้ onConnected เป็นคน subscribe เมื่อต่อใหม่สำเร็จ */
-  private scheduleResubscribe(run: () => Promise<void>): void {
-    if (this.closed) return;
+  private scheduleResubscribe(state: { timer?: NodeJS.Timeout }, run: () => Promise<void>): void {
+    // รวมเหลือ timer ใบเดียวต่อ subscription: channel ที่ setup ไม่สำเร็จนัดได้จากทั้ง handler 'close' และ catch ของ run
+    if (this.closed || state.timer) return;
     const t = setTimeout(() => {
       this.timers.delete(t);
+      state.timer = undefined;
       if (!this.closed && this.broker.isConnected()) void run();
     }, this.o.resubscribeDelayMs ?? 1000);
+    state.timer = t;
     this.timers.add(t);
   }
 
