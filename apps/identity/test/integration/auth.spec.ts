@@ -116,7 +116,7 @@ describe('Identity Auth API (Postgres จริง)', function () {
     await request(app.getHttpServer()).post('/v1/auth/verify-email').send({ token: advisorToken }).expect(204);
     expect((await db.user.findUniqueOrThrow({ where: { email: 'advisor@test.ac.th' } })).status).to.equal('PENDING_APPROVAL');
     await request(app.getHttpServer()).post('/v1/auth/login').send({ email: 'advisor@test.ac.th', password: 'correct horse battery' }).expect(403);
-    const company = { company: { name: 'Test Company', registration_no: 'TC-001' }, user: { email: 'owner@gmail.com', password: 'correct horse battery', full_name: 'Owner' }, accept_privacy: true };
+    const company = { company: { name: 'Test Company', registration_no: '0105550000123' }, user: { email: 'owner@gmail.com', password: 'correct horse battery', full_name: 'Owner' }, accept_privacy: true };
     const invalid = await request(app.getHttpServer()).post('/v1/auth/register/company').send(company).expect(400);
     expect(invalid.body.error.code).to.equal('PUBLIC_EMAIL_NOT_ALLOWED');
     company.user.email = 'owner@test-company.com';
@@ -134,6 +134,17 @@ describe('Identity Auth API (Postgres จริง)', function () {
     await request(app.getHttpServer()).post('/v1/auth/refresh').send({ refresh_token: login.body.refresh_token }).expect(401);
   });
 
+  it('requires exactly 13 digits for company registration numbers', async () => {
+    const body = { company: { name: 'Invalid Registration', registration_no: '' },
+      user: { email: 'invalid-registration@test-company.com', password: 'correct horse battery', full_name: 'Owner' },
+      accept_privacy: true };
+    for (const registrationNo of ['123456789012', '12345678901234', '12345678901A3']) {
+      body.company.registration_no = registrationNo;
+      await request(app.getHttpServer()).post('/v1/auth/register/company').send(body).expect(400);
+    }
+    expect(await db.company.count({ where: { name: body.company.name } })).to.equal(0);
+  });
+
   it('keeps committed student, advisor and company accounts when verification email fails', async () => {
     const cases = [
       { route: 'student', email: 'mail-fail-student@test.ac.th', conflict: 'ACCOUNT_EXISTS', body: {
@@ -145,7 +156,7 @@ describe('Identity Auth API (Postgres จริง)', function () {
         department: 'Science', accept_privacy: true,
       } },
       { route: 'company', email: 'mail-fail-owner@test-company.com', conflict: 'ACCOUNT_OR_COMPANY_EXISTS', body: {
-        company: { name: 'Mail Failure Company', registration_no: 'MAIL-FAIL-COMPANY' },
+        company: { name: 'Mail Failure Company', registration_no: '0105550000456' },
         user: { email: 'mail-fail-owner@test-company.com', password: 'correct horse battery', full_name: 'Owner Mail Failure' },
         accept_privacy: true,
       } },
