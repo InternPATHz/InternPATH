@@ -1,29 +1,29 @@
-import Link from 'next/link';
-
-const roles = [
-  'นักศึกษา',
-  'ฝ่ายบุคคลบริษัท',
-  'อาจารย์ที่ปรึกษา',
-  'ผู้ดูแลแพลตฟอร์ม',
-];
+import { CategorySection } from '@/components/landing/category-section';
+import { Hero } from '@/components/landing/hero';
+import { JobCard } from '@/components/landing/job-card';
+import { SiteHeader } from '@/components/landing/site-header';
+import { TrustNotice } from '@/components/landing/trust-notice';
+import { MOCK_JOBS } from '@/lib/mock-landing';
 
 export default function HomePage() {
   return (
-    <main className="mx-auto max-w-3xl px-6 py-16">
-      <h1 className="text-3xl font-bold">InternPath</h1>
-      <p className="mt-2 text-ink-soft">แพลตฟอร์มตัวกลางเชื่อมนักศึกษา อาจารย์ และบริษัทสำหรับการฝึกงาน</p>
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Link href="/register" className="rounded-lg bg-primary px-5 py-3 font-semibold text-white hover:bg-primary-hover">สมัครสมาชิก</Link>
-        <Link href="/login" className="rounded-lg border border-border px-5 py-3 font-semibold text-primary hover:bg-primary-soft">เข้าสู่ระบบ</Link>
-        <Link href="/account" className="rounded-lg border border-border px-5 py-3 font-semibold text-ink hover:bg-surface-muted">บัญชีของฉัน</Link>
-      </div>
-      <ul className="mt-10 grid gap-3 sm:grid-cols-2">
-        {roles.map((role) => (
-          <li key={role} className="rounded-lg border border-border bg-surface-muted p-4">
-            <span className="font-medium">{role}</span>
-          </li>
-        ))}
-      </ul>
-    </main>
+    <>
+      <SiteHeader />
+      <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        <h1 className="text-3xl font-bold">ค้นหาที่ฝึกงานอย่างมั่นใจ</h1>
+        <p className="mt-2 mb-6 text-sm text-ink-soft">สำรวจงานที่ผ่านการตรวจสอบแล้ว พร้อมข้อมูลบริษัท เงื่อนไข และรีวิวจากผู้ฝึกจริง</p>
+        <Hero />
+        <CategorySection />
+        <section aria-labelledby="jobs-title" className="mt-12">
+          <h2 id="jobs-title" className="text-xl font-bold">งานฝึกงานที่เปิดรับ</h2>
+          {/* MOCK: เปลี่ยนเป็นผลจาก Job Search เมื่อเปิดให้เรียกโดยไม่ต้องล็อกอิน (ดู src/lib/mock-landing.ts) */}
+          <p className="mt-1 text-sm text-ink-soft">ตัวอย่างประกาศ (ข้อมูลจำลอง)</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            {MOCK_JOBS.map((item) => <JobCard key={item.job.id} item={item} />)}
+          </div>
+        </section>
+        <TrustNotice />
+      </main>
+    </>
   );
 }
