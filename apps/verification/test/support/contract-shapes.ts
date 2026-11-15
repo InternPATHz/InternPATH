@@ -1,6 +1,7 @@
 import type {
   AppealResponse,
   AuditLogEntry,
+  BlacklistTermItem,
   BlacklistTestResponse,
   CompanyFlagItem,
   NegationCue,
@@ -77,6 +78,10 @@ export const SET_COMPANY_FLAG_RESPONSE: ShapeSpec<SetCompanyFlagResponse> = { co
 export const COMPANY_FLAG_ITEM: ShapeSpec<CompanyFlagItem> = {
   company_id: 'string', company_name: ['string', 'null'], active: 'boolean', set_by: ['string', 'null'], set_reason: ['string', 'null'],
   set_at: ['string', 'null'], cleared_at: ['string', 'null'], trigger_count: ['number', 'null'],
+};
+
+export const BLACKLIST_TERM_ITEM: ShapeSpec<BlacklistTermItem> = {
+  id: 'string', term: 'string', severity: 'string', weight: ['number', 'null'], category: 'string', enabled: 'boolean', created_at: 'string',
 };
 
 export const BLACKLIST_TEST_RESPONSE: ShapeSpec<BlacklistTestResponse> = {

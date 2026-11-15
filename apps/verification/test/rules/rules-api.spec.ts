@@ -5,7 +5,7 @@ import { AuditModule } from '../../src/audit/audit.module';
 import { RulesModule } from '../../src/rules/rules.module';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
-import { BLACKLIST_TEST_RESPONSE, NEGATION_CUE, RISK_RULE, RISK_RULES_RESPONSE, expectShape } from '../support/contract-shapes';
+import { BLACKLIST_TERM_ITEM, BLACKLIST_TEST_RESPONSE, NEGATION_CUE, RISK_RULE, RISK_RULES_RESPONSE, expectShape } from '../support/contract-shapes';
 
 describe('rules API: /admin/blacklist, /admin/risk-rules (Postgres จริง)', function () {
   this.timeout(60000);
@@ -54,6 +54,7 @@ describe('rules API: /admin/blacklist, /admin/risk-rules (Postgres จริง)
       const all = await http().get('/v1/admin/blacklist?page_size=100').set(admin).expect(200);
       expect(all.body.meta).to.deep.equal({ page: 1, page_size: 100, total: 23 });
       expect(all.body.data[0]).to.have.all.keys('id', 'term', 'severity', 'weight', 'category', 'enabled', 'created_at');
+      for (const row of all.body.data) expectShape(row, BLACKLIST_TERM_ITEM, 'GET /admin/blacklist[]');
       expect((await http().get('/v1/admin/blacklist?severity=SOFT').set(admin).expect(200)).body.meta.total).to.equal(6);
       expect((await http().get('/v1/admin/blacklist?q=มัดจำ').set(admin).expect(200)).body.meta.total).to.equal(2);
       expect((await http().get('/v1/admin/blacklist?enabled=false').set(admin).expect(200)).body.meta.total).to.equal(0);
@@ -79,6 +80,7 @@ describe('rules API: /admin/blacklist, /admin/risk-rules (Postgres จริง)
         .set(admin)
         .send({ term: 'ทดสอบคำ', severity: 'HARD', category: 'TEST' })
         .expect(201);
+      expectShape(res.body, BLACKLIST_TERM_ITEM, 'POST /admin/blacklist');
       expect(res.body).to.include({ term: 'ทดสอบคำ', severity: 'HARD', weight: null, category: 'TEST', enabled: true });
       expect(await auditCount('BLACKLIST_CREATE')).to.equal(before + 1);
       const log = await t.prisma.adminAuditLog.findFirst({ where: { action: 'BLACKLIST_CREATE' }, orderBy: { occurredAt: 'desc' } });
@@ -97,6 +99,7 @@ describe('rules API: /admin/blacklist, /admin/risk-rules (Postgres จริง)
 
       await http().patch(`/v1/admin/blacklist/${id}`).set(admin).send({ weight: 3 }).expect(400);
       const upd = await http().patch(`/v1/admin/blacklist/${id}`).set(admin).send({ enabled: false }).expect(200);
+      expectShape(upd.body, BLACKLIST_TERM_ITEM, 'PATCH /admin/blacklist/{id}');
       expect(upd.body.enabled).to.equal(false);
       expect(await auditCount('BLACKLIST_UPDATE')).to.be.greaterThan(0);
 

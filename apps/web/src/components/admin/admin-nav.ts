@@ -11,7 +11,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { label: 'คิวตรวจ', href: '/admin/queue' },
       { label: 'ธงบริษัท', href: '/admin/flags' },
-      { label: 'Blacklist', href: null },
+      { label: 'Blacklist', href: '/admin/blacklist' },
       { label: 'Risk Rules', href: null },
       { label: 'Audit log', href: null },
     ],
