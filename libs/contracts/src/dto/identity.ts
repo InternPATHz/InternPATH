@@ -16,7 +16,13 @@ export interface RegisterStudentRequest {
 }
 
 export interface RegisterCompanyRequest {
-  company: { name: string; registration_no: string; website?: string; phone?: string };
+  company: {
+    name: string;
+    /** เลขทะเบียนนิติบุคคลเป็นตัวเลข 13 หลัก */
+    registration_no: string;
+    website?: string;
+    phone?: string;
+  };
   /** อีเมลโดเมนองค์กร — อีเมลสาธารณะ ⇒ `PUBLIC_EMAIL_NOT_ALLOWED` */
   user: { email: string; password: string; full_name: string };
   accept_privacy: true;

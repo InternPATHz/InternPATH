@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, Max, Min, MinLength, ValidateNested, Equals } from 'class-validator';
+import { IsBoolean, IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, Max, Min, MinLength, ValidateNested, Equals } from 'class-validator';
 import type { RegisterStudentRequest, RegisterCompanyRequest, LoginRequest, RefreshRequest, VerifyEmailRequest, ForgotPasswordRequest, ResetPasswordRequest } from '@internpath/contracts';
 
 export class RegisterStudentDto implements RegisterStudentRequest {
@@ -22,7 +22,7 @@ export class RegisterAdvisorDto {
 
 class CompanyInput {
   @IsString() @IsNotEmpty() name!: string;
-  @IsString() @IsNotEmpty() registration_no!: string;
+  @IsString() @Matches(/^[0-9]{13}$/, { message: 'เลขทะเบียนนิติบุคคลต้องเป็นตัวเลข 13 หลัก' }) registration_no!: string;
   @IsOptional() @IsUrl({ require_tld: true }) website?: string;
   @IsOptional() @IsString() phone?: string;
 }

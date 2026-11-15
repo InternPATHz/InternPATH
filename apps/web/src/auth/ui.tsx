@@ -16,12 +16,16 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
   );
 }
 
-export function Field({ label, ...props }: { label: string } & InputHTMLAttributes<HTMLInputElement>) {
+export function Field({ label, endAction, ...props }: { label: string; endAction?: ReactNode } & InputHTMLAttributes<HTMLInputElement>) {
+  const inputId = props.id ?? props.name;
   return (
-    <label className="block text-sm font-medium text-ink">
-      {label}
-      <input {...props} className="mt-1.5 block w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft" />
-    </label>
+    <div className="block text-sm font-medium text-ink">
+      <label htmlFor={inputId}>{label}{props.required && <span aria-hidden="true" className="text-danger"> *</span>}</label>
+      <div className="relative">
+        <input {...props} id={inputId} className={`mt-1.5 block w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-base text-ink outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft ${endAction ? 'pr-12' : ''}`} />
+        {endAction && <div className="absolute bottom-0 right-1 top-1.5 flex items-center">{endAction}</div>}
+      </div>
+    </div>
   );
 }
 

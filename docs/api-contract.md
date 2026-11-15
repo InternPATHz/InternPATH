@@ -71,7 +71,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | :--- | :--- | :---: | :--- |
 | POST | `/auth/register/student` | Public | `{email(@ac.th), password, full_name, student_code, major, year_level, accept_privacy:true}` → 201; ส่งอีเมลยืนยัน |
 | POST | `/auth/register/advisor` | Public | `@ac.th`, สถานะ `PENDING_EMAIL` → (ยืนยัน) → `PENDING_APPROVAL` |
-| POST | `/auth/register/company` | Public | `{company:{name, registration_no, website?, phone?}, user:{email(domain องค์กร), password, full_name}, accept_privacy:true}` — ปฏิเสธอีเมลสาธารณะ (`PUBLIC_EMAIL_NOT_ALLOWED`); คนแรก = Owner |
+| POST | `/auth/register/company` | Public | `{company:{name, registration_no (ตัวเลข 13 หลัก), website?, phone?}, user:{email(domain องค์กร), password, full_name}, accept_privacy:true}` — ปฏิเสธอีเมลสาธารณะ (`PUBLIC_EMAIL_NOT_ALLOWED`); คนแรก = Owner |
 | POST | `/auth/verify-email` | Public | `{token}` |
 | POST | `/auth/resend-verification` | Public | rate-limited |
 | POST | `/auth/login` | Public | `{email, password, unlock_token?}` → `{access_token, refresh_token, expires_in, user}` ; ปฏิเสธถ้า `EMAIL_NOT_VERIFIED` / `ACCOUNT_SUSPENDED`; ล็อกชั่วคราวเมื่อผิดซ้ำ แต่ลิงก์ปลดล็อกใช้ครั้งเดียวพร้อมรหัสผ่านที่ถูกต้องได้ |
