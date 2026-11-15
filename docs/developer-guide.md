@@ -56,7 +56,7 @@ Rate limiter ปัจจุบันเก็บ bucket แบบ LRU ในห
 | Verification & Trust | `apps/verification` | PM | 3003 |
 | Student Experience & Lifecycle | `apps/lifecycle` | Tester | 3004 |
 | Notification | `apps/notification` | Junior Developer | 3005 |
-| Web (Next.js) | `apps/web` | ทุกคน แยกหน้าตาม Role | 3100 |
+| Web (Next.js) | `apps/web` | โครงรวมและหน้าแรก: PM; หน้าอื่นเป็นของเจ้าของ Service ที่หน้านั้นเรียก API (ดู [README](../README.md) หัวข้อ 11) | 3100 |
 
 ถ้าต้องแก้ Service ของคนอื่น ให้เปิด PR แล้วให้เจ้าของรีวิว (รายละเอียดทีมดู README หัวข้อ 11)
 
@@ -215,7 +215,8 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 - [ ] การลงทะเบียน `JwtAuthGuard` ใน Service ที่เพิ่ม endpoint ซึ่งต้องล็อกอิน (Identity ใช้แล้ว)
 - [ ] **ลบบัญชียังใช้ไม่ได้**: `POST /users/me/deletion-request` มีใน [api-contract.md](api-contract.md) §4.2 แต่ยังไม่มี endpoint จริง; ไม่มี production path ที่เรียก `AccountDeletionService.complete()` และตัวตรวจสิทธิ์ลบตั้งให้ fail-closed ระหว่างรอ Lifecycle Internal API จึงไม่ควรแสดงฟังก์ชันลบบัญชีให้ผู้ใช้ใช้งาน
 - [ ] Scheduler (SLA, Reconciliation โควตา, Fail-safe 5 นาที)
-- [ ] หน้าเว็บของแต่ละ Role (หน้า Auth/Account มีแล้ว)
+- [ ] หน้าเว็บของแต่ละ Role (หน้า Auth/Account และหน้าแรกมีแล้ว; หน้า Admin เสียบเข้า Admin Shell กลางที่ PM ทำ — ตารางเจ้าของหน้าอยู่ใน [README](../README.md) หัวข้อ 11)
+- [ ] โครงเว็บรวม (Header, Footer, เมนูตามบทบาท, Admin Shell, หน้านโยบายความเป็นส่วนตัว) — PM
 - [ ] Dockerfile ของ Service ยังไม่เคยรัน; `docker compose --profile infra up -d postgres rabbitmq mailpit` รันผ่านแล้ว (2026-11-13) แต่ **MinIO ดึง image ไม่ได้** (`minio/minio` บน Docker Hub ใช้ไม่ได้ และ `quay.io/minio/minio` ตอบ 401) ต้องเปลี่ยนไปใช้ตัวแทนที่รองรับ S3
 - [ ] การสาธิตผ่าน Cloudflare ([architecture.md](architecture.md) §8.1): Worker proxy `/api/*` + `API_ORIGIN`, ตรวจ `X-Edge-Secret` / CORS / IP ผู้ใช้ที่ Gateway, ข้อความ "ระบบหลังบ้านออฟไลน์" ใน Front, ลิงก์อีเมลจาก `WEB_BASE_URL`
 - [x] `docker-compose.yml`: Postgres / RabbitMQ / MinIO bind เฉพาะ `127.0.0.1` และมี `restart: unless-stopped`
