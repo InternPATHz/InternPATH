@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AppException } from '@internpath/common';
+import { AppException, normalizePemKey } from '@internpath/common';
 import type { AuthUser, LoginResponse, RegisterCompanyRequest, RegisterStudentRequest } from '@internpath/contracts';
 import * as jwt from 'jsonwebtoken';
 import { Prisma, User, UserStatus } from '../../../generated/client';
@@ -170,7 +170,7 @@ export class AuthService {
   }
 
   private accessToken(user: User, companyId?: string, companyRole?: 'OWNER' | 'MEMBER', advisorId?: string): string {
-    const privateKey = (this.config.get<string>('JWT_PRIVATE_KEY') ?? '').replace(/\\n/g, '\n');
+    const privateKey = normalizePemKey(this.config.get<string>('JWT_PRIVATE_KEY'));
     if (!privateKey) throw new AppException('AUTH_NOT_CONFIGURED', 'ระบบยังไม่ได้ตั้งค่า JWT_PRIVATE_KEY', 500);
     return jwt.sign({ role: user.role, ...(companyId ? { company_id: companyId, company_role: companyRole } : {}), ...(advisorId ? { advisor_id: advisorId } : {}), ...(user.universityId ? { university_id: user.universityId } : {}) }, privateKey, { algorithm: 'RS256', subject: user.id, jwtid: randomUUID(), expiresIn: this.accessTtl() });
   }

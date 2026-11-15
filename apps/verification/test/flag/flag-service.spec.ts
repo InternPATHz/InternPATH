@@ -73,6 +73,38 @@ describe('FlagService: ธง UNDER_REVIEW (Postgres จริง)', function ()
     expect(await companyItems(c)).to.have.length(0);
   });
 
+  it('Minor #6: เหตุการณ์เก่ามาก (400 วัน) มาถึงช้า ไม่ทำให้ติดธงจากเหตุการณ์ล่าสุดที่อยู่นอกหน้าต่าง 30 วันของมัน', async () => {
+    const c = randomUUID();
+    const now = T();
+    await reject(c, new Date(now.getTime() - DAY));
+    await reject(c, now);
+    await reject(c, new Date(now.getTime() - 400 * DAY));
+    expect((await t.prisma.companyFlag.findUnique({ where: { companyId: c } }))?.underReview ?? false).to.equal(false);
+    expect(await flagEvents()).to.have.length(0);
+    expect(await companyItems(c)).to.have.length(0);
+  });
+
+  it('Minor #6: 3 เหตุการณ์ภายใน 30 วันที่มาถึงสลับลำดับ (ใหม่สุดก่อน) ยังติดธงเมื่อเหตุการณ์สุดท้ายมาถึง และ trigger_count = 3', async () => {
+    const c = randomUUID();
+    const now = T();
+    await reject(c, now);
+    await reject(c, new Date(now.getTime() - 10 * DAY));
+    expect(await flagEvents()).to.have.length(0);
+    await reject(c, new Date(now.getTime() - 20 * DAY));
+    const ev = await flagEvents();
+    expect(ev).to.have.length(1);
+    expect(ev[0]).to.include({ active: true, trigger_count: 3 });
+  });
+
+  it('Minor #6: เหตุการณ์ 3 ครั้งที่ห่างกันเกิน 30 วันเมื่อเทียบจากเหตุการณ์ที่มาถึง (แต่รวมกันครอบคลุมเกิน 30 วัน) ไม่ติดธง', async () => {
+    const c = randomUUID();
+    const now = T();
+    await reject(c, new Date(now.getTime() - 40 * DAY));
+    await reject(c, new Date(now.getTime() - 20 * DAY));
+    await reject(c, now);
+    expect((await t.prisma.companyFlag.findUnique({ where: { companyId: c } }))?.underReview ?? false).to.equal(false);
+  });
+
   it('เหตุการณ์ที่ 4 ขณะธงเปิด ⇒ ไม่มีรายการ/E18 เพิ่ม; sourceEventId ซ้ำ ⇒ ไม่นับเพิ่ม', async () => {
     const c = randomUUID();
     const now = T();

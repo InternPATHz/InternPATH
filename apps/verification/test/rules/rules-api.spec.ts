@@ -5,6 +5,7 @@ import { AuditModule } from '../../src/audit/audit.module';
 import { RulesModule } from '../../src/rules/rules.module';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { BLACKLIST_TEST_RESPONSE, NEGATION_CUE, RISK_RULE, RISK_RULES_RESPONSE, expectShape } from '../support/contract-shapes';
 
 describe('rules API: /admin/blacklist, /admin/risk-rules (Postgres จริง)', function () {
   this.timeout(60000);
@@ -121,6 +122,7 @@ describe('rules API: /admin/blacklist, /admin/risk-rules (Postgres จริง)
       const res = await http().post('/v1/admin/blacklist/test').set(admin).send({ text: 'ไม่มีค่ามัดจำ' }).expect(200);
       expect(res.body).to.include({ decision: 'PENDING_REVIEW', risk_level: 'MEDIUM' });
       expect(res.body).to.have.all.keys('decision', 'risk_level', 'risk_score', 'matched_keywords', 'reasons');
+      expectShape(res.body, BLACKLIST_TEST_RESPONSE, 'POST /admin/blacklist/test');
       expect(res.body.matched_keywords[0].negated).to.equal(true);
       expect(await count()).to.equal(before);
     });
@@ -137,6 +139,9 @@ describe('rules API: /admin/blacklist, /admin/risk-rules (Postgres จริง)
     it('GET: กฎครบ 8 แถว (รวมที่ปิด) และ negation cues พร้อม id', async () => {
       const res = await http().get('/v1/admin/risk-rules').set(admin).expect(200);
       expect(res.body.rules).to.have.length(8);
+      expectShape(res.body, RISK_RULES_RESPONSE, 'GET /admin/risk-rules');
+      for (const r of res.body.rules) expectShape(r, RISK_RULE, 'rules[]');
+      for (const c of res.body.negation_cues) expectShape(c, NEGATION_CUE, 'negation_cues[]');
       expect(res.body.rules[0]).to.have.all.keys('code', 'weight', 'params', 'enabled');
       expect(res.body.negation_cues).to.have.length(8);
       expect(res.body.negation_cues[0]).to.have.all.keys('id', 'cue', 'enabled');

@@ -13,6 +13,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { PageQuery } from '../common/pagination';
+import { NoNul } from '../common/no-nul';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : value === 'false' ? false : value);
@@ -29,12 +30,14 @@ export class TermQuery extends PageQuery {
 
   @IsOptional()
   @IsString()
+  @NoNul()
   q?: string;
 }
 
 export class CreateTermDto {
   @Transform(trim)
   @IsString()
+  @NoNul()
   @IsNotEmpty()
   @MaxLength(100)
   term!: string;
@@ -50,6 +53,7 @@ export class CreateTermDto {
 
   @IsOptional()
   @IsString()
+  @NoNul()
   @MaxLength(50)
   category?: string;
 }
@@ -66,12 +70,14 @@ export class UpdateTermDto {
 
   @IsOptional()
   @IsString()
+  @NoNul()
   @MaxLength(50)
   category?: string;
 }
 
 export class TestTextDto {
   @IsString()
+  @NoNul()
   @IsNotEmpty()
   @MaxLength(100_000)
   text!: string;
@@ -79,6 +85,7 @@ export class TestTextDto {
 
 export class RuleUpdateDto {
   @IsString()
+  @NoNul()
   @IsNotEmpty()
   code!: string;
 
@@ -100,6 +107,7 @@ export class RuleUpdateDto {
 export class CueUpdateDto {
   @Transform(trim)
   @IsString()
+  @NoNul()
   @IsNotEmpty()
   @MaxLength(50)
   cue!: string;

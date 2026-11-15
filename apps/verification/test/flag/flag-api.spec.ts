@@ -7,6 +7,7 @@ import { QueueModule } from '../../src/queue/queue.module';
 import { QueueService } from '../../src/queue/queue.service';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { COMPANY_FLAG_ITEM, SET_COMPANY_FLAG_RESPONSE, expectShape } from '../support/contract-shapes';
 
 describe('ธงบริษัท UNDER_REVIEW: API ของ Admin (Postgres จริง)', function () {
   this.timeout(60000);
@@ -37,6 +38,9 @@ describe('ธงบริษัท UNDER_REVIEW: API ของ Admin (Postgres �
   });
 
   const http = () => request(t.app.getHttpServer());
+  /** บริษัทที่ระบบรู้จัก (มี company_snapshots) — Minor #8: PUT บริษัทที่ไม่รู้จักได้ 404 */
+  const known = (companyId: string) =>
+    t.prisma.companySnapshot.createMany({ data: [{ companyId, name: 'บริษัททดสอบ', status: 'VERIFIED', entityVersion: 1 }], skipDuplicates: true });
   const put = (companyId: string, body: object) => http().put(`/v1/admin/flags/companies/${companyId}/under-review`).set(admin).send(body);
   const flagEvents = async () => (await t.prisma.outboxEvent.findMany({ where: { type: 'CompanyFlagChanged' }, orderBy: { createdAt: 'asc' } })).map((o) => o.payload as any);
   const audits = (action: string) => t.prisma.adminAuditLog.findMany({ where: { action } });
@@ -51,7 +55,9 @@ describe('ธงบริษัท UNDER_REVIEW: API ของ Admin (Postgres �
 
   it('PUT active=true ⇒ 200 {changed:true}, set_by=ADMIN, E18 ตัวเดียว, audit FLAG_SET และไม่สร้างรายการคิว', async () => {
     const c = randomUUID();
+    await known(c);
     const res = await put(c, { active: true, reason: 'พบหลักฐานหลอกลวง' }).expect(200);
+    expectShape(res.body, SET_COMPANY_FLAG_RESPONSE, 'PUT under-review');
     expect(res.body).to.deep.equal({ company_id: c, active: true, changed: true });
     expect(await t.prisma.companyFlag.findUniqueOrThrow({ where: { companyId: c } })).to.include({ underReview: true, setBy: 'ADMIN', setReason: 'พบหลักฐานหลอกลวง' });
     const ev = await flagEvents();
@@ -64,6 +70,7 @@ describe('ธงบริษัท UNDER_REVIEW: API ของ Admin (Postgres �
 
   it('PUT ซ้ำค่าเดิม ⇒ 200 {changed:false} ไม่มี Event/audit เพิ่ม; ไม่มี reason ⇒ 400', async () => {
     const c = randomUUID();
+    await known(c);
     await put(c, { active: true, reason: 'r' }).expect(200);
     const again = await put(c, { active: true, reason: 'r' }).expect(200);
     expect(again.body.changed).to.equal(false);
@@ -84,6 +91,38 @@ describe('ธงบริษัท UNDER_REVIEW: API ของ Admin (Postgres �
     const ev = await flagEvents();
     expect(ev[ev.length - 1]).to.include({ active: false, set_by: 'ADMIN' });
     expect(await audits('FLAG_CLEAR')).to.have.length(1);
+  });
+
+  it('Minor #8: PUT บริษัทที่ไม่รู้จัก (ไม่มี snapshot และไม่เคยมีธง) ⇒ 404 ไม่สร้างแถว/Event/audit; ถ้าเคยมีธงจากระบบแล้ว (ไม่มี snapshot) ยังเคลียร์ได้', async () => {
+    const unknown = randomUUID();
+    for (const active of [true, false]) {
+      const res = await put(unknown, { active, reason: 'ทดสอบ' });
+      expect(res.status, String(active)).to.equal(404);
+      expect(res.body.error.code).to.equal('NOT_FOUND');
+    }
+    expect(await t.prisma.companyFlag.count({ where: { companyId: unknown } })).to.equal(0);
+    expect(await flagEvents()).to.have.length(0);
+    expect(await t.prisma.adminAuditLog.count()).to.equal(0);
+
+    const flagged = randomUUID();
+    await triggerByRejections(flagged);
+    await put(flagged, { active: false, reason: 'เคลียร์' }).expect(200);
+  });
+
+  it('Minor #7: company-clear-flag กับ PUT เคลียร์ธงพร้อมกัน (ล็อกลำดับเดียวกัน) ต้องไม่ deadlock — ไม่มี 5xx', async () => {
+    for (let i = 0; i < 15; i++) {
+      const companyId = randomUUID();
+      await known(companyId);
+      const item = await triggerByRejections(companyId);
+      const [a, b] = await Promise.all([
+        http().post('/v1/admin/queue/' + item.id + '/actions/company-clear-flag').set(admin).send({ reason: 'จากคิว' }),
+        put(companyId, { active: false, reason: 'ด้วยมือ' }),
+      ]);
+      expect(a.status, 'clear-flag รอบ ' + i).to.be.lessThan(500);
+      expect(b.status, 'PUT รอบ ' + i).to.be.lessThan(500);
+      expect((await t.prisma.companyFlag.findUniqueOrThrow({ where: { companyId } })).underReview).to.equal(false);
+      expect(await t.prisma.queueItem.count({ where: { targetId: companyId, type: 'COMPANY_ACCOUNT', status: { not: 'RESOLVED' } } })).to.equal(0);
+    }
   });
 
   it('company-clear-flag บนรายการที่ระบบสร้าง ⇒ 204 ธงถูกเคลียร์ + E18 active=false + audit; เรียกซ้ำ 409', async () => {
@@ -128,6 +167,7 @@ describe('ธงบริษัท UNDER_REVIEW: API ของ Admin (Postgres �
     await new Promise((r) => setTimeout(r, 15));
     await put(b, { active: true, reason: 'rb' }).expect(200);
     await put(b, { active: false, reason: 'ok' }).expect(200);
+    await known(never);
     await put(never, { active: false, reason: 'x' }).expect(200); // ไม่เคยติด ⇒ ไม่ควรอยู่ในรายการ
 
     const list = (qs = '') => http().get(`/v1/admin/flags/companies${qs}`).set(admin).expect(200).then((r) => r.body);
@@ -136,6 +176,7 @@ describe('ธงบริษัท UNDER_REVIEW: API ของ Admin (Postgres �
     expect(all.data.map((x: any) => x.company_id)).to.deep.equal([b, a]); // b ติดทีหลัง ⇒ มาก่อน
     expect(all.data[1]).to.have.all.keys('company_id', 'company_name', 'active', 'set_by', 'set_reason', 'set_at', 'cleared_at', 'trigger_count');
     expect(all.data[1]).to.include({ company_name: 'บริษัท อัลฟ่า จำกัด', active: true, set_by: 'ADMIN', set_reason: 'ra' });
+    for (const row of all.data) expectShape(row, COMPANY_FLAG_ITEM, 'GET /admin/flags/companies[]');
     expect(all.data[0]).to.include({ company_name: 'Beta Corp', active: false });
     expect(all.data[0].cleared_at).to.be.a('string');
 

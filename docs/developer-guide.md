@@ -271,7 +271,9 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 - **รีวิว (E09):** payload ต้องมี `student_user_id`; รับ `ReviewModerationResult` (E10) ที่มี `student_user_id` กลับมา — **กติกาสไลซ์ 3 (event-contract §E10):** `ADMIN_REMOVE` ต้องรับได้จาก `PUBLISHED` ด้วย (เปลี่ยนเป็น `REMOVED` แล้วส่ง `ReviewPublished` ใหม่ให้ตัวนับคะแนนตรง), `ADMIN_PUBLISH` ของรีวิวที่เผยแพร่อยู่แล้วต้องข้ามเงียบ, E10 ที่สถานะไม่ตรงให้ข้ามพร้อม log ไม่ throw; เมื่อผู้เขียนรีวิวลบบัญชี Verification ล้างเนื้อหารีวิวที่ยัง `HELD` ของตน (Lifecycle ตัดสินเองว่าจะลบ/ไม่เผยแพร่รีวิวนั้น)
 - ตั้ง `output` ของ Prisma ตามกฎข้อ 9 เมื่อเริ่มเขียน schema (ตั้งไว้ให้แล้วในไฟล์ `schema.prisma` ของ Lifecycle)
 
-**PM (Verification) — งานที่ยังค้าง:** Minor ของ review สไลซ์ 2 (#5 `dismiss` พลิกรายงานที่เคย uphold, #6 ธงอาจติดผิดจาก E03 เก่ามาก, #7 ลำดับล็อกของ clear-flag, #8 `PUT` ธงไม่เช็กว่าบริษัทมีจริง, #10 เทสต์ไม่ log `detail`) · ~~สไลซ์ 3 (ตรวจรีวิว E09/E10 และรายงานรีวิว)~~ **ทำแล้ว** ([spec](superpowers/specs/2026-11-15-verification-slice3-design.md)) — รอ PM ตรวจ
+**เทสต์รูปร่าง response เทียบ contracts (Verification — ทำแล้ว):** `apps/verification/test/support/contract-shapes.ts` ผูกรายการคีย์ของ response กับชนิดใน `libs/contracts` (เพิ่ม/ลบฟิลด์ใน contracts โดยไม่แก้ spec นั้นแล้วเทสต์ไม่ build; Service คืนคีย์เกิน/ขาด/ชนิดผิดแล้วเทสต์ล้ม) — Service อื่นใช้แบบเดียวกันได้ (`expectShape(body, SPEC, label)`)
+
+**PM (Verification) — งานที่ยังค้าง:** ~~Minor ของ review สไลซ์ 2 (#5–#8, #10)~~ **แก้แล้ว** (ดู [spec สไลซ์ 2](superpowers/specs/2026-11-14-verification-slice2-design.md) §8) · ~~Minor ของสไลซ์ 1 (หลบการตรวจแบบง่าย, queue list ค่าเริ่มต้นปน RESOLVED)~~ **แก้แล้ว** (ดู [spec สไลซ์ 1](superpowers/specs/2026-11-13-verification-slice1-design.md) ท้ายเอกสาร) · ~~สไลซ์ 3 (ตรวจรีวิว E09/E10 และรายงานรีวิว)~~ **ทำแล้ว** ([spec](superpowers/specs/2026-11-15-verification-slice3-design.md)) — รอ PM ตรวจ
 
 ### 9.2 เพิ่มเติมจากการตรวจ contract ฝั่ง Job (2026-11-15) — สำหรับ Junior
 

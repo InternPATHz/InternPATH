@@ -3,7 +3,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { isIP } from 'node:net';
 import { ConfigService } from '@nestjs/config';
-import type { JwtClaims } from '@internpath/common';
+import { normalizePemKey, type JwtClaims } from '@internpath/common';
 import type { Request, Response } from 'express';
 import { AccessTokenError, verifyAccessToken } from './auth/verify-access-token';
 import { DenylistService } from './denylist/denylist.service';
@@ -51,7 +51,7 @@ export class GatewayMiddleware {
     let user: JwtClaims | undefined;
     if (!publicRoute) {
       if (typeof req.headers.authorization !== 'string') return this.error(req, res, 401, 'UNAUTHENTICATED');
-      const key = (this.config.get<string>('JWT_PUBLIC_KEY') ?? '').replace(/\\n/g, '\n');
+      const key = normalizePemKey(this.config.get<string>('JWT_PUBLIC_KEY'));
       if (!key) return this.error(req, res, 503, 'UPSTREAM_UNAVAILABLE');
       try {
         user = verifyAccessToken(req.headers.authorization, key);

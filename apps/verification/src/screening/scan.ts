@@ -1,3 +1,4 @@
+import { foldForScan } from './normalize';
 import type { MatchedKeyword } from './types';
 
 export type { MatchedKeyword } from './types';
@@ -61,7 +62,7 @@ export function findTermMatches(
   maxGap: number,
 ): MatchedKeyword[] {
   if (!text || terms.length === 0) return [];
-  const lower = lowerKeepLength(text);
+  const lower = lowerKeepLength(foldForScan(text));
   const lowerCues = cues.map((c) => c.toLowerCase()).filter((c) => c.length > 0);
   const maxCueLen = lowerCues.reduce((m, c) => Math.max(m, c.length), 0);
   const starts = sentenceStarts(lower);

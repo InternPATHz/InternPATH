@@ -5,6 +5,7 @@ import request from 'supertest';
 import { ReviewModule } from '../../src/review/review.module';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { REPORT_CREATED_RESPONSE, expectShape } from '../support/contract-shapes';
 
 const REASON = 'รีวิวนี้ใส่ร้ายบริษัทโดยไม่มีมูลความจริง';
 
@@ -51,6 +52,7 @@ describe('POST /reviews/{review_id}/reports (Postgres จริง)', function (
     const { reviewId, companyId } = await seedReview();
     const res = await post(reviewId, who('STUDENT').auth);
     expect(res.status).to.equal(201);
+    expectShape(res.body, REPORT_CREATED_RESPONSE, 'POST /reviews/{id}/reports');
     expect(res.body).to.have.keys(['id', 'status']);
     expect(res.body.status).to.equal('OPEN');
     expect(await t.prisma.reviewReport.count({ where: { reviewId } })).to.equal(1);
@@ -116,6 +118,15 @@ describe('POST /reviews/{review_id}/reports (Postgres จริง)', function (
     expect(await t.prisma.reviewReport.count()).to.equal(0);
     expect(await t.prisma.queueItem.count()).to.equal(0);
     expect((await post(reviewId, who('STUDENT').auth, { reason: 'ก'.repeat(10) })).status).to.equal(201);
+  });
+
+  it('Minor #10: reason มี NUL (\\u0000) ⇒ 400 VALIDATION_FAILED ไม่ใช่ 500 และไม่มีแถว/รายการคิว', async () => {
+    const { reviewId } = await seedReview();
+    const res = await post(reviewId, who('STUDENT').auth, { reason: 'เหตุผลที่ยาวพอ\u0000ต่อท้าย' });
+    expect(res.status).to.equal(400);
+    expect(res.body.error.code).to.equal('VALIDATION_FAILED');
+    expect(await t.prisma.reviewReport.count()).to.equal(0);
+    expect(await t.prisma.queueItem.count()).to.equal(0);
   });
 
   it('10 ผู้ใช้รายงานพร้อมกัน ⇒ 10 แถว รายการเปิดหนึ่งรายการ', async () => {

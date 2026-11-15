@@ -1,5 +1,6 @@
 import { Transform } from 'class-transformer';
 import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { NoNul } from '../common/no-nul';
 
 const trim = ({ value }: { value: unknown }): unknown => (typeof value === 'string' ? value.trim() : value);
 
@@ -7,6 +8,7 @@ const trim = ({ value }: { value: unknown }): unknown => (typeof value === 'stri
 export class ReviewReportDto {
   @Transform(trim)
   @IsString()
+  @NoNul()
   @MinLength(10)
   @MaxLength(1000)
   reason!: string;
@@ -17,6 +19,7 @@ export class PublishReviewDto {
   @IsOptional()
   @Transform(trim)
   @IsString()
+  @NoNul()
   @MaxLength(500)
   reason?: string;
 }
@@ -25,6 +28,7 @@ export class PublishReviewDto {
 export class RemoveReviewDto {
   @Transform(trim)
   @IsString()
+  @NoNul()
   @MinLength(1)
   @MaxLength(500)
   reason!: string;

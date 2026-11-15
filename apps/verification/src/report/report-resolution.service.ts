@@ -71,13 +71,15 @@ export class ReportResolutionService {
       const reporters = [...new Set(round.map((r) => r.reporterUserId))];
 
       if (kind === 'dismiss') {
-        await tx.jobReport.updateMany({ where: { id: { in: ids } }, data: { status: 'DISMISSED', resolvedAt: now } });
+        // ยกคำร้องเฉพาะรายงาน OPEN — รายงานที่ Admin เคย uphold แล้ว (UPHELD) ต้องคงผลเดิมและไม่เพิ่ม streak ของผู้รายงานนั้น (Minor #5)
+        const open = round.filter((r) => r.status === 'OPEN');
+        await tx.jobReport.updateMany({ where: { id: { in: open.map((r) => r.id) } }, data: { status: 'DISMISSED', resolvedAt: now } });
         await tx.jobReportCounter.upsert({
           where: { jobId },
           create: { jobId, countedReports: 0, resetAt: now },
           update: { countedReports: 0, resetAt: now, suspendedAt: null },
         });
-        for (const userId of reporters) {
+        for (const userId of new Set(open.map((r) => r.reporterUserId))) {
           await tx.reporterStat.upsert({
             where: { userId },
             create: { userId, consecutiveDismissed: 1 },

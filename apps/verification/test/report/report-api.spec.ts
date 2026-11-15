@@ -7,6 +7,7 @@ import { ReportModule } from '../../src/report/report.module';
 import { ReportService } from '../../src/report/report.service';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { REPORT_CREATED_RESPONSE, expectShape } from '../support/contract-shapes';
 
 const DETAIL = 'ประกาศนี้เรียกเก็บเงินค่าสมัครจากนักศึกษา';
 
@@ -56,6 +57,7 @@ describe('POST /jobs/{job_id}/reports (Postgres จริง)', function () {
       const { jobId } = await seedJob(status);
       const res = await post(jobId, student().auth);
       expect(res.status, status).to.equal(201);
+      expectShape(res.body, REPORT_CREATED_RESPONSE, 'POST /jobs/{id}/reports');
       expect(res.body).to.have.keys(['id', 'status']);
       expect(res.body.status).to.equal('OPEN');
     }
@@ -200,6 +202,27 @@ describe('POST /jobs/{job_id}/reports (Postgres จริง)', function () {
     expect(items).to.have.length(1);
     expect(items[0]).to.include({ id: before.id, origin: 'REPORT_THRESHOLD' });
     expect((await outbox('ReportThresholdReached'))[0].queue_item_id).to.equal(before.id);
+  });
+
+  it('Minor #10: detail มี NUL (\\u0000) ⇒ 400 VALIDATION_FAILED ไม่ใช่ 500, ไม่มีแถว, และไม่ log detail ในเส้นทางล้มเหลว', async () => {
+    const { jobId } = await seedJob();
+    const marker = 'MARKER-ลับ-ห้ามหลุด-NUL-1234567890';
+    const seen: string[] = [];
+    const methods = ['log', 'debug', 'warn', 'error', 'verbose'] as const;
+    const originals = methods.map((m) => Logger.prototype[m]);
+    methods.forEach((m) => {
+      (Logger.prototype as any)[m] = (...args: unknown[]) => void seen.push(args.map((a) => JSON.stringify(a)).join(' '));
+    });
+    let res;
+    try {
+      res = await post(jobId, student().auth, { category: 'OTHER', detail: marker + '\u0000 ' + DETAIL });
+    } finally {
+      methods.forEach((m, i) => ((Logger.prototype as any)[m] = originals[i]));
+    }
+    expect(res.status).to.equal(400);
+    expect(res.body.error.code).to.equal('VALIDATION_FAILED');
+    expect(await t.prisma.jobReport.count({ where: { jobId } })).to.equal(0);
+    expect(seen.join('\n')).to.not.include(marker);
   });
 
   it('ไม่ log detail ของรายงาน', async () => {

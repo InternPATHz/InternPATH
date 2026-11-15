@@ -5,6 +5,7 @@ import { QueueModule } from '../../src/queue/queue.module';
 import { ReviewModule } from '../../src/review/review.module';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { QUEUE_HIGHLIGHT, QUEUE_ITEM_DETAIL, QUEUE_REVIEW_REPORT_ENTRY, QUEUE_REVIEW_VIEW, expectShape } from '../support/contract-shapes';
 
 describe('GET /admin/queue — รายการรีวิว (Postgres จริง)', function () {
   this.timeout(60000);
@@ -51,6 +52,9 @@ describe('GET /admin/queue — รายการรีวิว (Postgres จ�
     const res = await http().get(`/v1/admin/queue/${s.itemId}`).set(admin);
     expect(res.status).to.equal(200);
     expect(res.body).to.include({ type: 'REVIEW_HELD', target_id: s.reviewId, company_name: 'บริษัท รีวิว จำกัด', origin: 'REVIEW_SCAN' });
+    expectShape(res.body, QUEUE_ITEM_DETAIL, 'GET /admin/queue/{id} (REVIEW_HELD)');
+    expectShape(res.body.review, QUEUE_REVIEW_VIEW, 'review');
+    for (const h of res.body.review.highlights) expectShape(h, QUEUE_HIGHLIGHT, 'review.highlights[]');
     expect(res.body.review).to.include({ review_id: s.reviewId, rating: 2, outcome_label: 'FAIL', title, body, moderation_status: 'HELD' });
     const text = `${title}\n${body}`;
     const highlighted = res.body.review.highlights.map((h: { start: number; end: number }) => text.slice(h.start, h.end));
@@ -72,7 +76,7 @@ describe('GET /admin/queue — รายการรีวิว (Postgres จ�
       [a, 'เหตุผลแรกยาวพอ'],
       [b, 'เหตุผลที่สองยาวพอ'],
     ]);
-    expect(res.body.review_reports[0]).to.have.keys(['id', 'reporter_user_id', 'reason', 'created_at']);
+    for (const r of res.body.review_reports) expectShape(r, QUEUE_REVIEW_REPORT_ENTRY, 'review_reports[]');
     expect(res.body.review.moderation_status).to.equal('PASSED');
   });
 

@@ -5,6 +5,7 @@ import * as jwt from 'jsonwebtoken';
 import { AppException } from '../errors/app-exception';
 import type { JwtClaims } from './claims';
 import { IS_PUBLIC_KEY } from './decorators';
+import { normalizePemKey } from './pem';
 
 /** ตรวจ Access Token ด้วย Public Key (RS256) ของ Identity — ไม่ต้องเรียก Identity ทุกคำขอ */
 @Injectable()
@@ -28,7 +29,7 @@ export class JwtAuthGuard implements CanActivate {
       throw new AppException('UNAUTHENTICATED', 'ต้องเข้าสู่ระบบก่อน', 401);
     }
 
-    const publicKey = (this.config.get<string>('JWT_PUBLIC_KEY') ?? '').replace(/\\n/g, '\n');
+    const publicKey = normalizePemKey(this.config.get<string>('JWT_PUBLIC_KEY'));
     if (!publicKey) {
       throw new AppException('AUTH_NOT_CONFIGURED', 'ระบบยังไม่ได้ตั้งค่า JWT_PUBLIC_KEY', 500);
     }
