@@ -33,9 +33,12 @@ export default function LoginPage() {
       {error && <Notice error>{error}</Notice>}
       <ActionButton busy={busy}>เข้าสู่ระบบ</ActionButton>
     </form>
-    <div className="mt-5 flex flex-wrap justify-between gap-2 text-sm">
-      <Link href="/forgot-password" className="text-primary hover:underline">ลืมรหัสผ่าน?</Link>
-      <Link href="/register" className="text-primary hover:underline">ยังไม่มีบัญชี? สมัครสมาชิก</Link>
+    <div className="mt-4 text-right text-sm">
+      <Link href="/forgot-password" className="text-ink-soft hover:text-primary hover:underline">ลืมรหัสผ่าน?</Link>
     </div>
+    <p className="mt-6 border-t border-border pt-5 text-center text-sm text-ink-soft">
+      ยังไม่มีบัญชี?{' '}
+      <Link href="/register" className="font-semibold text-primary hover:underline">สมัครสมาชิก</Link>
+    </p>
   </AuthShell>;
 }
