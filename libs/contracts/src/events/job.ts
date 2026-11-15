@@ -60,6 +60,11 @@ export interface JobVerifiedPayload {
   is_appeal: boolean;
   decided_by: 'SYSTEM' | 'ADMIN';
   decided_at: string;
+  /**
+   * บังคับเมื่อ `decision` เป็น `REMOVE` | `RESTORE`: รายการคิวรายงานที่ตัดสิน (ค่าเดียวกับ `queue_item_id` ของ E04 ที่ระงับประกาศ)
+   * Job ใช้ปิดช่องเหตุการณ์ข้ามรอบ — รับเฉพาะเมื่อตรงกับ E04 ที่ระงับอยู่ ไม่เช่นนั้นข้าม; decision อื่นไม่มีฟิลด์นี้
+   */
+  queue_item_id?: string;
 }
 
 /** E03 `JobStatusChanged` (job → lifecycle, notification, verification) */
