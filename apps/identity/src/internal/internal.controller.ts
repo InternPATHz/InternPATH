@@ -1,10 +1,15 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
-import { InternalCallers, ServiceTokenGuard } from './service-token.guard';
+import { InternalCallers, ServiceTokenGuard, ServiceTokenPolicy } from '@internpath/common';
 import { ConsentCheckDto } from './internal.dto';
 import { InternalService } from './internal.service';
 
 @Controller('internal/v1')
 @UseGuards(ServiceTokenGuard)
+@ServiceTokenPolicy({ audience: 'identity', secretEnvByCaller: {
+  gateway: 'IDENTITY_SERVICE_SECRET_GATEWAY',
+  notification: 'IDENTITY_SERVICE_SECRET_NOTIFICATION',
+  lifecycle: 'IDENTITY_SERVICE_SECRET_LIFECYCLE',
+} })
 export class InternalController {
   constructor(private readonly service: InternalService) {}
 

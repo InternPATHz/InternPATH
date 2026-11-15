@@ -1,11 +1,11 @@
-import { Injectable, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomUUID } from 'node:crypto';
-import * as jwt from 'jsonwebtoken';
+import { signServiceToken } from '@internpath/common';
 import type { UserSuspendedPayload } from '@internpath/contracts';
 
 @Injectable()
 export class DenylistService implements OnModuleDestroy {
+  private readonly logger = new Logger(DenylistService.name);
   private users = new Set<string>();
   private refreshedAt = 0;
   private timer?: NodeJS.Timeout;
@@ -17,9 +17,18 @@ export class DenylistService implements OnModuleDestroy {
 
   start(): void {
     if (this.timer) return;
-    void this.refresh().catch(() => undefined);
-    this.timer = setInterval(() => void this.refresh().catch(() => undefined), 30_000);
+    try { this.denylistConfig(); }
+    catch (error) {
+      this.logger.error(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+    void this.refresh().catch((error) => this.logRefreshFailure(error));
+    this.timer = setInterval(() => void this.refresh().catch((error) => this.logRefreshFailure(error)), 30_000);
     this.timer.unref();
+  }
+
+  private logRefreshFailure(error: unknown): void {
+    this.logger.error('Denylist refresh failed', error instanceof Error ? error.stack : String(error));
   }
 
   onModuleDestroy(): void { if (this.timer) clearInterval(this.timer); }
@@ -46,15 +55,24 @@ export class DenylistService implements OnModuleDestroy {
     return this.pending;
   }
 
+  private denylistConfig(): { secret: string; base: URL } {
+    const secret = this.config.get<string>('IDENTITY_SERVICE_SECRET_GATEWAY');
+    if (!secret || secret.length < 32) {
+      throw new Error('IDENTITY_SERVICE_SECRET_GATEWAY must contain at least 32 characters before Gateway starts');
+    }
+    const identityUrl = this.config.get<string>('IDENTITY_URL');
+    if (!identityUrl) throw new Error('IDENTITY_URL must be configured before Gateway starts');
+    let base: URL;
+    try { base = new URL(identityUrl); }
+    catch { throw new Error('IDENTITY_URL must be a valid HTTP(S) URL'); }
+    if (!['http:', 'https:'].includes(base.protocol)) throw new Error('IDENTITY_URL must be a valid HTTP(S) URL');
+    return { secret, base };
+  }
+
   private async fetchDenylist(): Promise<void> {
     const generationAtStart = this.eventGeneration;
-    const secret = this.config.get<string>('IDENTITY_SERVICE_SECRET_GATEWAY');
-    const identityUrl = this.config.get<string>('IDENTITY_URL');
-    if (!secret || secret.length < 32 || !identityUrl) return;
-    const base = new URL(identityUrl);
-    if (!['http:', 'https:'].includes(base.protocol)) return;
-    const token = jwt.sign({}, secret, { algorithm: 'HS256', header: { alg: 'HS256', typ: 'service' },
-      issuer: 'gateway', audience: 'identity', expiresIn: 300, jwtid: randomUUID() });
+    const { secret, base } = this.denylistConfig();
+    const token = signServiceToken({ issuer: 'gateway', audience: 'identity', secret });
     const response = await fetch(new URL('/internal/v1/denylist', base), {
       headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(3000),
     });

@@ -20,6 +20,24 @@
 
 > อ่านเฉพาะหัวข้อของ Service ตัวเองก่อนก็พอ แล้วค่อยอ่านส่วนที่ต้องคุยกับ Service อื่น
 
+### 1.1 ตั้งค่า JWT และ Service secret ก่อนเปิด Gateway
+
+หลังคัดลอก `.env.example` เป็น `.env` ให้สร้างคู่คีย์ RS256 จากราก repo:
+
+```bash
+pnpm keys:generate
+```
+
+คัดลอกบรรทัด `JWT_PRIVATE_KEY` และ `JWT_PUBLIC_KEY` ที่พิมพ์ออกมาใส่ `.env` ตามเดิม รวมทั้งเครื่องหมายอัญประกาศและ `\n` ในค่า Private Key เมื่อแยก deploy ให้ Identity ถือ Private Key และให้ Gateway/Service ที่ตรวจ access token ถือ Public Key
+
+สร้าง secret แบบสุ่ม 32 ไบต์ (ผลลัพธ์เป็น hex 64 ตัวอักษร) ด้วยคำสั่งนี้หนึ่งครั้งต่อ Service ผู้เรียก:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+ใส่ค่าที่สร้างลง `IDENTITY_SERVICE_SECRET_GATEWAY` ใน `.env` ของ Gateway **และ** Identity ให้ตรงกัน และสร้างค่าใหม่แยกสำหรับ `IDENTITY_SERVICE_SECRET_NOTIFICATION` กับ `IDENTITY_SERVICE_SECRET_LIFECYCLE` เมื่อใช้ Service เหล่านั้น หากเปิด Gateway โดยไม่ตั้ง `IDENTITY_SERVICE_SECRET_GATEWAY` หรือค่าสั้นกว่า 32 ตัวอักษร Gateway จะ log ชื่อตัวแปรและไม่เริ่มรับคำขอ เก็บ `.env` และ Private Key ไว้นอก Git เสมอ
+
 ## 2. ใครดูแล Service ไหน
 
 | Service | โฟลเดอร์ | เจ้าของ | Port |
@@ -113,6 +131,8 @@ export class HrJobsController {
 }
 ```
 > `JwtAuthGuard` ต้องมี `JWT_PUBLIC_KEY` ใน `.env` (สร้างด้วย `pnpm keys:generate`) • Endpoint ภายในให้อยู่ใต้ `/internal/**` (ไม่ผ่าน Gateway)
+
+สำหรับ endpoint ภายในของ Job/Lifecycle/Notification ให้นำ `ServiceTokenGuard`, `ServiceTokenPolicy` และ `InternalCallers` จาก `@internpath/common` ไปใช้ตามตัวอย่างใน `apps/identity/src/internal/internal.controller.ts` และลงทะเบียน guard ใน `providers` ของ module โดยกำหนด `audience` เป็นชื่อ Service ที่รับคำขอ และแมปชื่อผู้เรียกกับ env ของ secret แยกแต่ละคู่ ฝั่งที่เรียกใช้ `signServiceToken({ issuer, audience, secret })` จาก `@internpath/common` (ตัวอย่างจริงอยู่ที่ Gateway denylist) แล้วส่งผลลัพธ์ใน `Authorization: Bearer <token>`
 
 6. เขียนเทสต์ใน `test/integration/` (ดูตัวอย่างโครงที่ `test/health.spec.ts`: สร้างแอปด้วย `Test.createTestingModule` + `configureApp(app)` + `supertest`)
 

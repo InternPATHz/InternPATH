@@ -19,6 +19,8 @@ pnpm install                  # ติดตั้ง + build libs/* อัต�
 pnpm keys:generate            # พิมพ์ JWT_PRIVATE_KEY / JWT_PUBLIC_KEY → วางลง .env
 ```
 
+ก่อนเปิด Gateway ให้สร้าง `IDENTITY_SERVICE_SECRET_GATEWAY` ด้วยตาม [developer-guide.md §1.1](developer-guide.md#11-ตั้งค่า-jwt-และ-service-secret-ก่อนเปิด-gateway)
+
 ## 3. รัน
 
 ```bash
