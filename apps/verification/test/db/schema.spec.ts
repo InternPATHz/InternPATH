@@ -21,6 +21,8 @@ const EXPECTED_TABLES = [
   'processed_events',
   'queue_items',
   'reporter_stats',
+  'review_moderations',
+  'review_reports',
   'risk_rules',
   'status_history',
 ];
@@ -45,7 +47,7 @@ describe('verification_db schema (Postgres จริง)', function () {
   const count = async (table: string, where = 'true'): Promise<number> =>
     Number((await pg.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${where}`)).rows[0].n);
 
-  it('migrate deploy ผ่านบนฐานข้อมูลเปล่า และตารางครบ 17 ตาราง', async () => {
+  it('migrate deploy ผ่านบนฐานข้อมูลเปล่า และตารางครบ 19 ตาราง', async () => {
     const rows = (
       await pg.query(
         `SELECT table_name FROM information_schema.tables
@@ -221,6 +223,43 @@ describe('verification_db schema (Postgres จริง)', function () {
       expect(await attempt('DELETE FROM status_history', [], both)).to.match(/append-only/i);
       expect(await attempt('DELETE FROM admin_audit_log', [], both)).to.match(/append-only/i);
     });
+  });
+
+  it('สไลซ์ 3: review_moderations.review_id UNIQUE, review_reports (review_id, reporter_user_id) UNIQUE, queue_items รับ origin REVIEW_SCAN/REVIEW_REPORT และ type REVIEW_HELD/REVIEW_REPORT', async () => {
+    const review = randomUUID();
+    const insertModeration = () =>
+      pg.query(
+        `INSERT INTO review_moderations (review_id, company_id, student_user_id, rating, outcome_label, body, decision, reasons, status)
+         VALUES ($1, $2, $3, 5, 'PASS', 'ดีมาก', 'PUBLISH', '[]', 'PASSED')`,
+        [review, randomUUID(), randomUUID()],
+      );
+    const messageOf = async (run: () => Promise<unknown>): Promise<string> => {
+      try {
+        await run();
+        return '';
+      } catch (e) {
+        return (e as Error).message;
+      }
+    };
+    await insertModeration();
+    expect(await messageOf(insertModeration)).to.match(/duplicate key/i);
+
+    const reporter = randomUUID();
+    const insertReport = () =>
+      pg.query('INSERT INTO review_reports (review_id, reporter_user_id, reason) VALUES ($1, $2, $3)', [review, reporter, 'เหตุผลยาวพอ']);
+    await insertReport();
+    expect(await messageOf(insertReport)).to.match(/duplicate key/i);
+
+    for (const [type, origin] of [
+      ['REVIEW_HELD', 'REVIEW_SCAN'],
+      ['REVIEW_REPORT', 'REVIEW_REPORT'],
+    ]) {
+      await pg.query(
+        `INSERT INTO queue_items (type, target_type, target_id, origin, due_at)
+         VALUES ($1::queue_item_type, 'review', $2, $3::queue_origin, now())`,
+        [type, randomUUID(), origin],
+      );
+    }
   });
 
   it('evaluations.submission_id และ appeals.job_id เป็น UNIQUE', async () => {

@@ -146,6 +146,59 @@ describe('UserAnonymizationService — E15 UserDeletionRequested (Postgres จ�
     expect(await t.prisma.jobReport.count({ where: { jobId, detail: '' } })).to.equal(2);
   });
 
+  const moderation = (studentUserId: string, status: 'HELD' | 'PASSED' | 'ADMIN_PUBLISHED', over: { companyId?: string } = {}) =>
+    t.prisma.reviewModeration.create({
+      data: {
+        reviewId: randomUUID(), companyId: over.companyId ?? randomUUID(), studentUserId, rating: 4, outcomeLabel: 'PASS',
+        title: 'หัวข้อรีวิว', body: 'เนื้อหารีวิว โทร 081-234-5678', decision: status === 'HELD' ? 'HOLD' : 'PUBLISH', reasons: [], status,
+      },
+    });
+
+  it('E15 กับรีวิว: student_user_id → รหัสนิรนาม; รีวิวที่ถูกพัก (HELD) ล้าง title/body แต่คงรายการคิว; รีวิวที่เผยแพร่แล้วคงเนื้อหา', async () => {
+    const user = randomUUID();
+    const other = randomUUID();
+    const anonymous = randomUUID();
+    const held = await moderation(user, 'HELD');
+    const queueItem = await t.prisma.queueItem.create({
+      data: { type: 'REVIEW_HELD', targetType: 'review', targetId: held.reviewId, origin: 'REVIEW_SCAN', dueAt: new Date(Date.now() + 1e8) },
+    });
+    const passed = await moderation(user, 'PASSED');
+    const published = await moderation(user, 'ADMIN_PUBLISHED');
+    const othersHeld = await moderation(other, 'HELD');
+
+    await apply(payload(user, anonymous));
+
+    const row = (id: string) => t.prisma.reviewModeration.findUniqueOrThrow({ where: { reviewId: id } });
+    expect(await row(held.reviewId)).to.include({ studentUserId: anonymous, title: null, body: '', status: 'HELD' });
+    for (const r of [passed, published]) {
+      expect(await row(r.reviewId)).to.include({ studentUserId: anonymous, title: 'หัวข้อรีวิว', body: 'เนื้อหารีวิว โทร 081-234-5678' });
+    }
+    expect(await row(othersHeld.reviewId)).to.include({ studentUserId: other, title: 'หัวข้อรีวิว', body: 'เนื้อหารีวิว โทร 081-234-5678' });
+    expect(await t.prisma.queueItem.findUniqueOrThrow({ where: { id: queueItem.id } })).to.include({ status: 'OPEN', type: 'REVIEW_HELD' });
+    expect(await t.prisma.reviewModeration.count({ where: { studentUserId: user } })).to.equal(0);
+  });
+
+  it('E15 กับรายงานรีวิว: reporter_user_id → รหัสนิรนามและล้าง reason; ผู้ใช้สองคนรายงานรีวิวเดียวกันแล้วถูกลบทั้งคู่ไม่ชน UNIQUE; ประมวลผลซ้ำได้', async () => {
+    const reviewId = randomUUID();
+    const a = randomUUID();
+    const b = randomUUID();
+    const keep = randomUUID();
+    for (const reporterUserId of [a, b, keep]) {
+      await t.prisma.reviewReport.create({ data: { reviewId, reporterUserId, reason: 'เหตุผลของ ' + reporterUserId } });
+    }
+    const anonA = randomUUID();
+    const anonB = randomUUID();
+    await apply(payload(a, anonA));
+    await apply(payload(a, anonA));
+    await apply(payload(b, anonB));
+
+    const rows = await t.prisma.reviewReport.findMany({ where: { reviewId } });
+    expect(rows).to.have.length(3);
+    expect(rows.find((r) => r.reporterUserId === anonA)).to.include({ reason: '' });
+    expect(rows.find((r) => r.reporterUserId === anonB)).to.include({ reason: '' });
+    expect(rows.find((r) => r.reporterUserId === keep)!.reason).to.equal('เหตุผลของ ' + keep);
+  });
+
   it('payload ไม่ถูกต้อง (anonymous_actor_id ไม่ใช่ UUID, user_id ว่าง) → ปฏิเสธและไม่แก้ข้อมูลใดๆ', async () => {
     const user = randomUUID();
     await history(user);

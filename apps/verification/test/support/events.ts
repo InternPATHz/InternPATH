@@ -4,6 +4,7 @@ import type {
   EventEnvelope,
   JobStatusChangedPayload,
   JobSubmittedPayload,
+  ReviewSubmittedPayload,
 } from '@internpath/contracts';
 
 export const LONG = 'พัฒนาเว็บแอปพลิเคชันร่วมกับทีมวิศวกรอาวุโสและเรียนรู้กระบวนการทำงานจริงของบริษัท '.repeat(2);
@@ -37,7 +38,7 @@ export function submitted(
   };
 }
 
-export function envelope<T extends string, P>(type: T, payload: P, producer: 'job' | 'identity' = 'job'): EventEnvelope<T, P> {
+export function envelope<T extends string, P>(type: T, payload: P, producer: 'job' | 'identity' | 'lifecycle' = 'job'): EventEnvelope<T, P> {
   return {
     event_id: randomUUID(),
     type,
@@ -71,6 +72,20 @@ export function companyChanged(over: Partial<CompanyStatusChangedPayload> = {}):
     snapshot: { name: 'บริษัท ตัวอย่าง จำกัด', university_partner: false, verified_badge: true },
     entity_version: 1,
     changed_at: new Date().toISOString(),
+    ...over,
+  };
+}
+
+export function reviewSubmitted(over: Partial<ReviewSubmittedPayload> = {}): ReviewSubmittedPayload {
+  return {
+    review_id: randomUUID(),
+    application_id: randomUUID(),
+    student_user_id: randomUUID(),
+    company_id: randomUUID(),
+    content: { title: 'ประสบการณ์ดี', body: 'พี่เลี้ยงใจดี งานท้าทาย ได้เรียนรู้เยอะ' },
+    rating: 5,
+    outcome_label: 'PASS',
+    submitted_at: new Date().toISOString(),
     ...over,
   };
 }

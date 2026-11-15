@@ -14,6 +14,8 @@ export class UserAnonymizationService {
    *   Operation (data-schema §2.3) — ตั้ง setting แบบ local ซึ่งหมดอายุเมื่อ Transaction จบ
    * - `job_reports`: เก็บแถว/สถานะ/ผลต่อตัวนับไว้ (ไม่ให้ตัวนับและเกณฑ์ระงับเพี้ยน) แต่เปลี่ยนผู้รายงานเป็นรหัสนิรนาม
    *   และล้าง `detail` ทุกสถานะ (PM ตัดสิน 2026-11-15); ลบ `reporter_stats`
+   * - รีวิว: `review_moderations.student_user_id` และ `review_reports.reporter_user_id` → รหัสนิรนาม (ล้าง reason ของรายงาน;
+   *   ล้าง title/body ของรีวิวที่ยังถูกพัก)
    * - id ของ Admin ในตารางอื่นเปลี่ยนเป็นรหัสนิรนาม ยกเว้น `queue_items.assigned_to` ของรายการที่ยังไม่ปิด
    *   ซึ่งปลดเป็น NULL เพื่อให้ Admin คนอื่นรับงานต่อได้ (รายการที่ปิดแล้วเก็บเป็นรหัสนิรนาม)
    *
@@ -35,6 +37,12 @@ export class UserAnonymizationService {
 
     await tx.jobReport.updateMany({ where: { reporterUserId: userId }, data: { reporterUserId: anonymous, detail: '' } });
     await tx.reporterStat.deleteMany({ where: { userId } });
+
+    // รีวิว (สไลซ์ 3 §5.7): รีวิวที่ยังถูกพักไม่เผยแพร่และมักมีข้อมูลติดต่อส่วนตัว ⇒ ล้างเนื้อหา (คงรายการคิวไว้ให้ Admin ปิดได้)
+    // ต้องล้างก่อนเปลี่ยน student_user_id เพราะหาแถวด้วยตัวตนเดิม; รีวิวที่เผยแพร่แล้วคงเนื้อหาตาม README 5.11
+    await tx.reviewModeration.updateMany({ where: { studentUserId: userId, status: 'HELD' }, data: { title: null, body: '' } });
+    await tx.reviewModeration.updateMany({ where: { studentUserId: userId }, data: { studentUserId: anonymous } });
+    await tx.reviewReport.updateMany({ where: { reporterUserId: userId }, data: { reporterUserId: anonymous, reason: '' } });
 
     await tx.appeal.updateMany({ where: { decidedBy: userId }, data: { decidedBy: anonymous } });
     await tx.blacklistTerm.updateMany({ where: { createdBy: userId }, data: { createdBy: anonymous } });

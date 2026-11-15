@@ -368,6 +368,20 @@ sequenceDiagram
         end
     end
 
+    opt รีวิวที่เผยแพร่แล้วถูกรายงาน (S หรือ H ของบริษัทนั้น)
+        S->>V: POST /reviews/{id}/reports {reason}
+        V->>V: สร้าง queue_item REVIEW_REPORT (ถ้ายังไม่มีรายการเปิด)
+        alt Admin ยืนยันให้คงอยู่
+            AD->>V: publish-review
+            V-)L: ReviewModerationResult(ADMIN_PUBLISH)
+            L->>L: PUBLISHED อยู่แล้ว ⇒ ข้ามเงียบ
+        else Admin ลบ
+            AD->>V: remove-review {reason}
+            V-)L: ReviewModerationResult(ADMIN_REMOVE, reasons: REPORTED)
+            L->>L: PUBLISHED → REMOVED, ส่ง ReviewPublished ใหม่ (ตัวนับคะแนน)
+        end
+    end
+
     opt HR ตอบรีวิว (1 ครั้งต่อรีวิว)
         H->>L: POST /hr/reviews/{id}/reply
     end

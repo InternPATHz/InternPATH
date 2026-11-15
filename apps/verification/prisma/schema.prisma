@@ -71,6 +71,8 @@ enum QueueOrigin {
   REPORT_UNCOUNTED
   REJECTION_THRESHOLD
   ADMIN_FLAG
+  REVIEW_SCAN
+  REVIEW_REPORT
 
   @@map("queue_origin")
 }
@@ -334,4 +336,46 @@ model AdminAuditLog {
 
   @@index([occurredAt])
   @@map("admin_audit_log")
+}
+
+enum ReviewModerationStatus {
+  PASSED
+  HELD
+  ADMIN_PUBLISHED
+  ADMIN_REMOVED
+
+  @@map("review_moderation_status")
+}
+
+/// สำเนารีวิวจาก E09 + ผลตรวจ (สไลซ์ 3) — title/body ผ่าน normalizeText แล้ว ห้าม log
+model ReviewModeration {
+  id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reviewId      String                 @unique @map("review_id") @db.Uuid
+  companyId     String                 @map("company_id") @db.Uuid
+  studentUserId String                 @map("student_user_id") @db.Uuid
+  rating        Int                    @db.SmallInt
+  outcomeLabel  String                 @map("outcome_label")
+  title         String?
+  body          String
+  /// คำตัดสินล่าสุดที่ส่งใน E10 (PUBLISH|HOLD|ADMIN_PUBLISH|ADMIN_REMOVE)
+  decision      String
+  reasons       Json
+  status        ReviewModerationStatus
+  queueItemId   String?                @map("queue_item_id") @db.Uuid
+  createdAt     DateTime               @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime               @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("review_moderations")
+}
+
+model ReviewReport {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  reviewId       String   @map("review_id") @db.Uuid
+  reporterUserId String   @map("reporter_user_id") @db.Uuid
+  /// ห้าม log
+  reason         String
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@unique([reviewId, reporterUserId])
+  @@map("review_reports")
 }

@@ -292,6 +292,8 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
 ```
 `HOLD` ⇒ รีวิวถูกพักและเข้าคิว Admin ไม่ถูกตีกลับ (README 5.5)
 
+**กติกาของผู้รับ (Lifecycle) — สไลซ์ 3 แบบ A:** `ADMIN_REMOVE` ใช้ได้กับรีวิวที่ `SUBMITTED`, `HELD` **หรือ `PUBLISHED`** (จาก `PUBLISHED` ⇒ เปลี่ยนเป็น `REMOVED` และส่ง `ReviewPublished` ใหม่ให้ตัวนับคะแนนตรง — มาจาก Admin ตัดสินรายการ `REVIEW_REPORT`); `ADMIN_PUBLISH` ของรีวิวที่ `PUBLISHED` อยู่แล้ว ⇒ ข้ามเงียบ (เป็นการยืนยันให้คงอยู่); E10 ที่สถานะรีวิวไม่ตรงกับที่คาด ⇒ ข้ามพร้อม log ไม่ throw; `reasons` ของการตัดสินโดย Admin มี `ADMIN` (พร้อม `detail` เมื่อมีเหตุผล) และ `REPORTED` เมื่อมาจากรายงาน
+
 ### E11 `ReviewPublished`  (lifecycle → identity, notification)
 ```ts
 {

@@ -40,10 +40,10 @@
 | :-: | :--- | :--- |
 | 400 | `VALIDATION_FAILED`, `REASON_REQUIRED`, `FILE_TYPE_NOT_ALLOWED`, `FILE_TOO_LARGE`, `MISSING_REQUIRED_JOB_FIELDS` | Input ไม่ถูกต้อง |
 | 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED`, `ACCOUNT_SUSPENDED`, `EMAIL_NOT_VERIFIED` | ไม่ได้ล็อกอิน/Token เสีย |
-| 403 | `FORBIDDEN_ROLE`, `NOT_OWNER_OF_RESOURCE`, `COMPANY_NOT_VERIFIED`, `ADVISOR_NOT_LINKED`, `REAPPLY_BLOCKED`, `CONSENT_REQUIRED`, `ALREADY_CONFIRMED_ELSEWHERE` | สิทธิ์/เงื่อนไขธุรกิจไม่ผ่าน |
+| 403 | `FORBIDDEN_ROLE` (รวม HR รายงานรีวิวของบริษัทอื่น), `NOT_OWNER_OF_RESOURCE`, `COMPANY_NOT_VERIFIED`, `ADVISOR_NOT_LINKED`, `REAPPLY_BLOCKED`, `CONSENT_REQUIRED`, `ALREADY_CONFIRMED_ELSEWHERE` | สิทธิ์/เงื่อนไขธุรกิจไม่ผ่าน |
 | 404 | `NOT_FOUND` | ไม่มีทรัพยากร หรือไม่มีสิทธิ์เห็น (ใช้ 404 แทน 403 สำหรับทรัพยากรที่ไม่ควรรู้ว่ามีอยู่) |
 | 409 | `STATE_CONFLICT`, `QUOTA_FULL`, `ALREADY_APPLIED`, `APPEAL_ALREADY_USED`, `ALREADY_REPORTED`, `ALREADY_REVIEWED`, `ALREADY_REPLIED` | ขัดกับสถานะปัจจุบัน |
-| 422 | `INVALID_PERIOD_MIN_30_DAYS`, `EVALUATION_NOT_OPEN`, `CERT_MIN_ACTUAL_DAYS`, `DISPUTE_WINDOW_CLOSED`, `DELETION_BLOCKED`, `RATE_LIMIT_SUBMISSIONS_PER_DAY`, `QUOTA_BELOW_COMMITTED` | กฎธุรกิจไม่ผ่าน |
+| 422 | `JOB_NOT_REPORTABLE`, `REVIEW_NOT_REPORTABLE`, `UNSUPPORTED_ITEM_TYPE`, `INVALID_PERIOD_MIN_30_DAYS`, `EVALUATION_NOT_OPEN`, `CERT_MIN_ACTUAL_DAYS`, `DISPUTE_WINDOW_CLOSED`, `DELETION_BLOCKED`, `RATE_LIMIT_SUBMISSIONS_PER_DAY`, `QUOTA_BELOW_COMMITTED` | กฎธุรกิจไม่ผ่าน |
 | 429 | `RATE_LIMITED` | Rate limit (มี `Retry-After`) |
 | 502/503/504 | `UPSTREAM_UNAVAILABLE` | Service ปลายทางล่ม |
 
@@ -176,10 +176,10 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
 | GET | `/admin/queue` | AD | `?type=&priority=&risk_level=&overdue=true&status=` + Pagination มาตรฐาน (§1) → รายการพร้อม `company_name`, `due_at`, `overdue`, `is_appeal`, `risk_level`; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อน แล้ว `due_at` น้อยไปมาก |
-| GET | `/admin/queue/{id}` | AD | รายละเอียด + `reasons` + `content` (ข้อความที่สแกน หลัง normalize) + `highlights:[{field,start,end,keyword,negated}]` (ออฟเซ็ตอ้างอิง `content[field]`; `negated=true` = คำอยู่ในประโยคปฏิเสธ) + `origin`, `submission_id`, `appeal_statement`, `reports:[{id, reporter_user_id, category, detail, counted, status, created_at}]` (เฉพาะ `JOB_REPORT` — ตัวตนผู้รายงานเห็นได้เฉพาะ Admin ที่นี่ที่เดียว; ชนิดอื่น `[]`) — รายการ Fail-safe ที่ยังไม่มีผลตรวจ: `reasons`/`highlights` ว่าง, `content` เป็น `null` |
+| GET | `/admin/queue/{id}` | AD | (รายการ `REVIEW_HELD`/`REVIEW_REPORT` เพิ่ม `review:{review_id,rating,outcome_label,title,body,moderation_status,highlights}` — ออฟเซ็ตอ้างอิงข้อความ `title\nbody` — และ `review_reports:[{id,reporter_user_id,reason,created_at}]` เฉพาะ `REVIEW_REPORT`; ฟิลด์ของประกาศเป็นค่าว่าง) รายละเอียด + `reasons` + `content` (ข้อความที่สแกน หลัง normalize) + `highlights:[{field,start,end,keyword,negated}]` (ออฟเซ็ตอ้างอิง `content[field]`; `negated=true` = คำอยู่ในประโยคปฏิเสธ) + `origin`, `submission_id`, `appeal_statement`, `reports:[{id, reporter_user_id, category, detail, counted, status, created_at}]` (เฉพาะ `JOB_REPORT` — ตัวตนผู้รายงานเห็นได้เฉพาะ Admin ที่นี่ที่เดียว; ชนิดอื่น `[]`) — รายการ Fail-safe ที่ยังไม่มีผลตรวจ: `reasons`/`highlights` ว่าง, `content` เป็น `null` |
 | POST | `/admin/queue/{id}/actions/{approve\|reject}` | AD | งาน `JOB_REVIEW`/`JOB_APPEAL` → ส่ง `JobVerified(ADMIN_APPROVE/ADMIN_REJECT)`; `reject` ต้องมี `reason`; `204`; `409 STATE_CONFLICT` (ตัดสินไปแล้ว/สองคนกดพร้อมกัน), `422 SUBMISSION_UNKNOWN` (รายการยังไม่ทราบ submission), `422 UNSUPPORTED_ITEM_TYPE` (ชนิดอื่นที่ยังไม่รองรับ) |
 | POST | `/admin/queue/{id}/actions/{dismiss-report\|uphold-report}` | AD | เฉพาะ `JOB_REPORT` (ชนิดอื่น ⇒ `422 UNSUPPORTED_ITEM_TYPE`; ปิดแล้ว ⇒ `409 STATE_CONFLICT`; `204`; body `{reason?}`) **รายการที่ระงับแล้ว (`origin=REPORT_THRESHOLD`):** `dismiss` ⇒ `JobVerified(RESTORE)` + รายงานของรอบนี้ `DISMISSED` + รีเซ็ตตัวนับ + `consecutive_dismissed +1` ของผู้รายงานแต่ละคน; `uphold` ⇒ `JobVerified(REMOVE)` + รายงาน `UPHELD`/`counted=true` + `consecutive_dismissed=0` — ถ้ารายการไม่มี `submission_id` ⇒ `422 SUBMISSION_UNKNOWN` **รายการ "ไม่นับ" (`origin=REPORT_UNCOUNTED`, ประกาศยัง `PUBLISHED`):** `dismiss` ปิดรายงานและรีเซ็ตตัวนับ ไม่ส่ง Event; `uphold` ทำให้รายงานเป็น `counted=true` แล้วคำนวณตัวนับใหม่ ครบเกณฑ์ ⇒ ระงับตามปกติ (E04) ไม่ส่ง `REMOVE` และไม่มี action ระงับด้วยมือ (R5-G02) — เขียน audit `REPORT_DISMISS`/`REPORT_UPHOLD` |
-| POST | `/admin/queue/{id}/actions/{publish-review\|remove-review}` | AD | `REVIEW_HELD`/`REVIEW_REPORT` → `ReviewModerationResult` |
+| POST | `/admin/queue/{id}/actions/{publish-review\|remove-review}` | AD | เฉพาะ `REVIEW_HELD`/`REVIEW_REPORT` (ชนิดอื่น ⇒ `422 UNSUPPORTED_ITEM_TYPE`; ตัดสินแล้ว/สถานะรีวิวเปลี่ยนไปแล้ว ⇒ `409 STATE_CONFLICT`); `204`; body `{reason?}` (`remove-review` **ต้องมี `reason`** 1–500 ตัวอักษร ไม่เช่นนั้น `400`) → ส่ง `ReviewModerationResult` (`ADMIN_PUBLISH`/`ADMIN_REMOVE`, `reasons` มี `ADMIN` และ `REPORTED` เมื่อเป็นรายการ `REVIEW_REPORT`); `publish-review` ของ `REVIEW_REPORT` = ยืนยันให้รีวิวคงอยู่ |
 | POST | `/admin/queue/{id}/actions/company-clear-flag` | AD | `COMPANY_ACCOUNT`: เคลียร์ธง `UNDER_REVIEW` + ปิดรายการ + `CompanyFlagChanged(active=false)`; `204`; body `{reason?}`; ชนิดอื่น ⇒ `422 UNSUPPORTED_ITEM_TYPE`; ปิดแล้ว ⇒ `409 STATE_CONFLICT`; audit `FLAG_CLEAR` |
 
 ### 6.2 ธงบริษัท
@@ -202,7 +202,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
 | POST | `/jobs/{job_id}/reports` | S | `{category, detail}` (`category` ตาม §11, `detail` 20–1000 ตัวอักษร) → `201 {id, status:'OPEN'}` (ไม่บอกว่ารายงานนับเข้าเกณฑ์หรือไม่) — รายงานได้เฉพาะประกาศ `PUBLISHED`/`CLOSED` (`422 JOB_NOT_REPORTABLE`; ไม่รู้จักประกาศ `404`), `409 ALREADY_REPORTED` (1 ครั้ง/ประกาศ แม้หลังรีเซ็ต), `429 RATE_LIMITED` + `Retry-After` (วินาที) เมื่อเกิน 5 ครั้ง/วัน (นับตามปฏิทิน `Asia/Bangkok`); ครบ 3 บัญชีที่นับเข้าเกณฑ์ ⇒ `ReportThresholdReached` + รายการคิว `JOB_REPORT`; ผู้รายงานที่ถูกยกคำร้องติด 3 ครั้ง ⇒ รายงานไม่นับแต่ยังเข้าคิว |
-| POST | `/reviews/{review_id}/reports` | S,H | `{reason}` 1 ครั้งต่อผู้ใช้ต่อรีวิว |
+| POST | `/reviews/{review_id}/reports` | S,H | `{reason}` (10–1000 ตัวอักษร ผิดรูป ⇒ `400`) 1 ครั้งต่อผู้ใช้ต่อรีวิว → `201 {id, status:'OPEN'}` และสร้างรายการคิว `REVIEW_REPORT` ถ้ายังไม่มีรายการเปิดของรีวิวนั้น; ไม่รู้จักรีวิว `404`; รีวิวที่ถูกพัก/ถูกลบ ⇒ `422 REVIEW_NOT_REPORTABLE`; ซ้ำ `409 ALREADY_REPORTED`; HR รายงานได้เฉพาะรีวิวของบริษัทตน (`403 FORBIDDEN_ROLE`) |
 
 ### 6.5 สำหรับ HR ดูผลตรวจ
 | Method | Path | Role | คำอธิบาย |

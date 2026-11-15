@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { QueueItem, QueueItemType } from '../../generated/client';
 import { asUuid } from '../common/uuid';
@@ -84,6 +85,60 @@ export class QueueService {
       correlationId: a.correlationId,
       now: a.now,
     });
+  }
+
+  /**
+   * รายการคิวของรีวิว (REVIEW_HELD / REVIEW_REPORT; target = review_id) — priority NORMAL, SLA ปกติ
+   * ใช้ createMany + skipDuplicates (ON CONFLICT DO NOTHING) กัน partial unique index: ถ้ามีรายการเปิดของรีวิวนี้อยู่แล้ว คืน null
+   * (ไม่เขียน status_history) โดยไม่ทำให้ Transaction ของผู้เรียกล้ม
+   */
+  async createReviewItem(
+    tx: Tx,
+    a: {
+      type: 'REVIEW_HELD' | 'REVIEW_REPORT';
+      reviewId: string;
+      companyId: string;
+      origin: 'REVIEW_SCAN' | 'REVIEW_REPORT';
+      correlationId?: string;
+      now?: Date;
+    },
+  ): Promise<QueueItem | null> {
+    const now = a.now ?? new Date();
+    const id = randomUUID();
+    const { count } = await tx.queueItem.createMany({
+      data: [
+        {
+          id,
+          type: a.type,
+          targetType: 'review',
+          targetId: a.reviewId,
+          companyId: a.companyId,
+          submissionId: null,
+          priority: 'NORMAL',
+          isAppeal: false,
+          origin: a.origin,
+          dueAt: computeDueAt(now, 'NORMAL', this.sla),
+          status: 'OPEN',
+          createdAt: now,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    if (count === 0) return null;
+    await tx.statusHistory.create({
+      data: {
+        entity: 'QUEUE_ITEM',
+        entityId: id,
+        fromStatus: null,
+        toStatus: 'OPEN',
+        actorId: null,
+        actorRole: 'SYSTEM',
+        reason: a.origin,
+        correlationId: asUuid(a.correlationId),
+        occurredAt: now,
+      },
+    });
+    return tx.queueItem.findUniqueOrThrow({ where: { id } });
   }
 
   /** รายการ COMPANY_ACCOUNT: ตรวจบัญชีบริษัทที่ติดธง UNDER_REVIEW (target = company_id) */

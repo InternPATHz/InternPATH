@@ -3,6 +3,8 @@ import { AppException } from '@internpath/common';
 import type { Prisma, QueueItem } from '../../generated/client';
 import { Page, skipOf } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
+import { reviewText, scanReview } from '../review/review-scan';
+import { RulesRepository } from '../rules/rules.repository';
 import type { MatchedKeyword } from '../screening/types';
 import { QueueQuery } from './dto';
 import { Highlight, buildHighlights } from './highlights';
@@ -36,6 +38,29 @@ export interface QueueDetail extends QueueListItem {
   appeal_statement: string | null;
   /** เฉพาะ JOB_REPORT: รายงานทั้งหมดของประกาศ (ตัวตนผู้รายงานเห็นได้เฉพาะ Admin ผ่าน endpoint นี้) — ชนิดอื่นเป็น [] */
   reports: ReportView[];
+  /** เฉพาะ REVIEW_HELD/REVIEW_REPORT (สไลซ์ 3 §5.6) */
+  review: ReviewView | null;
+  /** เฉพาะ REVIEW_REPORT: รายงานทั้งหมดของรีวิว (ตัวตนผู้รายงานเห็นได้เฉพาะ Admin) */
+  review_reports: ReviewReportView[];
+}
+
+export interface ReviewView {
+  review_id: string;
+  rating: number;
+  outcome_label: string;
+  title: string | null;
+  body: string;
+  moderation_status: string;
+  /** ออฟเซ็ตอ้างอิงข้อความ `title
+body` (reviewText) ที่ผ่าน normalizeText แล้ว */
+  highlights: Highlight[];
+}
+
+export interface ReviewReportView {
+  id: string;
+  reporter_user_id: string;
+  reason: string;
+  created_at: Date;
 }
 
 export interface ReportView {
@@ -50,7 +75,10 @@ export interface ReportView {
 
 @Injectable()
 export class QueueQueryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rules: RulesRepository,
+  ) {}
 
   async list(q: QueueQuery, now = new Date()): Promise<Page<QueueListItem>> {
     const and: Prisma.QueueItemWhereInput[] = [];
@@ -83,6 +111,26 @@ export class QueueQueryService {
       this.companyNames([item.companyId]),
       item.type === 'JOB_REPORT' ? this.prisma.jobReport.findMany({ where: { jobId: item.targetId }, orderBy: { createdAt: 'asc' } }) : [],
     ]);
+    const isReviewItem = item.type === 'REVIEW_HELD' || item.type === 'REVIEW_REPORT';
+    const [moderation, reviewReportRows] = isReviewItem
+      ? await Promise.all([
+          this.prisma.reviewModeration.findUnique({ where: { reviewId: item.targetId } }),
+          item.type === 'REVIEW_REPORT'
+            ? this.prisma.reviewReport.findMany({ where: { reviewId: item.targetId }, orderBy: { createdAt: 'asc' } })
+            : [],
+        ])
+      : [null, []];
+    const review: ReviewView | null = moderation
+      ? {
+          review_id: moderation.reviewId,
+          rating: moderation.rating,
+          outcome_label: moderation.outcomeLabel,
+          title: moderation.title,
+          body: moderation.body,
+          moderation_status: moderation.status,
+          highlights: buildHighlights(scanReview(reviewText(moderation.title, moderation.body), await this.rules.load(this.prisma)).matched),
+        }
+      : null;
     return {
       ...this.toListItem(item, names, now),
       submission_id: item.submissionId,
@@ -104,6 +152,8 @@ export class QueueQueryService {
         status: r.status,
         created_at: r.createdAt,
       })),
+      review,
+      review_reports: reviewReportRows.map((r) => ({ id: r.id, reporter_user_id: r.reporterUserId, reason: r.reason, created_at: r.createdAt })),
     };
   }
 

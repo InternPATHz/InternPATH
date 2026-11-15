@@ -10,6 +10,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import type { Tx } from './prisma/types';
 import { ReportModule } from './report/report.module';
+import { ReviewModule } from './review/review.module';
 import { RulesModule } from './rules/rules.module';
 
 /**
@@ -26,6 +27,7 @@ import { RulesModule } from './rules/rules.module';
     FlagModule,
     JobModule,
     ReportModule,
+    ReviewModule,
     ConsumersModule,
     MessagingModule.register<Tx>({
       service: 'verification',

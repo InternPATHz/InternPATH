@@ -258,7 +258,7 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 | target_type / target_id | text / uuid | job / company / review / problem_report |
 | company_id | uuid null | |
 | submission_id | uuid null | การส่งตรวจที่รายการนี้ตัดสิน (ใช้ใน `JobVerified` ของ Admin); ว่างได้เมื่อรายการเกิดจาก `VERIFY_TIMEOUT` ที่ยังไม่มี `submission_id` |
-| origin | `EVALUATION`/`VERIFY_TIMEOUT`/`APPEAL`/`REPORT_THRESHOLD`/`REPORT_UNCOUNTED`/`REJECTION_THRESHOLD`/`ADMIN_FLAG` | ที่มาของรายการ (ใช้แยก "ผลตรวจที่มาหลัง Fail-safe"; `REPORT_THRESHOLD` = ประกาศถูกระงับเพราะรายงานครบเกณฑ์, `REPORT_UNCOUNTED` = รายงานที่ไม่นับเข้าเกณฑ์ ประกาศยัง `PUBLISHED`, `REJECTION_THRESHOLD` = ธงบริษัทติดอัตโนมัติ) |
+| origin | `EVALUATION`/`VERIFY_TIMEOUT`/`APPEAL`/`REPORT_THRESHOLD`/`REPORT_UNCOUNTED`/`REJECTION_THRESHOLD`/`ADMIN_FLAG`/`REVIEW_SCAN`/`REVIEW_REPORT` | ที่มาของรายการ (ใช้แยก "ผลตรวจที่มาหลัง Fail-safe"; `REPORT_THRESHOLD` = ประกาศถูกระงับเพราะรายงานครบเกณฑ์, `REPORT_UNCOUNTED` = รายงานที่ไม่นับเข้าเกณฑ์ ประกาศยัง `PUBLISHED`, `REJECTION_THRESHOLD` = ธงบริษัทติดอัตโนมัติ, `REVIEW_SCAN` = รีวิวติดตัวสแกนถูกพัก, `REVIEW_REPORT` = รีวิวที่เผยแพร่แล้วถูกรายงาน) |
 | priority | `NORMAL`/`FAST_TRACK` | ตาม entitlement ของบริษัท ณ เวลาเข้าคิว |
 | risk_level | RiskLevel null | สำหรับแถบสี เขียว/เหลือง/แดง |
 | is_appeal | bool | ป้าย APPEAL |
@@ -280,9 +280,9 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 
 **`company_flags`**: `company_id PK`, `under_review bool`, `set_by` (`SYSTEM`|`ADMIN`), `set_reason`, `set_at`, `trigger_count int null` (จำนวนเหตุการณ์ปฏิเสธที่ทำให้ติดธงอัตโนมัติ), `cleared_by null`, `cleared_at null`, `entity_version` (เพิ่มทีละ 1 ทุกครั้งที่ธงเปลี่ยน; ใช้เป็น `entity_version` ของ E18) — แถวถูกสร้างเมื่อมีเหตุการณ์/คำสั่งแรกของบริษัท; "เคยติดธง" = `set_at` ไม่ว่าง
 
-**`review_moderations`**: `id`, `review_id unique`, `company_id`, `decision`, `reasons jsonb`, `status (PASSED|HELD|ADMIN_PUBLISHED|ADMIN_REMOVED)`, `queue_item_id null`, `created_at`
+**`review_moderations`** *(สไลซ์ 3 — [spec](superpowers/specs/2026-11-15-verification-slice3-design.md))*: `id`, `review_id unique`, `company_id`, `student_user_id`, `rating smallint`, `outcome_label`, `title null`, `body` (สำเนาจาก E09 ที่ผ่าน normalizeText และตัด NUL — ให้ Admin อ่านก่อนตัดสิน **ห้าม log**), `decision` (คำตัดสินล่าสุดใน E10: `PUBLISH|HOLD|ADMIN_PUBLISH|ADMIN_REMOVE`), `reasons jsonb`, `status (PASSED|HELD|ADMIN_PUBLISHED|ADMIN_REMOVED)`, `queue_item_id null`, `created_at`, `updated_at` — "เผยแพร่อยู่" = `PASSED` หรือ `ADMIN_PUBLISHED` (รายงานได้เฉพาะสถานะนี้); **Anonymize (E15):** `student_user_id` → `anonymous_actor_id`; รีวิวที่ `HELD` ล้าง `title`/`body` (อาจมีข้อมูลติดต่อส่วนตัว) แต่คงรายการคิว, รีวิวที่เผยแพร่แล้วคงเนื้อหา (README 5.11)
 
-**`review_reports`**: `id`, `review_id`, `reporter_user_id`, `reason`, `created_at` — UNIQUE (`review_id`, `reporter_user_id`)
+**`review_reports`**: `id`, `review_id`, `reporter_user_id`, `reason` (10–1000 ตัวอักษร ห้าม log), `created_at` — UNIQUE (`review_id`, `reporter_user_id`); Anonymize (E15): `reporter_user_id` → `anonymous_actor_id` และล้าง `reason`
 
 + ตารางร่วม: `outbox_events`, `processed_events`, `status_history` (entity = COMPANY_FLAG/QUEUE_ITEM), `admin_audit_log` — `status_history` และ `admin_audit_log` บังคับ append-only ด้วย trigger ใน migration (UPDATE/DELETE ถูกปฏิเสธ; `admin_audit_log.target_id` เป็น text เพราะบางรายการไม่ใช่ uuid เช่น `risk_rules`)
 

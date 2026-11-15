@@ -260,10 +260,10 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 **Tester (Lifecycle):**
 - ตรวจ Recipient Matrix ของ E08 v2 (PM ยืนยันแล้ว — [event-contract.md](event-contract.md) §6.1) ถ้ามีเหตุผลด้านโดเมนที่ต้องแก้ ให้แก้ตารางในเอกสารและแจ้งเจ้าของ Notification
 - **บริษัทถูกระงับ:** Freeze ตัวนับ SLA ของใบสมัครที่ยังไม่ `IN_PROGRESS` ขณะบริษัทถูกระงับ และ Unfreeze เมื่อกลับเป็น `VERIFIED`; `IN_PROGRESS` ให้อาจารย์ตัดสินต่อ ([data-schema.md](data-schema.md) §8.2.2)
-- **รีวิว (E09):** payload ต้องมี `student_user_id`; รับ `ReviewModerationResult` (E10) ที่มี `student_user_id` กลับมา
+- **รีวิว (E09):** payload ต้องมี `student_user_id`; รับ `ReviewModerationResult` (E10) ที่มี `student_user_id` กลับมา — **กติกาสไลซ์ 3 (event-contract §E10):** `ADMIN_REMOVE` ต้องรับได้จาก `PUBLISHED` ด้วย (เปลี่ยนเป็น `REMOVED` แล้วส่ง `ReviewPublished` ใหม่ให้ตัวนับคะแนนตรง), `ADMIN_PUBLISH` ของรีวิวที่เผยแพร่อยู่แล้วต้องข้ามเงียบ, E10 ที่สถานะไม่ตรงให้ข้ามพร้อม log ไม่ throw; เมื่อผู้เขียนรีวิวลบบัญชี Verification ล้างเนื้อหารีวิวที่ยัง `HELD` ของตน (Lifecycle ตัดสินเองว่าจะลบ/ไม่เผยแพร่รีวิวนั้น)
 - ตั้ง `output` ของ Prisma ตามกฎข้อ 9 เมื่อเริ่มเขียน schema (ตั้งไว้ให้แล้วในไฟล์ `schema.prisma` ของ Lifecycle)
 
-**PM (Verification) — งานที่ยังค้าง:** Minor ของ review สไลซ์ 2 (#5 `dismiss` พลิกรายงานที่เคย uphold, #6 ธงอาจติดผิดจาก E03 เก่ามาก, #7 ลำดับล็อกของ clear-flag, #8 `PUT` ธงไม่เช็กว่าบริษัทมีจริง, #10 เทสต์ไม่ log `detail`) · สไลซ์ 3 (ตรวจรีวิว E09/E10 และรายงานรีวิว)
+**PM (Verification) — งานที่ยังค้าง:** Minor ของ review สไลซ์ 2 (#5 `dismiss` พลิกรายงานที่เคย uphold, #6 ธงอาจติดผิดจาก E03 เก่ามาก, #7 ลำดับล็อกของ clear-flag, #8 `PUT` ธงไม่เช็กว่าบริษัทมีจริง, #10 เทสต์ไม่ log `detail`) · ~~สไลซ์ 3 (ตรวจรีวิว E09/E10 และรายงานรีวิว)~~ **ทำแล้ว** ([spec](superpowers/specs/2026-11-15-verification-slice3-design.md)) — รอ PM ตรวจ
 
 ### 9.2 เพิ่มเติมจากการตรวจ contract ฝั่ง Job (2026-11-15) — สำหรับ Junior
 
