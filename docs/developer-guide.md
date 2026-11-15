@@ -198,15 +198,16 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 
 ## 7. ยังไม่มีอะไรบ้าง (รู้ไว้จะได้ไม่งง)
 
-โครงตอนนี้ **รันได้และทดสอบผ่าน แต่ยังไม่มีโค้ดธุรกิจ** สิ่งที่ยังต้องสร้าง:
+โครงตอนนี้รันได้และทดสอบผ่านบาง Service แล้ว ส่วนที่ยังต้องทำหรือเชื่อมต่อมีดังนี้:
 
-- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification ทำแล้ว** (สไลซ์ 1 และ 2: รายงานประกาศ, ตัวนับ/ระงับอัตโนมัติ, ธง `UNDER_REVIEW`; ค่า env `REPORT_THRESHOLD`, `REPORT_DAILY_LIMIT`, `REPORTER_DISMISS_STREAK`, `REJECTION_THRESHOLD`, `REJECTION_WINDOW_DAYS` ใน `.env.example`); **Identity ทำ schema/migration พื้นฐานแล้ว** (ยังไม่มี Auth/ธุรกิจ); Job, Lifecycle และ Notification ยังมีแค่ `outbox_events` / `processed_events`
-- [x] Outbox relay และ Consumer — อยู่ใน `libs/common` (`OutboxWriter`, `OutboxRelay`, `EventConsumer`, `MessagingModule`); เหลือให้แต่ละ Service เรียกใช้ตาม §6.3 (โฟลเดอร์ `outbox/`, `events/` ของแต่ละ Service ยังว่าง)
-- [ ] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก
-- [ ] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit, Denylist (ตอนนี้มีแค่ health)
-- [ ] การลงทะเบียน `JwtAuthGuard` เป็น Guard ของแต่ละ Service (ตอนนี้เป็น class ให้ใช้ต่อ controller)
+- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification และ Identity ทำแล้ว**; Job, Lifecycle และ Notification ยังมีแค่ `outbox_events` / `processed_events`
+- [x] Outbox relay และ Consumer — อยู่ใน `libs/common` (`OutboxWriter`, `OutboxRelay`, `EventConsumer`, `MessagingModule`); แต่ละ Service ต้องผูกกับงานของตนตาม §6.3
+- [ ] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก — Identity ใช้ `ServiceTokenGuard` จาก `libs/common` แล้ว; Job/Lifecycle/Notification ยังต้องผูกเมื่อเพิ่ม endpoint ภายใน
+- [x] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit, Denylist
+- [ ] การลงทะเบียน `JwtAuthGuard` ใน Service ที่เพิ่ม endpoint ซึ่งต้องล็อกอิน (Identity ใช้แล้ว)
+- [ ] **ลบบัญชียังใช้ไม่ได้**: `POST /users/me/deletion-request` มีใน [api-contract.md](api-contract.md) §4.2 แต่ยังไม่มี endpoint จริง; ไม่มี production path ที่เรียก `AccountDeletionService.complete()` และตัวตรวจสิทธิ์ลบตั้งให้ fail-closed ระหว่างรอ Lifecycle Internal API จึงไม่ควรแสดงฟังก์ชันลบบัญชีให้ผู้ใช้ใช้งาน
 - [ ] Scheduler (SLA, Reconciliation โควตา, Fail-safe 5 นาที)
-- [ ] หน้าเว็บของแต่ละ Role (มีแค่หน้าแรกและ Tailwind theme)
+- [ ] หน้าเว็บของแต่ละ Role (หน้า Auth/Account มีแล้ว)
 - [ ] Dockerfile ของ Service ยังไม่เคยรัน; `docker compose --profile infra up -d postgres rabbitmq mailpit` รันผ่านแล้ว (2026-11-13) แต่ **MinIO ดึง image ไม่ได้** (`minio/minio` บน Docker Hub ใช้ไม่ได้ และ `quay.io/minio/minio` ตอบ 401) ต้องเปลี่ยนไปใช้ตัวแทนที่รองรับ S3
 - [ ] การสาธิตผ่าน Cloudflare ([architecture.md](architecture.md) §8.1): Worker proxy `/api/*` + `API_ORIGIN`, ตรวจ `X-Edge-Secret` / CORS / IP ผู้ใช้ที่ Gateway, ข้อความ "ระบบหลังบ้านออฟไลน์" ใน Front, ลิงก์อีเมลจาก `WEB_BASE_URL`
 - [x] `docker-compose.yml`: Postgres / RabbitMQ / MinIO bind เฉพาะ `127.0.0.1` และมี `restart: unless-stopped`
