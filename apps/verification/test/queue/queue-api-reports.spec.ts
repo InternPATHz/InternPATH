@@ -9,6 +9,7 @@ import { ReportModule } from '../../src/report/report.module';
 import { ReportService } from '../../src/report/report.service';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { QUEUE_ITEM_DETAIL, QUEUE_REPORT_ENTRY, expectShape } from '../support/contract-shapes';
 
 const MARKER = 'MARKER-รายละเอียดลับ-9876543210';
 const DETAIL = `${MARKER} ประกาศนี้เรียกเก็บเงินค่าสมัครจากนักศึกษา`;
@@ -69,6 +70,8 @@ describe('GET /admin/queue/{id} ของ JOB_REPORT + ความเป็น�
     expect(res.body).to.include({ id: item.id, type: 'JOB_REPORT', submission_id: submissionId, origin: 'REPORT_THRESHOLD' });
     expect(res.body.content).to.deep.equal({ job_title: 'ฝึกงานพัฒนาซอฟต์แวร์' });
     expect(res.body.reports).to.have.length(3);
+    expectShape(res.body, QUEUE_ITEM_DETAIL, 'GET /admin/queue/{id} (JOB_REPORT)');
+    for (const r of res.body.reports) expectShape(r, QUEUE_REPORT_ENTRY, 'reports[]');
     expect(res.body.reports[0]).to.have.all.keys('id', 'reporter_user_id', 'category', 'detail', 'counted', 'status', 'created_at');
     expect(res.body.reports.map((r: any) => r.reporter_user_id)).to.have.members(users);
     expect(res.body.reports[0]).to.include({ category: 'SCAM_OR_FEE', detail: DETAIL, counted: true, status: 'OPEN' });

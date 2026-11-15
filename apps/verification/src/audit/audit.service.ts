@@ -6,6 +6,7 @@ import { asUuid } from '../common/uuid';
 import { Page, PageQuery, skipOf } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
 import type { Tx } from '../prisma/types';
+import { NoNul } from '../common/no-nul';
 
 export class AuditQuery extends PageQuery {
   @IsOptional()
@@ -14,10 +15,12 @@ export class AuditQuery extends PageQuery {
 
   @IsOptional()
   @IsString()
+  @NoNul()
   action?: string;
 
   @IsOptional()
   @IsString()
+  @NoNul()
   target_type?: string;
 
   @IsOptional()

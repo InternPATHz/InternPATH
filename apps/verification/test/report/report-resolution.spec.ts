@@ -261,4 +261,34 @@ describe('คำตัดสินรายงานของ Admin: dismiss-rep
       expect(await verified()).to.have.length(1);
     });
   });
+
+  describe('Minor #5: dismiss ต้องไม่พลิกรายงานที่ Admin เคย uphold ไปแล้ว', () => {
+    it('uphold รายงาน (ไม่นับ) แล้วรายงานครบเกณฑ์ภายหลัง → dismiss: เฉพาะรายงาน OPEN ถูก DISMISSED และ streak +1; รายงานที่ UPHELD คงเดิมและ streak ของผู้รายงานยัง 0', async () => {
+      const { jobId } = await job();
+      const upheldUser = randomUUID();
+      await t.prisma.reporterStat.create({ data: { userId: upheldUser, consecutiveDismissed: 3 } });
+      await file(jobId, upheldUser);
+      const uncounted = await openItem(jobId);
+      expect(uncounted.origin).to.equal('REPORT_UNCOUNTED');
+      await act(uncounted.id, 'uphold-report').expect(204);
+      const upheld = await t.prisma.jobReport.findFirstOrThrow({ where: { jobId, reporterUserId: upheldUser } });
+      expect(upheld).to.include({ status: 'UPHELD', counted: true });
+      expect(await streak(upheldUser)).to.equal(0);
+
+      const others = await fileMany(jobId, 2);
+      const threshold = await openItem(jobId);
+      expect(threshold.origin).to.equal('REPORT_THRESHOLD');
+      await act(threshold.id, 'dismiss-report').expect(204);
+
+      const after = await t.prisma.jobReport.findFirstOrThrow({ where: { jobId, reporterUserId: upheldUser } });
+      expect(after.status).to.equal('UPHELD');
+      expect(after.resolvedAt?.getTime()).to.equal(upheld.resolvedAt?.getTime());
+      expect(await streak(upheldUser)).to.equal(0);
+      for (const u of others) {
+        expect((await t.prisma.jobReport.findFirstOrThrow({ where: { jobId, reporterUserId: u } })).status).to.equal('DISMISSED');
+        expect(await streak(u)).to.equal(1);
+      }
+      expect((await verified()).filter((v) => v.decision === 'RESTORE')).to.have.length(1);
+    });
+  });
 });

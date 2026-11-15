@@ -39,6 +39,10 @@ export class FlagAdminService {
   ): Promise<{ company_id: string; active: boolean; changed: boolean }> {
     const cid = correlationId ?? randomUUID();
     const changed = await this.prisma.$transaction(async (tx) => {
+      // Minor #8: ตั้ง/เคลียร์ได้เฉพาะบริษัทที่ระบบรู้จัก (มี snapshot จาก E05) หรือเคยมีธงอยู่แล้ว (เช่น ระบบติดให้ก่อน snapshot มา)
+      const known =
+        (await tx.companySnapshot.count({ where: { companyId } })) + (await tx.companyFlag.count({ where: { companyId } })) > 0;
+      if (!known) throw new AppException('NOT_FOUND', 'ไม่พบบริษัท', 404);
       const r = await this.flags.setFlag(tx, { companyId, active: a.active, setBy: 'ADMIN', reason: a.reason, adminId: admin.sub, correlationId: cid });
       if (r.changed) {
         await this.audit.record(tx, {
@@ -64,11 +68,14 @@ export class FlagAdminService {
   async clearFromQueue(itemId: string, reason: string | undefined, admin: { sub: string }, correlationId?: string): Promise<void> {
     const cid = correlationId ?? randomUUID();
     await this.prisma.$transaction(async (tx) => {
-      const item = await tx.queueItem.findUnique({ where: { id: itemId } });
-      if (!item) throw new AppException('NOT_FOUND', 'ไม่พบรายการคิว', 404);
-      if (item.type !== 'COMPANY_ACCOUNT') {
+      const probe = await tx.queueItem.findUnique({ where: { id: itemId }, select: { type: true, targetId: true } });
+      if (!probe) throw new AppException('NOT_FOUND', 'ไม่พบรายการคิว', 404);
+      if (probe.type !== 'COMPANY_ACCOUNT') {
         throw new AppException('UNSUPPORTED_ITEM_TYPE', 'รายการชนิดนี้ไม่ใช่การตรวจบัญชีบริษัท', 422);
       }
+      // ล็อกธงก่อนแตะรายการคิว (ลำดับ ธง → คิว เหมือน setFlag) แล้วอ่านรายการใหม่ — Minor #7: กัน deadlock กับ PUT เคลียร์ธง
+      await this.flags.lock(tx, probe.targetId);
+      const item = await tx.queueItem.findUniqueOrThrow({ where: { id: itemId } });
       if (item.status === 'RESOLVED') throw new AppException('STATE_CONFLICT', 'รายการนี้ถูกตัดสินไปแล้ว', 409);
 
       const closed = await this.queue.resolveOpenItem(tx, {

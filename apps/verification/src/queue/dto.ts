@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PageQuery } from '../common/pagination';
+import { NoNul } from '../common/no-nul';
 
 const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : value === 'false' ? false : value);
 
@@ -33,6 +34,7 @@ export class QueueQuery extends PageQuery {
 export class RejectDto {
   @Transform(({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value))
   @IsString()
+  @NoNul()
   @IsNotEmpty()
   @MaxLength(1000)
   reason!: string;

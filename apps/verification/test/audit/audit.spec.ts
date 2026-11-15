@@ -5,6 +5,7 @@ import { AuditModule } from '../../src/audit/audit.module';
 import { AuditService } from '../../src/audit/audit.service';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { AUDIT_LOG_ENTRY, PAGE_META, expectShape } from '../support/contract-shapes';
 
 describe('audit (Postgres จริง)', function () {
   this.timeout(60000);
@@ -73,6 +74,8 @@ describe('audit (Postgres จริง)', function () {
         .set('Authorization', `Bearer ${t.token({ role: 'PLATFORM_ADMIN' })}`)
         .expect(200);
       expect(res.body.meta).to.deep.equal({ page: 1, page_size: 5, total: 1 });
+      expectShape(res.body.data[0], AUDIT_LOG_ENTRY, 'GET /admin/audit[]');
+      expectShape(res.body.meta, PAGE_META, 'GET /admin/audit meta');
       expect(res.body.data[0]).to.have.all.keys(
         'id', 'admin_id', 'action', 'target_type', 'target_id', 'before', 'after', 'reason', 'correlation_id', 'occurred_at',
       );

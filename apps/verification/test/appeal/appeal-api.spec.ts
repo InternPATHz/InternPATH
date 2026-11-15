@@ -7,6 +7,7 @@ import { EvaluationService } from '../../src/evaluation/evaluation.service';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
 import { LONG, PHONE, envelope, statusChanged, submitted, submittedEnv } from '../support/events';
+import { APPEAL_RESPONSE, VERIFICATION_RESULT, expectShape } from '../support/contract-shapes';
 
 const STATEMENT = 'ขออุทธรณ์เนื่องจากข้อความถูกตีความผิดพลาด ไม่มีการเรียกเก็บเงินใดๆ ทั้งสิ้น';
 
@@ -43,6 +44,7 @@ describe('HR result + appeal API (Postgres จริง)', function () {
       await submit(p);
       const res = await http().get(`/v1/verification/jobs/${p.job_id}/result`).set(hr(p.company_id)).expect(200);
       expect(res.body).to.have.all.keys('risk_level', 'risk_score', 'reasons', 'matched_keywords', 'is_appeal', 'can_appeal');
+      expectShape(res.body, VERIFICATION_RESULT, 'GET /verification/jobs/{id}/result');
       expect(res.body).to.include({ risk_level: 'HIGH', is_appeal: false, can_appeal: true });
       expect(res.body.risk_score).to.be.at.least(70);
       expect(res.body.reasons.map((r: any) => r.code)).to.include('BLACKLIST_HARD');
@@ -78,6 +80,7 @@ describe('HR result + appeal API (Postgres จริง)', function () {
       const p = rejected({ fast_track: true });
       await submit(p);
       const res = await http().post(`/v1/verification/jobs/${p.job_id}/appeal`).set(hr(p.company_id)).send({ statement: STATEMENT }).expect(201);
+      expectShape(res.body, APPEAL_RESPONSE, 'POST /verification/jobs/{id}/appeal');
       expect(res.body).to.include({ status: 'OPEN' });
 
       const appeal = await t.prisma.appeal.findUniqueOrThrow({ where: { jobId: p.job_id } });

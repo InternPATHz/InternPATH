@@ -41,10 +41,24 @@ export class FlagService {
     const row = await this.lockFlag(tx, a.companyId);
     if (row.under_review) return;
 
-    const windowStart = Math.max(a.occurredAt.getTime() - this.limits.rejectionWindowDays * DAY_MS, row.cleared_at?.getTime() ?? 0);
-    const n = await tx.companyRejectionEvent.count({ where: { companyId: a.companyId, occurredAt: { gt: new Date(windowStart) } } });
-    if (n >= this.limits.rejectionThreshold) {
-      await this.setFlag(tx, { companyId: a.companyId, active: true, setBy: 'SYSTEM', triggerCount: n, correlationId: a.correlationId });
+    // หน้าต่าง 30 วันที่ครอบคลุมเหตุการณ์นี้ (Minor #6): เหตุการณ์ที่มาถึงสลับลำดับ/ช้ามากต้องไม่ถูกนับรวมกับเหตุการณ์ที่ห่างเกินหน้าต่างของมัน
+    // หน้าต่างเริ่มที่เหตุการณ์ใดก็ได้ในช่วง (t − W, t] และกินเวลา W (จุดเริ่มรวม จุดสิ้นสุดไม่รวม) — ธงติดเมื่อมีหน้าต่างที่ครอบคลุม t และมีเหตุการณ์ ≥ เกณฑ์
+    const windowMs = this.limits.rejectionWindowDays * DAY_MS;
+    const t = a.occurredAt.getTime();
+    const floor = Math.max(t - windowMs, row.cleared_at?.getTime() ?? 0);
+    const nearby = await tx.companyRejectionEvent.findMany({
+      where: { companyId: a.companyId, occurredAt: { gt: new Date(floor), lt: new Date(t + windowMs) } },
+      select: { occurredAt: true },
+      orderBy: { occurredAt: 'asc' },
+    });
+    const times = nearby.map((e) => e.occurredAt.getTime());
+    let best = 0;
+    for (const start of times) {
+      if (start > t) break;
+      best = Math.max(best, times.filter((x) => x >= start && x < start + windowMs).length);
+    }
+    if (best >= this.limits.rejectionThreshold) {
+      await this.setFlag(tx, { companyId: a.companyId, active: true, setBy: 'SYSTEM', triggerCount: best, correlationId: a.correlationId });
     }
   }
 
@@ -120,6 +134,14 @@ export class FlagService {
       },
     });
     return { changed: true };
+  }
+
+  /**
+   * ล็อกแถวธงของบริษัท (สร้างถ้ายังไม่มี) — ผู้เรียกที่ต้องแก้ทั้งธงและรายการคิวต้องเรียกอันนี้ **ก่อน** แตะรายการคิว
+   * เพื่อให้ลำดับล็อกเป็น ธง → คิว เสมอเหมือน recordRejection/setFlag (Minor #7: กัน deadlock)
+   */
+  async lock(tx: Tx, companyId: string): Promise<void> {
+    await this.lockFlag(tx, companyId);
   }
 
   /** สร้างแถวธงของบริษัทถ้ายังไม่มี แล้วล็อกแถว (FOR UPDATE) — กัน E03/คำสั่ง Admin ขนานกันตั้งธงซ้ำ */

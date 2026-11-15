@@ -1,6 +1,7 @@
 import { Transform } from 'class-transformer';
 import { IsBoolean, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { PageQuery } from '../common/pagination';
+import { NoNul } from '../common/no-nul';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : value === 'false' ? false : value);
@@ -12,6 +13,7 @@ export class SetFlagDto {
 
   @Transform(trim)
   @IsString()
+  @NoNul()
   @IsNotEmpty()
   @MaxLength(1000)
   reason!: string;
@@ -22,6 +24,7 @@ export class ClearFlagDto {
   @IsOptional()
   @Transform(trim)
   @IsString()
+  @NoNul()
   @MaxLength(1000)
   reason?: string;
 }
@@ -35,5 +38,6 @@ export class FlagListQuery extends PageQuery {
   /** ค้นชื่อบริษัท (ไม่สนตัวพิมพ์) */
   @IsOptional()
   @IsString()
+  @NoNul()
   q?: string;
 }

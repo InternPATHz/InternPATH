@@ -49,6 +49,26 @@ export interface QueueReportEntry {
   created_at: string;
 }
 
+/** รีวิวในรายการ REVIEW_HELD/REVIEW_REPORT — `highlights` อ้างออฟเซ็ตของข้อความ `title\nbody` (หัวข้อว่าง = เฉพาะ body) ที่ผ่าน normalizeText แล้ว */
+export interface QueueReviewView {
+  review_id: string;
+  rating: number;
+  outcome_label: string;
+  title: string | null;
+  body: string;
+  /** PASSED | HELD | ADMIN_PUBLISHED | ADMIN_REMOVED */
+  moderation_status: string;
+  highlights: QueueHighlight[];
+}
+
+/** รายงานหนึ่งฉบับในรายการ REVIEW_REPORT — ตัวตนผู้รายงานและเหตุผลเห็นได้เฉพาะ Admin ผ่าน GET /admin/queue/{id} */
+export interface QueueReviewReportEntry {
+  id: string;
+  reporter_user_id: string;
+  reason: string;
+  created_at: string;
+}
+
 /** รายละเอียดจาก GET /admin/queue/{id} (ตรงกับ `QueueDetail` ใน apps/verification) */
 export interface QueueItemDetail extends QueueItemSummary {
   /** ที่มาของรายการ เช่น EVALUATION, VERIFY_TIMEOUT, APPEAL, REPORT_THRESHOLD, REPORT_UNCOUNTED, REJECTION_THRESHOLD */
@@ -65,6 +85,10 @@ export interface QueueItemDetail extends QueueItemSummary {
   appeal_statement: string | null;
   /** เฉพาะ JOB_REPORT — ชนิดอื่นเป็น [] */
   reports: QueueReportEntry[];
+  /** เฉพาะ REVIEW_HELD/REVIEW_REPORT — ชนิดอื่นเป็น null */
+  review: QueueReviewView | null;
+  /** เฉพาะ REVIEW_REPORT — ชนิดอื่นเป็น [] */
+  review_reports: QueueReviewReportEntry[];
 }
 
 export type QueueJobAction = 'approve' | 'reject';
@@ -186,8 +210,15 @@ export interface ReportJobRequest {
   detail: string;
 }
 
+/** `reason` 10–1000 ตัวอักษร; รายงานได้เฉพาะรีวิวที่เผยแพร่อยู่ (HR เฉพาะรีวิวของบริษัทตน) */
 export interface ReportReviewRequest {
   reason: string;
+}
+
+/** ตอบ `201` ของ POST /jobs/{id}/reports และ POST /reviews/{id}/reports — ไม่บอกว่ารายงานนับเข้าเกณฑ์หรือไม่ */
+export interface ReportCreatedResponse {
+  id: string;
+  status: 'OPEN';
 }
 
 // ---- 6.5 ผลตรวจสำหรับ HR ----

@@ -139,6 +139,14 @@ describe('ReviewActions — publish-review / remove-review (Postgres จริ�
     expect((await act(s.itemId, 'remove-review', admin.auth, { reason: 'ก'.repeat(500) })).status).to.equal(204);
   });
 
+  it('Minor #10: reason ของ Admin มี NUL ⇒ 400 ทั้ง publish และ remove และรายการไม่เปลี่ยน', async () => {
+    const s = await seedHeld();
+    const admin = who('PLATFORM_ADMIN');
+    expect((await act(s.itemId, 'remove-review', admin.auth, { reason: 'เหตุผล\u0000' })).status).to.equal(400);
+    expect((await act(s.itemId, 'publish-review', admin.auth, { reason: 'เหตุผล\u0000' })).status).to.equal(400);
+    expect(await t.prisma.queueItem.findUniqueOrThrow({ where: { id: s.itemId } })).to.include({ status: 'OPEN' });
+  });
+
   it('ชนิดรายการอื่น ⇒ 422 UNSUPPORTED_ITEM_TYPE; RESOLVED แล้ว ⇒ 409; ไม่รู้จัก id ⇒ 404', async () => {
     const other = await t.prisma.queueItem.create({
       data: { type: 'JOB_REVIEW', targetType: 'job', targetId: randomUUID(), origin: 'EVALUATION', dueAt: new Date(Date.now() + 1e8) },

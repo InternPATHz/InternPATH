@@ -8,6 +8,7 @@ import { QueueService } from '../../src/queue/queue.service';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
 import { LONG, PHONE, envelope, statusChanged, submitted, submittedEnv } from '../support/events';
+import { PAGE_META, QUEUE_HIGHLIGHT, QUEUE_ITEM_DETAIL, QUEUE_ITEM_SUMMARY, expectShape } from '../support/contract-shapes';
 
 describe('Admin queue API (Postgres จริง)', function () {
   this.timeout(60000);
@@ -83,16 +84,18 @@ describe('Admin queue API (Postgres จริง)', function () {
       await t.prisma.queueItem.update({ where: { id: d.id }, data: { status: 'RESOLVED', resolvedAt: new Date() } });
 
       const list = (qs = '') => http().get(`/v1/admin/queue${qs}`).set(admin).expect(200).then((r) => r.body);
+      // Minor สไลซ์ 1: ค่าเริ่มต้น (ไม่ส่ง status) ไม่รวมรายการที่ RESOLVED แล้ว
       const all = await list();
-      expect(all.meta).to.deep.equal({ page: 1, page_size: 20, total: 4 });
-      expect(all.data.map((x: any) => x.id)).to.deep.equal([b.id, c.id, a.id, d.id].sort((x, y) => order(x) - order(y)));
-      function order(id: string) {
-        return [b.id, c.id, a.id, d.id].indexOf(id);
-      }
+      expect(all.meta).to.deep.equal({ page: 1, page_size: 20, total: 3 });
+      expect(all.data.map((x: any) => x.id)).to.deep.equal([b.id, c.id, a.id]);
       expect(all.data[0]).to.include({ priority: 'FAST_TRACK', company_name: 'บริษัท ทดสอบ จำกัด', type: 'JOB_REVIEW' });
       expect(all.data[0]).to.have.all.keys('id', 'type', 'target_id', 'company_id', 'company_name', 'priority', 'risk_level', 'is_appeal', 'due_at', 'overdue', 'status', 'created_at');
+      for (const row of all.data) expectShape(row, QUEUE_ITEM_SUMMARY, 'GET /admin/queue[]');
+      expectShape(all.meta, PAGE_META, 'GET /admin/queue meta');
 
-      expect((await list('?type=JOB_APPEAL')).data.map((x: any) => x.id)).to.deep.equal([d.id]);
+      expect((await list('?type=JOB_APPEAL')).data.map((x: any) => x.id)).to.deep.equal([]);
+      expect((await list('?type=JOB_APPEAL&status=RESOLVED')).data.map((x: any) => x.id)).to.deep.equal([d.id]);
+      expect((await list('?status=OPEN')).meta.total).to.equal(3);
       expect((await list('?priority=FAST_TRACK')).data.map((x: any) => x.id)).to.deep.equal([b.id]);
       expect((await list('?risk_level=LOW')).data.map((x: any) => x.id)).to.deep.equal([c.id]);
       expect((await list('?status=RESOLVED')).data.map((x: any) => x.id)).to.deep.equal([d.id]);
@@ -101,8 +104,8 @@ describe('Admin queue API (Postgres จริง)', function () {
       expect(overdue.data[0].overdue).to.equal(true);
       expect(all.data.find((x: any) => x.id === a.id).overdue).to.equal(false);
 
-      const p2 = await list('?page=2&page_size=3');
-      expect(p2.meta).to.deep.equal({ page: 2, page_size: 3, total: 4 });
+      const p2 = await list('?page=2&page_size=2');
+      expect(p2.meta).to.deep.equal({ page: 2, page_size: 2, total: 3 });
       expect(p2.data).to.have.length(1);
     });
 
@@ -121,6 +124,9 @@ describe('Admin queue API (Postgres จริง)', function () {
 
       const res = await http().get(`/v1/admin/queue/${item.id}`).set(admin).expect(200);
       expect(res.body).to.include({ id: item.id, type: 'JOB_REVIEW', company_name: 'บริษัท ตัวอย่าง', submission_id: p.submission_id, status: 'OPEN', origin: 'EVALUATION' });
+      expectShape(res.body, QUEUE_ITEM_DETAIL, 'GET /admin/queue/{id}');
+      for (const h of res.body.highlights) expectShape(h, QUEUE_HIGHLIGHT, 'highlight');
+      expect(res.body.review).to.equal(null);
       expect(res.body.reasons.map((r: any) => r.code)).to.include('BLACKLIST_NEGATED');
       expect(res.body.highlights).to.have.length(1);
       expect(res.body.highlights[0]).to.include({ field: 'description', keyword: 'ค่ามัดจำ', negated: true });
