@@ -85,6 +85,8 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 
 **Authorized Anonymization Operation (PM ตัดสิน 2026-11-15):** trigger append-only ของ `status_history` / `admin_audit_log` ต้องอนุญาต `UPDATE` ได้ก็ต่อเมื่อ (1) transaction นั้นตั้งค่าท้องถิ่น (local) สองตัว: `SET LOCAL internpath.anonymize = 'on'` และ `internpath.anonymous_actor_id = '<uuid>'` ซึ่งเป็นรหัสนิรนามเดียวกับที่ส่งใน `UserDeletionRequested` (ตั้งด้วย `set_config('internpath.anonymous_actor_id', <uuid>, true)` เพื่อให้มีผลเฉพาะ transaction; ทำเฉพาะใน handler ของ `UserDeletionRequested`) **และ** (2) คอลัมน์ที่เปลี่ยนมีเพียง `actor_id` (ของ `admin_audit_log` คือ `admin_id`) ค่าเดิมต้องไม่เป็น `NULL` และค่าใหม่ต้องเท่ากับ `internpath.anonymous_actor_id` ทุกคอลัมน์อื่นต้องเหมือนเดิม ถ้า setting ใดขาดหรือค่าไม่ตรง trigger จะปฏิเสธ (อ้างอิงการทำงานจริงที่ `apps/identity/prisma/migrations/20261115120000_authorized_history_anonymization`) — นอกนี้ `UPDATE`/`DELETE` ยังถูกปฏิเสธเหมือนเดิม (ไม่แยกข้อมูลระบุตัวตนออกไปตารางอื่น เพื่อให้ประวัติอ่านได้ครบในที่เดียว) ใช้กับทุก Service ที่มีตารางสองตัวนี้ (Identity, Job, Verification, Lifecycle) และมีเทสต์ครอบคลุมทั้งกรณีที่ต้องผ่านและกรณีที่ต้องถูกปฏิเสธ
 
+**ตารางที่เก็บ user id นอก history (PM ตัดสิน 2026-11-16 — Job):** Job แทน `jobs.created_by` และ `job_submissions.submitted_by` ที่ตรงกับ `user_id` ของ `UserDeletionRequested` ด้วย `anonymous_actor_id` ใน transaction เดียวกับ `status_history` — คอลัมน์ยังเป็น `uuid NOT NULL`; เป็น `UPDATE` ธรรมดา (ไม่ผ่าน trigger append-only); **ไม่แตะ `version`/`entity_version` และไม่ส่ง `JobStatusChanged`** เพราะไม่ใช่การเปลี่ยนสถานะ; idempotent (รับซ้ำหรือไม่พบแถวต้องสำเร็จโดยไม่ทำอะไร); ไม่กระทบ id ของประกาศ/การส่งตรวจ, `company_id` และสถานะประกาศ
+
 ### 2.4 สำเนา (Snapshot) ที่แต่ละ Service เก็บได้
 ตารางเจ้าของข้อมูลฉบับย่ออยู่ใน README 5.8 — ตารางด้านล่างระบุ **ฟิลด์** ที่ Service อื่นเก็บเป็นสำเนาได้ (Snapshot):
 
@@ -171,7 +173,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | :--- | :--- | :--- |
 | id | uuid | |
 | company_id | uuid | `ref:identity` |
-| created_by | uuid | `ref:identity` |
+| created_by | uuid | `ref:identity` — Anonymize เป็น `anonymous_actor_id` เมื่อลบบัญชี (§2.3) |
 | category | JobCategory | |
 | job_title | text | **ฟิลด์ข้อความอิสระ** (ต้องตรวจซ้ำเมื่อแก้) |
 | description | text | ข้อความอิสระ |
@@ -209,7 +211,7 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 
 **ค้นหาข้อความ (PM ตัดสิน 2026-11-15):** แยกเป็น migration ภายหลัง (ไม่ต้องอยู่ใน migration แรก) ใช้ **trigram (`pg_trgm`)** ไม่ใช้ `tsvector` เพราะภาษาไทยไม่มีช่องว่างคั่นคำ — GIN index บน `job_title` เป็นหลัก (เพิ่ม `description`/`location` ถ้าจำเป็นหลังวัดผล) ใช้กับ `?q=` ของ `/search/jobs`
 
-**`job_submissions`**: `id (=submission_id)`, `job_id`, `kind (NEW|EDIT|RESUBMIT)`, `changed_fields text[]`, `submitted_by`, `submitted_at`, `result_decision null`, `resolved_at null` — ใช้นับ Rate Limit **5 ครั้ง/วัน/บริษัท** (นับตามวัน `Asia/Bangkok`)
+**`job_submissions`**: `id (=submission_id)`, `job_id`, `kind (NEW|EDIT|RESUBMIT)`, `changed_fields text[]`, `submitted_by` (Anonymize เป็น `anonymous_actor_id` เมื่อลบบัญชี — §2.3), `submitted_at`, `result_decision null`, `resolved_at null` — ใช้นับ Rate Limit **5 ครั้ง/วัน/บริษัท** (นับตามวัน `Asia/Bangkok`)
 
 **`quota_reservations`** (idempotent ด้วย `application_id`)
 | ฟิลด์ | ชนิด |

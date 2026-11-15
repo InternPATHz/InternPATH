@@ -2,6 +2,11 @@
 
 import type { JobStatus } from '../enums';
 
+/**
+ * คำแนะนำให้ Lifecycle ใน E03 (Lifecycle เป็นผู้ตัดสินใจเปลี่ยนใบสมัครเอง) — กติกาเต็มใน event-contract.md E03
+ * - `CANCEL_PRE_APPROVAL`: ประกาศถูกตีกลับ/ลบ (`AUTO_REJECTED`/`ADMIN_REJECTED`/`REMOVED`) — ใบสมัครก่อน `ADVISOR_APPROVED` ⇒ `CANCELLED` + คืนโควตา; ตั้งแต่ `ADVISOR_APPROVED` ขึ้นไป ⇒ ไม่ยกเลิก แต่ติดธงให้อาจารย์ (README 5.1.2)
+ * - `FLAG_POST_APPROVAL`: สงวนไว้ ยังไม่มีผู้ส่ง
+ */
 export type ApplicationEffect = 'FREEZE' | 'UNFREEZE' | 'CANCEL_PRE_APPROVAL' | 'FLAG_POST_APPROVAL' | 'NONE';
 
 /** ฟิลด์ข้อความของประกาศที่ต้องสแกน (E01 content) */

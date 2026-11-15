@@ -192,6 +192,10 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
 
 **Job ต้องส่ง E03 ทุกการเปลี่ยนสถานะ** รวมทุกแถวที่เข้า `VERIFYING` (ส่งคู่กับ E01 ใน transaction เดียว ส่ง E03 ก่อน) — ค่า `application_effect` ของแถวเหล่านั้น: `PUBLISHED → VERIFYING` = `FREEZE` (มีใบสมัครค้างได้), `DRAFT`/`AUTO_REJECTED`/`ADMIN_REJECTED → VERIFYING` = `NONE`; `→ SUSPENDED` = `FREEZE`; `SUSPENDED → PUBLISHED|CLOSED` (RESTORE) = `UNFREEZE` (ดู [data-schema.md](data-schema.md) §8.2) — PM ตัดสิน 2026-11-15
 
+**`application_effect` ของการตีกลับ/ลบ และของผลตรวจ (PM ตัดสิน 2026-11-16):** `→ AUTO_REJECTED`, `→ ADMIN_REJECTED` (และ `→ REMOVED` เมื่อ Job ทำ E02 `REMOVE`) = `CANCEL_PRE_APPROVAL` — ค่าเดียวนี้หมายถึงทั้งสองกรณีตาม README 5.1.2 โดย Lifecycle ตรวจสถานะใบสมัครแต่ละใบเอง: ยังไม่ถึง `ADVISOR_APPROVED` ⇒ `CANCELLED` (ระบุเหตุผลว่างานถูกตีกลับ/ระงับถาวร) พร้อมแจ้งนักศึกษาและอาจารย์ที่ปรึกษา และคืนโควตาที่จองไว้; ตั้งแต่ `ADVISOR_APPROVED` ขึ้นไป (รวม `IN_PROGRESS`) ⇒ ไม่ยกเลิกอัตโนมัติ แต่ติดธงเตือนให้อาจารย์พิจารณา — `FLAG_POST_APPROVAL` สงวนไว้ ยังไม่มีผู้ส่ง (Lifecycle ไม่ต้องรอค่านี้) ส่วนการเข้า `PUBLISHED` จากผลตรวจ (`APPROVE`/`ADMIN_APPROVE`) = `UNFREEZE` และการเข้า `PENDING_REVIEW` (`PENDING_REVIEW`/`APPEAL_ACCEPTED`/Fail-safe `VERIFY_TIMEOUT`) = `FREEZE`
+
+**ค่าที่ Job ตั้งเมื่อรับ E02 (PM ตัดสิน 2026-11-16):** `published_at = now` เฉพาะเมื่ออนุมัติ (`VERIFYING → PUBLISHED`, `PENDING_REVIEW → PUBLISHED`) ไม่ตั้งตอน `RESTORE` (`SUSPENDED → PUBLISHED`) เพื่อไม่ให้ประกาศที่ถูกระงับแล้วคืนสถานะเด้งขึ้นบนสุดของหน้าค้นหา; `verifying_since` ตั้งเมื่อเข้า `VERIFYING` และเคลียร์เป็น NULL เมื่อออกจาก `VERIFYING` (ใช้ทำ Fail-safe 5 นาที); `status_history.actor_role` ของการเปลี่ยนจาก E02 = `PLATFORM_ADMIN` เมื่อ `decided_by = ADMIN` ไม่เช่นนั้น `SYSTEM` (`actor_id` เป็น NULL เพราะ E02 ไม่พก user id)
+
 ### E04 `ReportThresholdReached`  (verification → job, notification)
 ```ts
 {
