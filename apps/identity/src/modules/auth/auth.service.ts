@@ -15,6 +15,8 @@ const RESET_TTL_MS = 30 * 60 * 1000;
 const LOGIN_UNLOCK_TTL_MS = 15 * 60 * 1000;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOCK_MS = 15 * 60 * 1000;
+// Keep the Argon2id cost aligned with hashPassword so unknown emails take a comparable path.
+const DUMMY_PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=1$+kLbPMU0/N0LgSirmYBc7g$ErFkD579AF6IBKfB8pjqV3N+TH1Wp1mvQRCLuQxLh/8';
 const PUBLIC_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'hotmail.com', 'outlook.com', 'live.com', 'yahoo.com', 'yahoo.co.th', 'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com', 'mail.com']);
 const hashToken = (token: string): string => createHash('sha256').update(token).digest('hex');
 const newToken = (): string => randomBytes(32).toString('base64url');
@@ -186,15 +188,17 @@ export class AuthService {
 
   async login(emailInput: string, password: string, unlockToken?: string): Promise<LoginResponse> {
     let user = await this.db.user.findUnique({ where: { email: normalizeEmail(emailInput) } });
-    if (!user) throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
+    if (!user) {
+      await verifyPassword(DUMMY_PASSWORD_HASH, password);
+      throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
+    }
+    let unlockTokenId: string | undefined;
     if (unlockToken) {
       const tokenHash = hashToken(unlockToken);
       const record = await this.db.emailToken.findUnique({ where: { tokenHash } });
       if (!record || record.userId !== user.id || record.purpose !== 'LOGIN_UNLOCK' || record.usedAt ||
         record.expiresAt <= new Date()) throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
-      const consumed = await this.db.emailToken.updateMany({ where: { id: record.id, usedAt: null,
-        expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
-      if (consumed.count !== 1) throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
+      unlockTokenId = record.id;
     } else if (user.lockedUntil && user.lockedUntil > new Date()) {
       throw new AppException('ACCOUNT_LOCKED', 'บัญชีถูกล็อกชั่วคราว', 429);
     }
@@ -210,6 +214,11 @@ export class AuthService {
       throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
     }
     this.assertUsable(user);
+    if (unlockTokenId) {
+      const consumed = await this.db.emailToken.updateMany({ where: { id: unlockTokenId, userId: user.id,
+        purpose: 'LOGIN_UNLOCK', usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
+      if (consumed.count !== 1) throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
+    }
     await this.db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
     return this.issueSession(user);
   }

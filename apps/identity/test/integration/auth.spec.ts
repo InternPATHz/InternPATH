@@ -226,10 +226,12 @@ describe('Identity Auth API (Postgres จริง)', function () {
       tokenHash: wrongTokenHash, expiresAt: new Date(Date.now() + 15 * 60_000) } });
     await request(app.getHttpServer()).post('/v1/auth/login')
       .send({ email, password: 'still wrong', unlock_token: wrongToken }).expect(401);
+    expect((await db.emailToken.findUniqueOrThrow({ where: { tokenHash: wrongTokenHash } })).usedAt).to.equal(null);
+    await request(app.getHttpServer()).post('/v1/auth/login')
+      .send({ email, password, unlock_token: wrongToken }).expect(200);
     expect((await db.emailToken.findUniqueOrThrow({ where: { tokenHash: wrongTokenHash } })).usedAt).to.be.instanceOf(Date);
     await request(app.getHttpServer()).post('/v1/auth/login')
       .send({ email, password, unlock_token: wrongToken }).expect(401);
-    await request(app.getHttpServer()).post('/v1/auth/login').send({ email, password }).expect(429);
   });
 
   it('keeps unlock requests generic when SMTP is unavailable and does not leave a usable token', async () => {
