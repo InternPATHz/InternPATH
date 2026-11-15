@@ -38,6 +38,14 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 ใส่ค่าที่สร้างลง `IDENTITY_SERVICE_SECRET_GATEWAY` ใน `.env` ของ Gateway **และ** Identity ให้ตรงกัน และสร้างค่าใหม่แยกสำหรับ `IDENTITY_SERVICE_SECRET_NOTIFICATION` กับ `IDENTITY_SERVICE_SECRET_LIFECYCLE` เมื่อใช้ Service เหล่านั้น หากเปิด Gateway โดยไม่ตั้ง `IDENTITY_SERVICE_SECRET_GATEWAY` หรือค่าสั้นกว่า 32 ตัวอักษร Gateway จะ log ชื่อตัวแปรและไม่เริ่มรับคำขอ เก็บ `.env` และ Private Key ไว้นอก Git เสมอ
 
+### 1.2 Gateway หลัง proxy
+
+เมื่อวาง Gateway หลัง proxy ให้ตั้ง `EDGE_SHARED_SECRET` เป็นค่าเดียวกันที่ proxy และ Gateway แล้วให้ proxy ส่ง `X-Edge-Secret` พร้อม `x-client-ip` ซึ่งเป็น IP ผู้ใช้จริง โดย proxy ต้องเขียนทับ header ทั้งสองจากคำขอภายนอก และปิดการเข้าถึง Gateway โดยตรงจากอินเทอร์เน็ต
+
+เมื่อกำหนด `EDGE_SHARED_SECRET` แล้ว คำขอที่ไม่มี `X-Edge-Secret` ที่ถูกต้องจะถูกปฏิเสธ (401) สำหรับคำขอที่ผ่าน Gateway จะใช้ `x-client-ip` เมื่อเป็น IP ที่ถูกต้อง หาก proxy ไม่ส่ง `x-client-ip` หรือส่งรูปแบบผิด Gateway จะใช้ IP ของการเชื่อมต่อกับ Gateway ทำให้ผู้ใช้ทุกคนหลัง proxy ใช้ rate limit bucket เดียวกัน
+
+Rate limiter ปัจจุบันเก็บ bucket แบบ LRU ในหน่วยความจำของ Gateway แต่ละ instance หาก deploy หลาย instance และต้องการจำกัดอัตราร่วมกัน ให้ย้าย bucket ไป shared storage
+
 ## 2. ใครดูแล Service ไหน
 
 | Service | โฟลเดอร์ | เจ้าของ | Port |
