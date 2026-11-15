@@ -3,13 +3,16 @@ import { CompanyModule } from '../../company/company.module';
 import { CompanyEntitlementChangedConsumer } from './company-entitlement-changed.consumer';
 import { CompanyFlagChangedConsumer } from './company-flag-changed.consumer';
 import { CompanyStatusChangedConsumer } from './company-status-changed.consumer';
+import { JobVerifiedConsumer } from './job-verified.consumer';
+import { StatusModule } from '../../status/status.module';
 
 @Module({
-  imports: [CompanyModule],
+  imports: [CompanyModule, StatusModule],
   providers: [
     CompanyStatusChangedConsumer,
     CompanyEntitlementChangedConsumer,
     CompanyFlagChangedConsumer,
+    JobVerifiedConsumer,
   ],
 })
 export class ConsumersModule {}

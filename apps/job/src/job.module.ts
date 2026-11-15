@@ -5,11 +5,12 @@ import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import type { Tx } from './prisma/types';
 
-/** Infrastructure-backed Job features; consumes company events only. */
+/** One messaging registration owns Job consumption and its transactional outbox relay. */
 @Module({
   imports: [
     MessagingModule.register<Tx>({
       service: 'job',
+      publishes: { databaseUrlEnv: 'JOB_DIRECT_URL' },
       imports: [PrismaModule],
       consumes: {
         inject: [PrismaService],

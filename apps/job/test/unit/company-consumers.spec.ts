@@ -5,6 +5,7 @@ import {
   BrokerConnection,
   EventConsumer,
   MESSAGING_OPTIONS,
+  RELAY_FACTORY,
   type MessagingModuleOptions,
   type Subscription,
 } from '@internpath/common';
@@ -53,12 +54,13 @@ describe('Job company consumer wiring', () => {
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), JobModule],
     })
       .overrideProvider(ConfigService)
-      .useValue(new ConfigService())
+      .useValue(new ConfigService({ JOB_DIRECT_URL: 'postgresql://job_unit@127.0.0.1:1/job_unit' }))
       .overrideProvider(PrismaService)
       .useValue(prisma)
       .overrideProvider(BrokerConnection)
       .useValue(broker)
-
+      .overrideProvider(RELAY_FACTORY)
+      .useValue(async () => ({ start: () => undefined, stop: async () => undefined }))
       .compile();
     snapshots = moduleRef.get(CompanySnapshotService);
     subscribe = sandbox.spy(moduleRef.get<EventConsumer<Tx>>(EventConsumer), 'subscribe');
@@ -79,8 +81,8 @@ describe('Job company consumer wiring', () => {
       .map((c) => c.args[0] as Subscription<Tx>)
       .find((s) => s.type === type)!;
 
-  it('registers exactly E05/E06 from Identity and E18 from Verification', () => {
-    expect(subscribe.callCount).to.equal(3);
+  it('preserves E05/E06/E18 and adds E02 from Verification', () => {
+    expect(subscribe.callCount).to.equal(4);
     expect(
       subscribe
         .getCalls()
@@ -90,13 +92,14 @@ describe('Job company consumer wiring', () => {
       { type: 'CompanyEntitlementChanged', producer: 'identity' },
       { type: 'CompanyFlagChanged', producer: 'verification' },
       { type: 'CompanyStatusChanged', producer: 'identity' },
+      { type: 'JobVerified', producer: 'verification' },
     ]);
   });
 
-  it('configures consumption only and runs work with the injected Prisma transaction', async () => {
+  it('configures the Job outbox relay and runs consumption with the injected Prisma transaction', async () => {
     const options = moduleRef.get<MessagingModuleOptions<Tx>>(MESSAGING_OPTIONS);
     expect(options.service).to.equal('job');
-    expect(options.publishes).to.equal(undefined);
+    expect(options.publishes).to.deep.equal({ databaseUrlEnv: 'JOB_DIRECT_URL' });
     expect(Object.is(moduleRef.get(PrismaService), prisma)).to.equal(true);
     const consumes = options.consumes;
     if (!consumes || !('useFactory' in consumes))
