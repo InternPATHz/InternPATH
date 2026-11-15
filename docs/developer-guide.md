@@ -46,6 +46,20 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 Rate limiter ปัจจุบันเก็บ bucket แบบ LRU ในหน่วยความจำของ Gateway แต่ละ instance หาก deploy หลาย instance และต้องการจำกัดอัตราร่วมกัน ให้ย้าย bucket ไป shared storage
 
+### 1.3 บัญชี Admin และคีย์ JWT สำหรับเครื่อง dev
+
+Identity ไม่มี API สมัคร `PLATFORM_ADMIN` จึงต้อง seed เอง (เฉพาะเครื่อง dev — สคริปต์ปฏิเสธเมื่อ `NODE_ENV=production` หรือฐานข้อมูลไม่ใช่เครื่องนี้ และไม่มีรหัสผ่านเริ่มต้น):
+
+```bash
+pnpm --filter @internpath/identity prisma:generate
+ADMIN_EMAIL=admin@internpath.local ADMIN_PASSWORD='<อย่างน้อย 12 ตัวอักษร>' node scripts/dev-seed-admin.cjs
+```
+
+จากนั้นล็อกอินที่หน้าเว็บแล้วเข้า `/admin/queue` ถ้าไม่มีข้อมูลในคิว ให้ส่ง event `JobSubmitted` เข้า RabbitMQ (ดู `apps/verification/test/e2e/job-verification.e2e.spec.ts` เป็นตัวอย่าง payload)
+
+`JWT_PRIVATE_KEY` / `JWT_PUBLIC_KEY` ใน `.env` ต้องเป็น **บรรทัดเดียว** โดยใช้ตัวอักษร `
+` (backslash + n) คั่นแต่ละบรรทัดของ PEM — Identity และ Gateway แปลงกลับเอง ถ้าเป็น `\n` สองตัวหรือขึ้นบรรทัดใหม่จริง ล็อกอินจะได้ 500
+
 ## 2. ใครดูแล Service ไหน
 
 | Service | โฟลเดอร์ | เจ้าของ | Port |

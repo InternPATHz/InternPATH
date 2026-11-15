@@ -20,7 +20,9 @@ export default function LoginPage() {
     const form = new FormData(event.currentTarget);
     try {
       await login(String(form.get('email')), String(form.get('password')));
-      router.replace('/account');
+      // `next` ใช้ได้เฉพาะเส้นทางภายในเว็บ (ขึ้นต้น / และไม่ใช่ //) กัน open redirect
+      const next = new URLSearchParams(window.location.search).get('next');
+      router.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : '/account');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'เข้าสู่ระบบไม่สำเร็จ');
     } finally { setBusy(false); }
