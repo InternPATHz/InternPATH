@@ -4,7 +4,7 @@ const { readFileSync } = require('node:fs');
 const net = require('node:net');
 const path = require('node:path');
 const { Client } = require('../apps/identity/node_modules/pg');
-const { argon2idAsync } = require('../apps/identity/node_modules/@noble/hashes/argon2');
+const argon2 = require('../apps/identity/node_modules/argon2');
 
 const root = path.resolve(__dirname, '..');
 const identityRoot = path.join(root, 'apps/identity');
@@ -66,11 +66,18 @@ async function main() {
     const userId = randomUUID();
     const companyId = randomUUID();
     const password = 'IntegrationPassword!123';
-    const salt = randomBytes(16);
-    const hash = await argon2idAsync(password, salt, { t: 3, m: 64 * 1024, p: 1, dkLen: 32 });
-    const passwordHash = `$argon2id$v=19$m=65536,t=3,p=1$${salt.toString('base64').replace(/=+$/u, '')}$${Buffer.from(hash).toString('base64').replace(/=+$/u, '')}`;
+    // Fixed PHC vector produced by the former @noble/hashes implementation.
+    const passwordHash = '$argon2id$v=19$m=65536,t=3,p=1$AAECAwQFBgcICQoLDA0ODw$4xpFPY9gvm2yNYpjy7WzgIqo4GsBH8azxfcdd00VGIY';
     await db.query(`INSERT INTO users (id,email,password_hash,role,status,email_verified_at,full_name)
       VALUES ($1,'integration@test.ac.th',$2,'STUDENT','ACTIVE',NOW(),'Integration User')`, [userId, passwordHash]);
+    const concurrentUsers = Array.from({ length: 4 }, (_, index) => ({ id: randomUUID(), email: `concurrent-${index}@test.ac.th` }));
+    for (const user of concurrentUsers) {
+      const concurrentPasswordHash = await argon2.hash(password, {
+        type: argon2.argon2id, memoryCost: 64 * 1024, timeCost: 3, parallelism: 1, hashLength: 32, salt: randomBytes(16),
+      });
+      await db.query(`INSERT INTO users (id,email,password_hash,role,status,email_verified_at,full_name)
+        VALUES ($1,$2,$3,'STUDENT','ACTIVE',NOW(),'Concurrent User')`, [user.id, user.email, concurrentPasswordHash]);
+    }
     await db.query(`INSERT INTO companies (id,name,registration_no,email_domain,status)
       VALUES ($1,'Integration Company','INTEGRATION-001','integration.test','VERIFIED')`, [companyId]);
     await db.end();
@@ -98,6 +105,19 @@ async function main() {
     if (login.status !== 200) throw new Error(`Login through Gateway returned ${login.status}: ${await login.text()}`);
     const session = await login.json();
     if (!session.access_token || session.user?.id !== userId) throw new Error('Login returned an invalid session');
+    const concurrentStart = performance.now();
+    const concurrentLogins = await Promise.all(concurrentUsers.map((user) =>
+      fetch(`${gatewayUrl}/api/v1/auth/login`, { method: 'POST',
+        headers: { 'X-Edge-Secret': edgeSecret, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email, password }), signal: AbortSignal.timeout(10_000) })));
+    const concurrentMs = performance.now() - concurrentStart;
+    for (const [index, response] of concurrentLogins.entries()) {
+      if (response.status !== 200) throw new Error(`Concurrent login ${index + 1} returned ${response.status}: ${await response.text()}`);
+      const body = await response.json();
+      if (body.user?.id !== concurrentUsers[index].id || !body.access_token)
+        throw new Error(`Concurrent login ${index + 1} returned an invalid session`);
+    }
+    if (concurrentMs >= 10_000) throw new Error(`Four concurrent logins exceeded Gateway timeout: ${Math.round(concurrentMs)} ms`);
     const headers = { Authorization: `Bearer ${session.access_token}`, 'X-Edge-Secret': edgeSecret };
     const get = (route) => fetch(`${gatewayUrl}/api/v1${route}`, { headers });
     const blockedInternal = await get('/internal/v1/denylist');
@@ -135,7 +155,7 @@ async function main() {
     }
     if (suspended.status !== 401 || (await suspended.json()).error?.code !== 'ACCOUNT_SUSPENDED')
       throw new Error(`Gateway did not refresh Identity denylist: ${suspended.status}`);
-    console.log('PASS: Gateway → Identity login, profile read/update, Directory, internal route block, denylist refresh');
+    console.log(`PASS: Gateway → Identity login (4 concurrent in ${Math.round(concurrentMs)} ms), profile read/update, Directory, internal route block, denylist refresh`);
   } finally {
     if (gateway) gateway.child.kill();
     if (identity) identity.child.kill();
