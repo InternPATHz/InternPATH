@@ -62,13 +62,21 @@ export class RateLimiter {
   private limit(key: string, max: number, windowMs: number): number {
     const now = Date.now();
     const previous = this.limits.get(key);
-    if (!previous || now >= previous.resetAt) {
-      if (this.limits.size >= 10_000) for (const [name, value] of this.limits) if (value.resetAt <= now) this.limits.delete(name);
-      if (this.limits.size >= 10_000 && !previous) return 60;
-      this.limits.set(key, { count: 1, resetAt: now + windowMs }); return 0;
+    if (previous && now < previous.resetAt) {
+      // Map insertion order tracks recent use, including rejected attempts.
+      this.limits.delete(key);
+      this.limits.set(key, previous);
+      if (previous.count >= max) return Math.ceil((previous.resetAt - now) / 1000);
+      previous.count++;
+      return 0;
     }
-    if (previous.count >= max) return Math.ceil((previous.resetAt - now) / 1000);
-    previous.count++;
+
+    if (previous) this.limits.delete(key);
+    if (this.limits.size >= 10_000) {
+      const oldestKey = this.limits.keys().next().value;
+      if (oldestKey !== undefined) this.limits.delete(oldestKey);
+    }
+    this.limits.set(key, { count: 1, resetAt: now + windowMs });
     return 0;
   }
 }
