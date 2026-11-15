@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HealthModule, createLoggingModule } from '@internpath/common';
-import { PrismaModule } from './prisma/prisma.module';
+import { JobModule } from './job.module';
 
 // Basic tests omit infrastructure providers; database tests use their disposable client.
-const infra = process.env.DISABLE_INFRA === 'true' ? [] : [PrismaModule];
+const infra = process.env.DISABLE_INFRA === 'true' ? [] : [JobModule];
 
 @Module({
   imports: [
