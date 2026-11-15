@@ -1,6 +1,6 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { AppException, OutboxWriter } from '@internpath/common';
+import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { CompanyMemberItem, CompanyStatusChangedPayload, UserSuspendedPayload } from '@internpath/contracts';
 import { Company, Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -9,8 +9,6 @@ import { InvitationMailer } from './invitation-mailer';
 import { hashPassword } from '../auth/password-hash';
 
 const TOKEN_TTL_MS = 24 * 60 * 60 * 1000;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const correlation = (value?: string) => value && UUID.test(value) ? value : randomUUID();
 const tokenHash = (value: string) => createHash('sha256').update(value).digest('hex');
 const normalizedEmail = (value: string) => value.trim().toLowerCase();
 
@@ -128,7 +126,7 @@ export class CompanyMembersService {
   }
 
   async remove(ownerId: string, memberId: string, id?: string): Promise<void> {
-    const cid = correlation(id);
+    const cid = asUuid(id);
     await this.transaction(async (tx) => {
       const owner = await this.member(tx, ownerId, true);
       const target = await tx.companyMember.findUnique({ where: { userId: memberId }, include: { user: true } });
@@ -172,7 +170,7 @@ export class CompanyMembersService {
 
   async transferAction(actorId: string, action: string, id?: string): Promise<void> {
     if (!['accept', 'decline', 'cancel'].includes(action)) throw new AppException('NOT_FOUND', 'ไม่พบ action นี้', 404);
-    const cid = correlation(id);
+    const cid = asUuid(id);
     await this.transaction(async (tx) => {
       const actor = await this.member(tx, actorId);
       const pending = await tx.ownerTransfer.findFirst({ where: { companyId: actor.companyId, status: 'PENDING' },
@@ -205,7 +203,7 @@ export class CompanyMembersService {
   }
 
   async appoint(adminId: string, companyId: string, userId: string, id?: string): Promise<void> {
-    const cid = correlation(id);
+    const cid = asUuid(id);
     await this.transaction(async (tx) => {
       await this.admin(tx, adminId);
       const company = await tx.company.findUnique({ where: { id: companyId } });

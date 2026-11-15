@@ -92,7 +92,8 @@ describe('Identity account deletion (Postgres)', function () {
     const requestId = await service.request(user.id);
     expect(await service.request(user.id)).to.equal(requestId);
     const requestedAt = (await db.deletionRequest.findUniqueOrThrow({ where: { id: requestId } })).requestedAt.toISOString();
-    await service.complete(requestId);
+    const correlationId = randomUUID();
+    await service.complete(requestId, correlationId);
     await service.complete(requestId);
 
     const deleted = await db.user.findUniqueOrThrow({ where: { id: user.id } });
@@ -107,6 +108,9 @@ describe('Identity account deletion (Postgres)', function () {
     expect(await db.emailToken.count({ where: { userId: user.id } })).to.equal(0);
     expect(await db.tokenDenylist.count({ where: { userId: user.id } })).to.equal(1);
     const event = await db.outboxEvent.findFirstOrThrow({ where: { type: 'UserDeletionRequested', aggregateId: user.id } });
+    expect(event.correlationId).to.equal(correlationId);
+    expect((await db.statusHistory.findFirstOrThrow({ where: { entity: 'USER', entityId: user.id, toStatus: 'DELETED' } })).correlationId)
+      .to.equal(correlationId);
     const payload = event.payload as { requested_at: string; anonymous_actor_id: string; mode: string };
     expect(payload.requested_at).to.equal(requestedAt);
     expect(payload.mode).to.equal('DELETE_AND_ANONYMIZE');

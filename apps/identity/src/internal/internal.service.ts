@@ -1,10 +1,8 @@
 import { Injectable } from '@nestjs/common';
-import { AppException } from '@internpath/common';
+import { AppException, isUuid } from '@internpath/common';
 import type { ConsentCheckRequest, ConsentCheckResponse, InternalAdminsResponse, InternalCompanyMembersResponse,
   InternalDenylistResponse, InternalStudentResponse, UserContact } from '@internpath/contracts';
 import { PrismaService } from '../prisma/prisma.service';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 @Injectable()
 export class InternalService {
@@ -19,7 +17,7 @@ export class InternalService {
   async contacts(ids: string): Promise<UserContact[]> {
     if (typeof ids !== 'string') throw new AppException('VALIDATION_FAILED', 'ต้องระบุ ids', 400);
     const parsed = ids.split(',').map((id) => id.trim());
-    if (!parsed.length || parsed.length > 100 || parsed.some((id) => !UUID.test(id))) {
+    if (!parsed.length || parsed.length > 100 || parsed.some((id) => !isUuid(id))) {
       throw new AppException('VALIDATION_FAILED', 'ids ต้องเป็น UUID ไม่เกิน 100 รายการ', 400);
     }
     const unique = [...new Set(parsed)];

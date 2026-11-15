@@ -1,15 +1,12 @@
-import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { fromBuffer } from 'file-type';
-import { AppException, OutboxWriter } from '@internpath/common';
+import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { AdminCompanyDetail, AdminCompanyListItem, CompanyDocType, CompanyDocumentItem, CompanyMeResponse, CompanyStatusChangedPayload } from '@internpath/contracts';
 import { Company, CompanyStatus, Prisma, User } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CompanyStorageService } from './company-storage.service';
 import { CompanyQueryDto, UpdateCompanyDto } from './companies.dto';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const correlation = (id?: string) => id && UUID.test(id) ? id : randomUUID();
 type Page<T> = { data: T[]; meta: { page: number; page_size: number; total: number } };
 
 @Injectable()
@@ -69,7 +66,7 @@ export class CompaniesService {
     const phone = body.phone?.trim() ?? before.phone;
     if (name === before.name && website === before.website && phone === before.phone) return this.response(before);
     const status: CompanyStatus = before.status === 'REJECTED' ? 'PENDING' : before.status;
-    const cid = correlation(id);
+    const cid = asUuid(id);
     const after = await this.db.$transaction(async (tx) => {
       const changed = await tx.company.updateMany({ where: { id: before.id, version: before.version, status: before.status },
         data: { name, website, phone, status, reviewNote: status === 'PENDING' ? null : before.reviewNote, version: { increment: 1 } } });
@@ -94,7 +91,7 @@ export class CompaniesService {
     const member = await this.member(userId, true);
     const mime = await this.checkedFile(file, 'logo');
     const key = await this.storage.upload('logo', member.companyId, file.buffer, mime);
-    const cid = correlation(id);
+    const cid = asUuid(id);
     const after = await this.db.$transaction(async (tx) => {
       const before = await tx.company.findUniqueOrThrow({ where: { id: member.companyId } });
       const changed = await tx.company.updateMany({ where: { id: before.id, version: before.version }, data: { logoKey: key, version: { increment: 1 } } });
@@ -128,7 +125,7 @@ export class CompaniesService {
 
   async resubmit(userId: string, id?: string): Promise<void> {
     const member = await this.member(userId, true);
-    const cid = correlation(id);
+    const cid = asUuid(id);
     await this.db.$transaction(async (tx) => {
       const before = await tx.company.findUniqueOrThrow({ where: { id: member.companyId } });
       if (before.status !== 'NEED_MORE_INFO') throw new AppException('STATE_CONFLICT', 'บริษัทไม่ได้รอเอกสารเพิ่มเติม', 409);
@@ -182,7 +179,7 @@ export class CompaniesService {
     if (!transition) throw new AppException('NOT_FOUND', 'ไม่พบ action นี้', 404);
     const note = reason?.trim();
     if (['need-more-info', 'reject', 'suspend'].includes(action) && !note) throw new AppException('VALIDATION_ERROR', 'ต้องระบุเหตุผล', 400);
-    const cid = correlation(id);
+    const cid = asUuid(id);
     await this.db.$transaction(async (tx) => {
       const before = await tx.company.findUnique({ where: { id: companyId } });
       if (!before) throw new AppException('NOT_FOUND', 'ไม่พบบริษัท', 404);

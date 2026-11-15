@@ -1,8 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
+import { asUuid, isUuid } from '../correlation/correlation';
 import type { OutboxEventInput, OutboxJson, OutboxTx } from './outbox.types';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** เขียนแถว outbox ใน Transaction ของ Service (ห้ามส่ง RabbitMQ ตรงๆ — docs/event-contract.md §3.1) */
 @Injectable()
@@ -11,13 +10,13 @@ export class OutboxWriter {
 
   /** คืน event_id; ต้องเรียกภายใน `$transaction` เดียวกับการเปลี่ยนข้อมูล */
   async add(tx: OutboxTx, input: OutboxEventInput): Promise<string> {
-    if (!UUID.test(input.aggregateId)) {
+    if (!isUuid(input.aggregateId)) {
       throw new Error(`OutboxWriter: aggregateId must be a UUID (got ${JSON.stringify(input.aggregateId)})`);
     }
     const id = randomUUID();
     // correlation ID จาก header อาจไม่ใช่ UUID (correlation.ts ยอมรับ id ปลอดภัยรูปแบบอื่น)
     // แต่คอลัมน์เป็น uuid — ถ้าส่งค่าเดิมจะทำให้ Transaction ของ Service ล้ม
-    const correlationId = UUID.test(input.correlationId) ? input.correlationId : randomUUID();
+    const correlationId = asUuid(input.correlationId);
     await tx.outboxEvent.create({
       data: {
         id,

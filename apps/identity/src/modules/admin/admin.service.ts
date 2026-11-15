@@ -1,13 +1,9 @@
-import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { AppException, OutboxWriter } from '@internpath/common';
+import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { CompanyEntitlementChangedPayload, CompanyStatusChangedPayload, UserSuspendedPayload } from '@internpath/contracts';
 import { Company, Prisma, User } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditQueryDto, SetEntitlementsDto } from './admin.dto';
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const asUuid = (value?: string): string => value && UUID.test(value) ? value : randomUUID();
 
 @Injectable()
 export class AdminService {

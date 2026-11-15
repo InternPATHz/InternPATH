@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import { AppException, OutboxWriter } from '@internpath/common';
+import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { AdvisorLinkChangedPayload, UserDeletionRequestedPayload, UserSuspendedPayload } from '@internpath/contracts';
 import { Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -10,9 +10,6 @@ export const DELETION_ELIGIBILITY = Symbol('DELETION_ELIGIBILITY');
 export interface DeletionEligibility {
   assertNoActiveApplications(userId: string): Promise<void>;
 }
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const correlation = (value?: string): string => value && UUID.test(value) ? value : randomUUID();
 
 @Injectable()
 export class AccountDeletionService {
@@ -51,7 +48,7 @@ export class AccountDeletionService {
       throw error;
     }
 
-    const cid = correlation(correlationId);
+    const cid = asUuid(correlationId);
     await this.db.$transaction(async (tx) => {
       const currentRequest = await tx.deletionRequest.findUnique({ where: { id: requestId } });
       if (currentRequest?.status === 'COMPLETED') return;

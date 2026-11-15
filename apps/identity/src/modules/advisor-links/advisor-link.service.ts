@@ -1,13 +1,10 @@
-import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { AppException, OutboxWriter } from '@internpath/common';
+import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { AdminAdvisorListItem, AdvisorLinkChangedPayload, AdvisorLinkRequestItem, AdvisorListItem, LinkedStudentItem } from '@internpath/contracts';
 import { Prisma, StudentProfileIdentity, User } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminAdvisorQueryDto, AdvisorSearchDto } from './advisor-link.dto';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
-const asUuid = (value?: string): string => value && UUID.test(value) ? value : randomUUID();
 type Page<T> = { data: T[]; meta: { page: number; page_size: number; total: number } };
 
 function page<T>(data: T[], total: number, query: { page: number; page_size: number }): Page<T> {
