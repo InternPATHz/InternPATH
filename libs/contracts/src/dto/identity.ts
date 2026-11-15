@@ -29,6 +29,7 @@ export interface VerifyEmailRequest {
 export interface LoginRequest {
   email: string;
   password: string;
+  unlock_token?: string;
 }
 
 export interface LoginResponse {

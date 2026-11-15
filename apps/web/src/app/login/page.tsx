@@ -33,7 +33,8 @@ export default function LoginPage() {
       {error && <Notice error>{error}</Notice>}
       <ActionButton busy={busy}>เข้าสู่ระบบ</ActionButton>
     </form>
-    <div className="mt-4 text-right text-sm">
+    <div className="mt-4 flex justify-between gap-4 text-sm">
+      <Link href="/unlock-login" className="text-ink-soft hover:text-primary hover:underline">บัญชีถูกล็อก?</Link>
       <Link href="/forgot-password" className="text-ink-soft hover:text-primary hover:underline">ลืมรหัสผ่าน?</Link>
     </div>
     <p className="mt-6 border-t border-border pt-5 text-center text-sm text-ink-soft">

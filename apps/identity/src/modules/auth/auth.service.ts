@@ -12,6 +12,7 @@ import { hashPassword, verifyPassword } from './password-hash';
 
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 30 * 60 * 1000;
+const LOGIN_UNLOCK_TTL_MS = 15 * 60 * 1000;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOCK_MS = 15 * 60 * 1000;
 const PUBLIC_DOMAINS = new Set(['gmail.com', 'googlemail.com', 'hotmail.com', 'outlook.com', 'live.com', 'yahoo.com', 'yahoo.co.th', 'icloud.com', 'me.com', 'aol.com', 'proton.me', 'protonmail.com', 'mail.com']);
@@ -50,11 +51,12 @@ export class AuthService {
     return university.id;
   }
 
-  private async issueEmailToken(tx: Prisma.TransactionClient, userId: string, purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD'): Promise<string> {
+  private async issueEmailToken(tx: Prisma.TransactionClient, userId: string, purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'LOGIN_UNLOCK'): Promise<string> {
     const token = newToken();
     await tx.emailToken.create({ data: {
       userId, purpose, tokenHash: hashToken(token),
-      expiresAt: new Date(Date.now() + (purpose === 'VERIFY_EMAIL' ? VERIFY_TTL_MS : RESET_TTL_MS)),
+      expiresAt: new Date(Date.now() + (purpose === 'VERIFY_EMAIL' ? VERIFY_TTL_MS
+        : purpose === 'RESET_PASSWORD' ? RESET_TTL_MS : LOGIN_UNLOCK_TTL_MS)),
     } });
     return token;
   }
@@ -182,11 +184,23 @@ export class AuthService {
     return { access_token, refresh_token, expires_in: this.accessTtl(), user: this.authUser(user) };
   }
 
-  async login(emailInput: string, password: string): Promise<LoginResponse> {
+  async login(emailInput: string, password: string, unlockToken?: string): Promise<LoginResponse> {
     let user = await this.db.user.findUnique({ where: { email: normalizeEmail(emailInput) } });
     if (!user) throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
-    if (user.lockedUntil && user.lockedUntil > new Date()) throw new AppException('ACCOUNT_LOCKED', 'บัญชีถูกล็อกชั่วคราว', 429);
-    if (user.lockedUntil) user = await this.db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
+    if (unlockToken) {
+      const tokenHash = hashToken(unlockToken);
+      const record = await this.db.emailToken.findUnique({ where: { tokenHash } });
+      if (!record || record.userId !== user.id || record.purpose !== 'LOGIN_UNLOCK' || record.usedAt ||
+        record.expiresAt <= new Date()) throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
+      const consumed = await this.db.emailToken.updateMany({ where: { id: record.id, usedAt: null,
+        expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
+      if (consumed.count !== 1) throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
+    } else if (user.lockedUntil && user.lockedUntil > new Date()) {
+      throw new AppException('ACCOUNT_LOCKED', 'บัญชีถูกล็อกชั่วคราว', 429);
+    }
+    if (user.lockedUntil && user.lockedUntil <= new Date()) {
+      user = await this.db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
+    }
     const valid = await verifyPassword(user.passwordHash, password);
     if (!valid) {
       const failed = await this.db.user.update({ where: { id: user.id }, data: { failedLoginCount: { increment: 1 } } });
@@ -198,6 +212,31 @@ export class AuthService {
     this.assertUsable(user);
     await this.db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
     return this.issueSession(user);
+  }
+
+  async requestLoginUnlock(emailInput: string): Promise<void> {
+    const email = normalizeEmail(emailInput);
+    const user = await this.db.user.findUnique({ where: { email } });
+    if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt || !user.lockedUntil ||
+      user.lockedUntil <= new Date()) return;
+    const token = await this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${user.id}::uuid FOR UPDATE`;
+      const current = await tx.user.findUnique({ where: { id: user.id } });
+      if (!current?.lockedUntil || current.lockedUntil <= new Date()) return undefined;
+      const active = await tx.emailToken.findFirst({ where: { userId: user.id, purpose: 'LOGIN_UNLOCK',
+        usedAt: null, expiresAt: { gt: new Date() } } });
+      if (active) return undefined;
+      const recent = await tx.emailToken.findFirst({ where: { userId: user.id, purpose: 'LOGIN_UNLOCK',
+        createdAt: { gt: new Date(Date.now() - 60_000) } } });
+      if (recent) return undefined;
+      return this.issueEmailToken(tx, user.id, 'LOGIN_UNLOCK');
+    });
+    if (!token) return;
+    try { await this.mailer.send(email, 'unlock-login', token); }
+    catch {
+      await this.db.emailToken.update({ where: { tokenHash: hashToken(token) }, data: { usedAt: new Date() } })
+        .catch(() => undefined);
+    }
   }
 
   async refresh(token: string): Promise<LoginResponse> {

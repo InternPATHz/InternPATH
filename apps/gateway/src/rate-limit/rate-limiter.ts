@@ -11,7 +11,8 @@ export class RateLimiter {
     // README §5.7 fixes categories; these conservative defaults can be tuned by env later.
     if (method === 'POST' && path === '/auth/login') return { name: 'login', max: 10, windowMs: 60_000 };
     if (method === 'POST' && path.startsWith('/auth/register/')) return { name: 'register', max: 5, windowMs: 3_600_000 };
-    if (method === 'POST' && ['/auth/password/forgot', '/auth/password/reset', '/auth/resend-verification'].includes(path))
+    if (method === 'POST' && ['/auth/password/forgot', '/auth/password/reset', '/auth/resend-verification',
+      '/auth/login/unlock/request'].includes(path))
       return { name: 'account-recovery', max: 5, windowMs: 3_600_000 };
     if (method === 'GET' && /^\/public\/certificates\/[^/]+(?:\/verify-hash)?$/.test(path))
       return { name: 'certificate', max: 30, windowMs: 60_000 };
@@ -44,7 +45,12 @@ export class RateLimiter {
     try { value = JSON.parse(body.toString('utf8')); }
     catch { return undefined; }
     if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
-    const fields = value as { email?: unknown; token?: unknown; user?: { email?: unknown } };
+    const fields = value as { email?: unknown; token?: unknown; unlock_token?: unknown; user?: { email?: unknown } };
+    // A one-time email token is checked by Identity before password hashing. It lets the owner
+    // pass an account bucket that someone else has exhausted.
+    if (path === '/auth/login' && typeof fields.unlock_token === 'string' && fields.unlock_token.length > 0)
+      return undefined;
+    if (path === '/auth/login/unlock/request') return undefined;
     const isReset = path === '/auth/password/reset';
     const subject = isReset ? fields.token : path === '/auth/register/company' ? fields.user?.email : fields.email;
     if (typeof subject !== 'string') return undefined;

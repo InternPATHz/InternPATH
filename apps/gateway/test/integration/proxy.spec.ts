@@ -121,8 +121,17 @@ describe('Gateway proxy and security', function () {
     const blocked = await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
       .set('X-Client-IP', '203.0.113.111').send({ email: 'target@example.com' }).expect(429);
     expect(blocked.body.error.code).to.equal('RATE_LIMITED');
+    const unlocked = await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
+      .set('X-Client-IP', '203.0.113.112')
+      .send({ email: 'target@example.com', password: 'correct-password', unlock_token: 'emailed-token' }).expect(200);
+    expect(JSON.parse(unlocked.body.body).unlock_token).to.equal('emailed-token');
     await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
       .set('X-Client-IP', '203.0.113.111').send({ email: 'other@example.com' }).expect(200);
+  });
+
+  it('forwards an unlock link request when the login account bucket is exhausted', async () => {
+    await edge(request(app.getHttpServer()).post('/api/v1/auth/login/unlock/request'))
+      .set('X-Client-IP', '203.0.113.113').send({ email: 'target@example.com' }).expect(200);
   });
 
   it('limits company registration by nested user email across IPs', async () => {
@@ -144,6 +153,8 @@ describe('Gateway proxy and security', function () {
     }
     await edge(request(app.getHttpServer()).post('/api/v1/auth/resend-verification'))
       .set('X-Client-IP', '192.0.2.20').send({ email: 'RECOVER@example.com' }).expect(429);
+    await edge(request(app.getHttpServer()).post('/api/v1/auth/login/unlock/request'))
+      .set('X-Client-IP', '192.0.2.21').send({ email: 'recover@example.com' }).expect(200);
   });
 
   it('limits attempts against one reset token across IPs', async () => {

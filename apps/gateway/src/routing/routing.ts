@@ -25,7 +25,7 @@ export function resolveService(path: string): ServiceName | undefined {
 
 const PUBLIC_POST = new Set([
   '/auth/register/student', '/auth/register/advisor', '/auth/register/company', '/auth/verify-email',
-  '/auth/resend-verification', '/auth/login', '/auth/refresh', '/auth/password/forgot',
+  '/auth/resend-verification', '/auth/login', '/auth/login/unlock/request', '/auth/refresh', '/auth/password/forgot',
   '/auth/password/reset', '/auth/invitations/accept',
 ]);
 

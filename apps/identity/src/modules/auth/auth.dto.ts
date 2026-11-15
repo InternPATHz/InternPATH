@@ -50,6 +50,7 @@ export class EmailDto implements ForgotPasswordRequest {
 export class LoginDto implements LoginRequest {
   @IsEmail() email!: string;
   @IsString() password!: string;
+  @IsOptional() @IsString() @IsNotEmpty() unlock_token?: string;
 }
 
 export class RefreshDto implements RefreshRequest {

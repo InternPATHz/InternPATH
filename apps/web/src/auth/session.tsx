@@ -10,7 +10,7 @@ const REFRESH_KEY = 'internpath.refresh_token';
 type AuthContextValue = {
   ready: boolean;
   user: AuthUser | null;
-  login(email: string, password: string): Promise<void>;
+  login(email: string, password: string, unlockToken?: string): Promise<void>;
   logout(): Promise<void>;
   request<T>(path: string): Promise<T>;
 };
@@ -60,8 +60,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refresh().catch(() => undefined).finally(() => setReady(true));
   }, [refresh]);
 
-  const login = useCallback(async (email: string, password: string) => {
-    const session = await apiRequest<LoginResponse>('/auth/login', { email, password });
+  const login = useCallback(async (email: string, password: string, unlockToken?: string) => {
+    const session = await apiRequest<LoginResponse>('/auth/login', {
+      email, password, ...(unlockToken ? { unlock_token: unlockToken } : {}),
+    });
     applySession(session);
   }, [applySession]);
 

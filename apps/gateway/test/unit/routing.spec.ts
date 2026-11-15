@@ -26,7 +26,7 @@ describe('Gateway routing contract §3', () => {
   });
 
   it('only allows documented public methods without a user token', () => {
-    for (const path of ['/auth/login', '/auth/register/student', '/auth/password/forgot', '/auth/refresh',
+    for (const path of ['/auth/login', '/auth/login/unlock/request', '/auth/register/student', '/auth/password/forgot', '/auth/refresh',
       '/auth/invitations/accept']) expect(isPublicRoute('POST', path), path).to.equal(true);
     expect(isPublicRoute('GET', '/.well-known/jwks.json')).to.equal(true);
     expect(isPublicRoute('GET', '/public/certificates/abc')).to.equal(true);

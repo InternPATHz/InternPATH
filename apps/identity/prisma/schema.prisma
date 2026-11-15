@@ -68,6 +68,7 @@ enum OwnerTransferStatus {
 enum EmailTokenPurpose {
   VERIFY_EMAIL
   RESET_PASSWORD
+  LOGIN_UNLOCK
 
   @@map("email_token_purpose")
 }

@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { generateKeyPairSync, randomBytes } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomBytes } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { INestApplication } from '@nestjs/common';
@@ -14,6 +14,7 @@ import { AuthMailer } from '../../src/modules/auth/auth.mailer';
 import { AuthModule } from '../../src/modules/auth/auth.module';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { hashPassword } from '../../src/modules/auth/password-hash';
 
 const APP_ROOT = path.resolve(__dirname, '../..');
 const ROOT_ENV = path.resolve(APP_ROOT, '../../.env');
@@ -36,9 +37,11 @@ describe('Identity Auth API (Postgres จริง)', function () {
   let db: PrismaService;
   const emails: Array<{ email: string; purpose: string; token: string }> = [];
   let failVerificationEmail = false;
+  let failUnlockEmail = false;
   let failedSendAttempts = 0;
   const mailer = { send: async (email: string, purpose: string, token: string) => {
     if (failVerificationEmail && purpose === 'verify-email') { failedSendAttempts++; throw new Error('SMTP unavailable'); }
+    if (failUnlockEmail && purpose === 'unlock-login') throw new Error('SMTP unavailable');
     emails.push({ email, purpose, token });
   } };
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
@@ -174,5 +177,72 @@ describe('Identity Auth API (Postgres จริง)', function () {
     await request(app.getHttpServer()).post('/v1/auth/password/reset').send({ token, new_password: 'new password 12345' }).expect(204);
     await request(app.getHttpServer()).post('/v1/auth/password/reset').send({ token, new_password: 'another password 12345' }).expect(400);
     await request(app.getHttpServer()).post('/v1/auth/login').send({ email: 'student@test.ac.th', password: 'new password 12345' }).expect(200);
+  });
+
+  it('lets the owner use a one-time email link and password despite an attacker-triggered lock', async () => {
+    const email = 'locked-user@test.ac.th';
+    const password = 'correct horse battery';
+    const user = await db.user.create({ data: { email, passwordHash: await hashPassword(password),
+      fullName: 'Locked User', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date() } });
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await request(app.getHttpServer()).post('/v1/auth/login')
+        .send({ email, password: 'attacker wrong password' }).expect(401);
+    }
+    await request(app.getHttpServer()).post('/v1/auth/login').send({ email, password }).expect(429);
+    const before = emails.length;
+    await request(app.getHttpServer()).post('/v1/auth/login/unlock/request')
+      .send({ email: 'nobody@example.com' }).expect(204);
+    expect(emails.length).to.equal(before);
+    await Promise.all([
+      request(app.getHttpServer()).post('/v1/auth/login/unlock/request').send({ email }).expect(204),
+      request(app.getHttpServer()).post('/v1/auth/login/unlock/request').send({ email }).expect(204),
+    ]);
+    expect(emails.length).to.equal(before + 1);
+    const unlockToken = emails.at(-1)!.token;
+    expect(emails.at(-1)!.purpose).to.equal('unlock-login');
+    const stored = await db.emailToken.findUniqueOrThrow({ where: { tokenHash: createHash('sha256').update(unlockToken).digest('hex') } });
+    expect(stored.purpose).to.equal('LOGIN_UNLOCK');
+    const other = await db.user.create({ data: { email: 'other-locked-user@test.ac.th',
+      passwordHash: user.passwordHash, fullName: 'Other User', role: 'STUDENT', status: 'ACTIVE',
+      emailVerifiedAt: new Date() } });
+    await request(app.getHttpServer()).post('/v1/auth/login')
+      .send({ email: other.email, password, unlock_token: unlockToken }).expect(401);
+    await request(app.getHttpServer()).post('/v1/auth/login')
+      .send({ email, password, unlock_token: 'invalid-unlock-token' }).expect(401);
+    const unlocked = await request(app.getHttpServer()).post('/v1/auth/login')
+      .send({ email, password, unlock_token: unlockToken }).expect(200);
+    expect(unlocked.body.user.id).to.equal(user.id);
+    await request(app.getHttpServer()).post('/v1/auth/login')
+      .send({ email, password, unlock_token: unlockToken }).expect(401);
+    const after = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(after.failedLoginCount).to.equal(0);
+    expect(after.lockedUntil).to.equal(null);
+
+    await db.user.update({ where: { id: user.id }, data: { failedLoginCount: 5,
+      lockedUntil: new Date(Date.now() + 15 * 60_000) } });
+    const wrongToken = randomBytes(32).toString('base64url');
+    const wrongTokenHash = createHash('sha256').update(wrongToken).digest('hex');
+    await db.emailToken.create({ data: { userId: user.id, purpose: 'LOGIN_UNLOCK',
+      tokenHash: wrongTokenHash, expiresAt: new Date(Date.now() + 15 * 60_000) } });
+    await request(app.getHttpServer()).post('/v1/auth/login')
+      .send({ email, password: 'still wrong', unlock_token: wrongToken }).expect(401);
+    expect((await db.emailToken.findUniqueOrThrow({ where: { tokenHash: wrongTokenHash } })).usedAt).to.be.instanceOf(Date);
+    await request(app.getHttpServer()).post('/v1/auth/login')
+      .send({ email, password, unlock_token: wrongToken }).expect(401);
+    await request(app.getHttpServer()).post('/v1/auth/login').send({ email, password }).expect(429);
+  });
+
+  it('keeps unlock requests generic when SMTP is unavailable and does not leave a usable token', async () => {
+    const user = await db.user.create({ data: { email: 'smtp-unlock@test.ac.th', passwordHash: 'unused',
+      fullName: 'SMTP Unlock', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(),
+      failedLoginCount: 5, lockedUntil: new Date(Date.now() + 15 * 60_000) } });
+    failUnlockEmail = true;
+    try {
+      await request(app.getHttpServer()).post('/v1/auth/login/unlock/request')
+        .send({ email: user.email }).expect(204);
+    } finally { failUnlockEmail = false; }
+    const tokens = await db.emailToken.findMany({ where: { userId: user.id, purpose: 'LOGIN_UNLOCK' } });
+    expect(tokens).to.have.length(1);
+    expect(tokens[0].usedAt).to.be.instanceOf(Date);
   });
 });

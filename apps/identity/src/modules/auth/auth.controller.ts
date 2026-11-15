@@ -24,7 +24,10 @@ export class AuthController {
   resendVerification(@Body() body: EmailDto) { return this.auth.resendVerification(body.email); }
 
   @Public() @Post('login') @HttpCode(200)
-  login(@Body() body: LoginDto) { return this.auth.login(body.email, body.password); }
+  login(@Body() body: LoginDto) { return this.auth.login(body.email, body.password, body.unlock_token); }
+
+  @Public() @Post('login/unlock/request') @HttpCode(204)
+  requestLoginUnlock(@Body() body: EmailDto) { return this.auth.requestLoginUnlock(body.email); }
 
   @Public() @Post('refresh') @HttpCode(200)
   refresh(@Body() body: RefreshDto) { return this.auth.refresh(body.refresh_token); }
