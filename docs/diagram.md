@@ -803,7 +803,7 @@ erDiagram
     email_tokens {
         uuid id PK
         uuid user_id FK
-        text purpose "VERIFY_EMAIL, RESET_PASSWORD"
+        text purpose "VERIFY_EMAIL, RESET_PASSWORD, LOGIN_UNLOCK"
         timestamptz used_at
     }
     deletion_requests {

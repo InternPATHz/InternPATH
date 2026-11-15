@@ -18,10 +18,12 @@
     "@nestjs/config": "^12.1.1",
     "@nestjs/core": "^12.5.0",
     "@nestjs/platform-express": "^12.5.0",
+    "@nestjs/swagger": "^12.1.1",
     "@nestjs/throttler": "^6.7.1",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "http-proxy-middleware": "^4.2.1",
+    "jsonwebtoken": "9.0.3",
     "nestjs-pino": "^5.3.1",
     "pino": "^10.4.0",
     "pino-http": "^11.0.0",
@@ -29,6 +31,7 @@
     "rxjs": "^7.8.2"
   },
   "devDependencies": {
-    "@nestjs/testing": "^12.5.0"
+    "@nestjs/testing": "^12.5.0",
+    "@types/jsonwebtoken": "9.0.10"
   }
 }

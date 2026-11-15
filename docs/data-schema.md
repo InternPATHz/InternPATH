@@ -148,7 +148,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 
 **`company_documents`**: `id`, `company_id`, `doc_type`, `object_key` (Private bucket), `mime`, `size_bytes`, `uploaded_by`, `created_at`
 
-**`email_tokens`**: `id`, `user_id`, `purpose (VERIFY_EMAIL|RESET_PASSWORD)`, `token_hash`, `expires_at`, `used_at null`
+**`email_tokens`**: `id`, `user_id`, `purpose (VERIFY_EMAIL|RESET_PASSWORD|LOGIN_UNLOCK)`, `token_hash`, `expires_at`, `used_at null`
 
 **`refresh_tokens`**: `id`, `user_id`, `token_hash`, `family_id`, `expires_at`, `rotated_at null`, `revoked_at null`
 

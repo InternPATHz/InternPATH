@@ -20,6 +20,24 @@
 
 > อ่านเฉพาะหัวข้อของ Service ตัวเองก่อนก็พอ แล้วค่อยอ่านส่วนที่ต้องคุยกับ Service อื่น
 
+### 1.1 ตั้งค่า JWT และ Service secret ก่อนเปิด Gateway
+
+หลังคัดลอก `.env.example` เป็น `.env` ให้สร้างคู่คีย์ RS256 จากราก repo:
+
+```bash
+pnpm keys:generate
+```
+
+คัดลอกบรรทัด `JWT_PRIVATE_KEY` และ `JWT_PUBLIC_KEY` ที่พิมพ์ออกมาใส่ `.env` ตามเดิม รวมทั้งเครื่องหมายอัญประกาศและ `\n` ในค่า Private Key เมื่อแยก deploy ให้ Identity ถือ Private Key และให้ Gateway/Service ที่ตรวจ access token ถือ Public Key
+
+สร้าง secret แบบสุ่ม 32 ไบต์ (ผลลัพธ์เป็น hex 64 ตัวอักษร) ด้วยคำสั่งนี้หนึ่งครั้งต่อ Service ผู้เรียก:
+
+```bash
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+```
+
+ใส่ค่าที่สร้างลง `IDENTITY_SERVICE_SECRET_GATEWAY` ใน `.env` ของ Gateway **และ** Identity ให้ตรงกัน และสร้างค่าใหม่แยกสำหรับ `IDENTITY_SERVICE_SECRET_NOTIFICATION` กับ `IDENTITY_SERVICE_SECRET_LIFECYCLE` เมื่อใช้ Service เหล่านั้น หากเปิด Gateway โดยไม่ตั้ง `IDENTITY_SERVICE_SECRET_GATEWAY` หรือค่าสั้นกว่า 32 ตัวอักษร Gateway จะ log ชื่อตัวแปรและไม่เริ่มรับคำขอ เก็บ `.env` และ Private Key ไว้นอก Git เสมอ
+
 ## 2. ใครดูแล Service ไหน
 
 | Service | โฟลเดอร์ | เจ้าของ | Port |
@@ -114,6 +132,8 @@ export class HrJobsController {
 ```
 > `JwtAuthGuard` ต้องมี `JWT_PUBLIC_KEY` ใน `.env` (สร้างด้วย `pnpm keys:generate`) • Endpoint ภายในให้อยู่ใต้ `/internal/**` (ไม่ผ่าน Gateway)
 
+สำหรับ endpoint ภายในของ Job/Lifecycle/Notification ให้นำ `ServiceTokenGuard`, `ServiceTokenPolicy` และ `InternalCallers` จาก `@internpath/common` ไปใช้ตามตัวอย่างใน `apps/identity/src/internal/internal.controller.ts` และลงทะเบียน guard ใน `providers` ของ module โดยกำหนด `audience` เป็นชื่อ Service ที่รับคำขอ และแมปชื่อผู้เรียกกับ env ของ secret แยกแต่ละคู่ ฝั่งที่เรียกใช้ `signServiceToken({ issuer, audience, secret })` จาก `@internpath/common` (ตัวอย่างจริงอยู่ที่ Gateway denylist) แล้วส่งผลลัพธ์ใน `Authorization: Bearer <token>`
+
 6. เขียนเทสต์ใน `test/integration/` (ดูตัวอย่างโครงที่ `test/health.spec.ts`: สร้างแอปด้วย `Test.createTestingModule` + `configureApp(app)` + `supertest`)
 
 ### 6.2 เพิ่ม/แก้ตารางฐานข้อมูล
@@ -178,15 +198,16 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 
 ## 7. ยังไม่มีอะไรบ้าง (รู้ไว้จะได้ไม่งง)
 
-โครงตอนนี้ **รันได้และทดสอบผ่าน แต่ยังไม่มีโค้ดธุรกิจ** สิ่งที่ยังต้องสร้าง:
+โครงตอนนี้รันได้และทดสอบผ่านบาง Service แล้ว ส่วนที่ยังต้องทำหรือเชื่อมต่อมีดังนี้:
 
-- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification ทำแล้ว** (สไลซ์ 1 และ 2: รายงานประกาศ, ตัวนับ/ระงับอัตโนมัติ, ธง `UNDER_REVIEW`; ค่า env `REPORT_THRESHOLD`, `REPORT_DAILY_LIMIT`, `REPORTER_DISMISS_STREAK`, `REJECTION_THRESHOLD`, `REJECTION_WINDOW_DAYS` ใน `.env.example`); **Identity ทำ schema/migration พื้นฐานแล้ว** (ยังไม่มี Auth/ธุรกิจ); Job, Lifecycle และ Notification ยังมีแค่ `outbox_events` / `processed_events`
-- [x] Outbox relay และ Consumer — อยู่ใน `libs/common` (`OutboxWriter`, `OutboxRelay`, `EventConsumer`, `MessagingModule`); เหลือให้แต่ละ Service เรียกใช้ตาม §6.3 (โฟลเดอร์ `outbox/`, `events/` ของแต่ละ Service ยังว่าง)
-- [ ] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก
-- [ ] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit, Denylist (ตอนนี้มีแค่ health)
-- [ ] การลงทะเบียน `JwtAuthGuard` เป็น Guard ของแต่ละ Service (ตอนนี้เป็น class ให้ใช้ต่อ controller)
+- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification และ Identity ทำแล้ว**; Job, Lifecycle และ Notification ยังมีแค่ `outbox_events` / `processed_events`
+- [x] Outbox relay และ Consumer — อยู่ใน `libs/common` (`OutboxWriter`, `OutboxRelay`, `EventConsumer`, `MessagingModule`); แต่ละ Service ต้องผูกกับงานของตนตาม §6.3
+- [ ] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก — Identity ใช้ `ServiceTokenGuard` จาก `libs/common` แล้ว; Job/Lifecycle/Notification ยังต้องผูกเมื่อเพิ่ม endpoint ภายใน
+- [x] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit, Denylist
+- [ ] การลงทะเบียน `JwtAuthGuard` ใน Service ที่เพิ่ม endpoint ซึ่งต้องล็อกอิน (Identity ใช้แล้ว)
+- [ ] **ลบบัญชียังใช้ไม่ได้**: `POST /users/me/deletion-request` มีใน [api-contract.md](api-contract.md) §4.2 แต่ยังไม่มี endpoint จริง; ไม่มี production path ที่เรียก `AccountDeletionService.complete()` และตัวตรวจสิทธิ์ลบตั้งให้ fail-closed ระหว่างรอ Lifecycle Internal API จึงไม่ควรแสดงฟังก์ชันลบบัญชีให้ผู้ใช้ใช้งาน
 - [ ] Scheduler (SLA, Reconciliation โควตา, Fail-safe 5 นาที)
-- [ ] หน้าเว็บของแต่ละ Role (มีแค่หน้าแรกและ Tailwind theme)
+- [ ] หน้าเว็บของแต่ละ Role (หน้า Auth/Account มีแล้ว)
 - [ ] Dockerfile ของ Service ยังไม่เคยรัน; `docker compose --profile infra up -d postgres rabbitmq mailpit` รันผ่านแล้ว (2026-11-13) แต่ **MinIO ดึง image ไม่ได้** (`minio/minio` บน Docker Hub ใช้ไม่ได้ และ `quay.io/minio/minio` ตอบ 401) ต้องเปลี่ยนไปใช้ตัวแทนที่รองรับ S3
 - [ ] การสาธิตผ่าน Cloudflare ([architecture.md](architecture.md) §8.1): Worker proxy `/api/*` + `API_ORIGIN`, ตรวจ `X-Edge-Secret` / CORS / IP ผู้ใช้ที่ Gateway, ข้อความ "ระบบหลังบ้านออฟไลน์" ใน Front, ลิงก์อีเมลจาก `WEB_BASE_URL`
 - [x] `docker-compose.yml`: Postgres / RabbitMQ / MinIO bind เฉพาะ `127.0.0.1` และมี `restart: unless-stopped`

@@ -1,0 +1,59 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import type { UserMeResponse } from '@internpath/contracts';
+import { useAuth } from '@/auth/session';
+import { AuthShell, Notice } from '@/auth/ui';
+
+const roleLabel: Record<string, string> = {
+  STUDENT: 'นักศึกษา', COMPANY_HR: 'ฝ่ายบุคคลบริษัท',
+  ADVISOR: 'อาจารย์ที่ปรึกษา', PLATFORM_ADMIN: 'ผู้ดูแลแพลตฟอร์ม',
+};
+
+export default function AccountPage() {
+  const router = useRouter();
+  const { ready, user, logout, request } = useAuth();
+  const [profile, setProfile] = useState<UserMeResponse | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!ready) return;
+    if (!user) { router.replace('/login'); return; }
+    let active = true;
+    void request<UserMeResponse>('/users/me')
+      .then((data) => { if (active) setProfile(data); })
+      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'โหลดข้อมูลบัญชีไม่สำเร็จ'); });
+    return () => { active = false; };
+  }, [ready, user, request, router]);
+
+  async function signOut() {
+    setBusy(true);
+    try { await logout(); }
+    catch { /* The local session is cleared even if the server is offline. */ }
+    router.replace('/login');
+  }
+
+  return <AuthShell title="บัญชีของฉัน" subtitle="ข้อมูลบัญชีจาก Identity Service">
+    {!ready || (!profile && !error) ? <p className="text-sm text-ink-soft">กำลังโหลดข้อมูลบัญชี…</p> : <div className="space-y-5">
+      {error && <Notice error>{error}</Notice>}
+      {profile && <dl className="grid gap-4 rounded-xl border border-border bg-surface-muted p-5 text-sm sm:grid-cols-2">
+        <div><dt className="text-ink-soft">ชื่อ</dt><dd className="mt-1 font-medium">{profile.full_name}</dd></div>
+        <div><dt className="text-ink-soft">บทบาท</dt><dd className="mt-1 font-medium">{roleLabel[profile.role] || profile.role}</dd></div>
+        <div><dt className="text-ink-soft">อีเมล</dt><dd className="mt-1 break-all font-medium">{profile.email}</dd></div>
+        <div><dt className="text-ink-soft">สถานะ</dt><dd className="mt-1 font-medium">{profile.status}</dd></div>
+        {profile.company && <div><dt className="text-ink-soft">บริษัท</dt><dd className="mt-1 font-medium">{profile.company.name}</dd></div>}
+        {profile.student && <div><dt className="text-ink-soft">สถานะอาจารย์ที่ปรึกษา</dt><dd className="mt-1 font-medium">{profile.student.advisor_link_status}</dd></div>}
+      </dl>}
+      <div className="flex flex-wrap items-center gap-4">
+        <button type="button" disabled={busy} onClick={signOut}
+          className="rounded-lg border border-border px-4 py-2.5 font-medium text-ink hover:bg-surface-muted disabled:opacity-50">
+          {busy ? 'กำลังออกจากระบบ…' : 'ออกจากระบบ'}
+        </button>
+        <Link href="/" className="text-sm text-primary hover:underline">กลับหน้าแรก</Link>
+      </div>
+    </div>}
+  </AuthShell>;
+}

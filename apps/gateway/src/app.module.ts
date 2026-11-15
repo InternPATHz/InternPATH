@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HealthModule, createLoggingModule } from '@internpath/common';
+import { DenylistService } from './denylist/denylist.service';
+import { UserSuspendedConsumer } from './events/consumers/user-suspended.consumer';
+
+const eventConsumers = process.env.DISABLE_INFRA === 'true' ? [] : [UserSuspendedConsumer];
 
 @Module({
   imports: [
@@ -8,7 +12,7 @@ import { HealthModule, createLoggingModule } from '@internpath/common';
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../../.env'] }),
     createLoggingModule('gateway'),
     HealthModule.register({ service: 'gateway' }),
-    // TODO: ต่อ modules/* ตาม docs/architecture.md §2
   ],
+  providers: [DenylistService, ...eventConsumers],
 })
 export class AppModule {}
