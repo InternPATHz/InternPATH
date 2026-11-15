@@ -7,11 +7,14 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiRequest<T>(path: string, body?: unknown, accessToken?: string): Promise<T> {
+export type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+/** `method` ไม่ระบุ ⇒ GET เมื่อไม่มี body, POST เมื่อมี body (พฤติกรรมเดิม) */
+export async function apiRequest<T>(path: string, body?: unknown, accessToken?: string, method?: HttpMethod): Promise<T> {
   let response: Response;
   try {
     response = await fetch(`${API_BASE}${path}`, {
-      method: body === undefined ? 'GET' : 'POST',
+      method: method ?? (body === undefined ? 'GET' : 'POST'),
       headers: {
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),

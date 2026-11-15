@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState } f
 import type { ReactNode } from 'react';
 import type { AuthUser, LoginResponse } from '@internpath/contracts';
 import { ApiError, apiRequest } from '@/lib/api';
+import type { HttpMethod } from '@/lib/api';
 
 const REFRESH_KEY = 'internpath.refresh_token';
 
@@ -12,7 +13,7 @@ type AuthContextValue = {
   user: AuthUser | null;
   login(email: string, password: string, unlockToken?: string): Promise<void>;
   logout(): Promise<void>;
-  request<T>(path: string): Promise<T>;
+  request<T>(path: string, init?: { method?: HttpMethod; body?: unknown }): Promise<T>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -88,13 +89,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally { clearSession(); }
   }, [clearSession, refresh]);
 
-  const request = useCallback(async <T,>(path: string): Promise<T> => {
+  const request = useCallback(async <T,>(path: string, init: { method?: HttpMethod; body?: unknown } = {}): Promise<T> => {
     if (!accessToken.current) await refresh();
-    try { return await apiRequest<T>(path, undefined, accessToken.current || undefined); }
+    try { return await apiRequest<T>(path, init.body, accessToken.current || undefined, init.method); }
     catch (error) {
       if (error instanceof ApiError && error.status === 401 && error.code !== 'ACCOUNT_SUSPENDED') {
         await refresh();
-        return apiRequest<T>(path, undefined, accessToken.current || undefined);
+        return apiRequest<T>(path, init.body, accessToken.current || undefined, init.method);
       }
       if (error instanceof ApiError && error.code === 'ACCOUNT_SUSPENDED') clearSession();
       throw error;
