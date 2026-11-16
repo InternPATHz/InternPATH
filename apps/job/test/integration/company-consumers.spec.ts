@@ -33,7 +33,7 @@ describe('Job company consumers (real RabbitMQ + PostgreSQL, private test vhost)
     isolated = await createBrokerSandboxOrSkip(this);
     db = await createTestDatabase();
     sandbox = sinon.createSandbox();
-    const relay = sandbox.stub().rejects(new Error('Outbound relay must not start in Phase 2A'));
+    const relay = sandbox.stub().resolves({ start: () => undefined, stop: async () => undefined });
     moduleRef = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), JobModule],
     })
@@ -41,6 +41,7 @@ describe('Job company consumers (real RabbitMQ + PostgreSQL, private test vhost)
       .useValue(
         new ConfigService({
           JOB_DATABASE_URL: db.url,
+          JOB_DIRECT_URL: db.url,
           RABBITMQ_URL: isolated.url,
         }),
       )
@@ -56,8 +57,8 @@ describe('Job company consumers (real RabbitMQ + PostgreSQL, private test vhost)
     });
     snapshots = moduleRef.get(CompanySnapshotService);
     await moduleRef.init();
-    expect(acknowledgements).to.have.length(3);
-    sinon.assert.notCalled(relay);
+    expect(acknowledgements).to.have.length(4);
+    sinon.assert.calledOnce(relay);
     publisher = new BrokerConnection({ url: isolated.url });
     await publisher.connect();
   });

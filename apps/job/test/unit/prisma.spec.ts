@@ -6,6 +6,7 @@ import {
   HealthController,
   BrokerConnection,
   EventConsumer,
+  RELAY_FACTORY,
   configureApp,
   type OutboxTx,
   type ProcessedEventsTx,
@@ -179,12 +180,15 @@ describe('Job AppModule infrastructure selection', () => {
       try {
         moduleRef = await Test.createTestingModule({ imports: [await appModule(flag)] })
           .overrideProvider(ConfigService)
-          .useValue(new ConfigService({ JOB_DATABASE_URL: DATABASE_URL }))
+          .useValue(
+            new ConfigService({ JOB_DATABASE_URL: DATABASE_URL, JOB_DIRECT_URL: DIRECT_URL }),
+          )
           .overrideProvider(BrokerConnection)
           .useValue(broker)
           .overrideProvider(EventConsumer)
           .useValue(consumer)
-
+          .overrideProvider(RELAY_FACTORY)
+          .useValue(async () => ({ start: () => undefined, stop: async () => undefined }))
           .compile();
         app = moduleRef.createNestApplication();
         configureApp(app);
@@ -197,7 +201,7 @@ describe('Job AppModule infrastructure selection', () => {
           expect(consumer.subscribe.callCount).to.equal(0);
         } else {
           expect(app.get(PrismaService).constructor === PrismaService).to.equal(true);
-          expect(consumer.subscribe.callCount).to.equal(3);
+          expect(consumer.subscribe.callCount).to.equal(4);
           expect(broker.connect.callCount).to.equal(1);
         }
         expect(connect.callCount).to.equal(0);
