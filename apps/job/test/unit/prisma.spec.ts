@@ -4,6 +4,8 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import {
   HealthController,
+  BrokerConnection,
+  EventConsumer,
   configureApp,
   type OutboxTx,
   type ProcessedEventsTx,
@@ -170,12 +172,18 @@ describe('Job AppModule infrastructure selection', () => {
         .stub(Socket.prototype, 'connect')
         .throws(new Error('Unexpected network access'));
       const connect = sandbox.spy(PrismaClient.prototype, '$connect');
+      const broker = { connect: sandbox.stub().resolves(), close: sandbox.stub().resolves() };
+      const consumer = { subscribe: sandbox.stub().resolves(), close: sandbox.stub().resolves() };
       let moduleRef: TestingModule | undefined;
       let app: INestApplication | undefined;
       try {
         moduleRef = await Test.createTestingModule({ imports: [await appModule(flag)] })
           .overrideProvider(ConfigService)
           .useValue(new ConfigService({ JOB_DATABASE_URL: DATABASE_URL }))
+          .overrideProvider(BrokerConnection)
+          .useValue(broker)
+          .overrideProvider(EventConsumer)
+          .useValue(consumer)
 
           .compile();
         app = moduleRef.createNestApplication();
@@ -185,8 +193,12 @@ describe('Job AppModule infrastructure selection', () => {
         expect(app.get(HealthController).health()).to.deep.equal({ status: 'ok', service: 'job' });
         if (flag === 'true') {
           expect(() => app!.get(PrismaService)).to.throw();
+          expect(() => app!.get(EventConsumer)).to.throw();
+          expect(consumer.subscribe.callCount).to.equal(0);
         } else {
           expect(app.get(PrismaService).constructor === PrismaService).to.equal(true);
+          expect(consumer.subscribe.callCount).to.equal(3);
+          expect(broker.connect.callCount).to.equal(1);
         }
         expect(connect.callCount).to.equal(0);
         expect(network.callCount).to.equal(0);
