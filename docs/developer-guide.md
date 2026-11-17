@@ -70,7 +70,7 @@ ADMIN_EMAIL=admin@internpath.local ADMIN_PASSWORD='<อย่างน้อย 
 | Verification & Trust | `apps/verification` | PM | 3003 |
 | Student Experience & Lifecycle | `apps/lifecycle` | Tester | 3004 |
 | Notification | `apps/notification` | Junior Developer | 3005 |
-| Web (Next.js) | `apps/web` | โครงรวมและหน้าแรก: PM; หน้าอื่นเป็นของเจ้าของ Service ที่หน้านั้นเรียก API (ดู [README](../README.md) หัวข้อ 11) | 3100 |
+| Web (Next.js) | `apps/web` | PM: โครงรวม, หน้าแรก และหน้าฝั่งผู้ใช้ส่วนใหญ่; หน้า Admin ของแต่ละ Service เป็นของเจ้าของ Service นั้น; หน้าของ Tester ตามที่ระบุ (ดู [README](../README.md) หัวข้อ 11) | 3100 |
 
 ถ้าต้องแก้ Service ของคนอื่น ให้เปิด PR แล้วให้เจ้าของรีวิว (รายละเอียดทีมดู README หัวข้อ 11)
 
