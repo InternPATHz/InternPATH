@@ -7,6 +7,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/auth/session';
 import { RequireAuth } from '@/components/layout/require-auth';
 import { ADMIN_NAV } from './admin-nav';
+import { ADMIN_NAV_ICONS } from './admin-nav-icons';
 
 /** เปลือกของหน้า Admin: จำกัดเฉพาะ PLATFORM_ADMIN (ผ่าน RequireAuth) แล้วแสดง Sidebar จัดกลุ่มตาม Service */
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -31,23 +32,27 @@ function AdminFrame({ children }: { children: ReactNode }) {
     <nav aria-label="เมนู Admin" className="space-y-6">
       {ADMIN_NAV.map((group) => (
         <div key={group.title}>
-          <p className="px-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">{group.title}</p>
+          <p className="px-3 text-xs font-semibold text-ink-soft">{group.title}</p>
           <ul className="mt-2 space-y-0.5">
             {group.items.map((item) => {
               const active = item.href !== null && pathname.startsWith(item.href);
+              const Icon = ADMIN_NAV_ICONS[item.label];
+              const icon = Icon && <Icon aria-hidden="true" className={`h-4 w-4 shrink-0 ${active ? 'text-primary' : 'text-neutral'}`} strokeWidth={1.5} />;
               return (
                 <li key={item.label}>
                   {item.href ? (
                     <Link
                       href={item.href}
                       aria-current={active ? 'page' : undefined}
-                      className={`block rounded-lg px-3 py-2 text-sm ${active ? 'bg-primary-soft font-semibold text-primary' : 'text-ink hover:bg-surface-muted'}`}
+                      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${active ? 'bg-primary-soft font-semibold text-primary' : 'text-ink hover:bg-surface-muted'}`}
                     >
+                      {icon}
                       {item.label}
                     </Link>
                   ) : (
-                    <span className="flex items-center justify-between rounded-lg px-3 py-2 text-sm text-neutral">
-                      {item.label}<span className="text-xs">เร็ว ๆ นี้</span>
+                    <span className="flex items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-sm text-neutral">
+                      <span className="flex items-center gap-2.5">{icon}{item.label}</span>
+                      <span className="text-xs">เร็ว ๆ นี้</span>
                     </span>
                   )}
                 </li>
