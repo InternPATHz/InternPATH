@@ -523,14 +523,14 @@
 
 | ตำแหน่ง | หน้าที่หลักที่รับผิดชอบ |
 | :--- | :--- |
-| **PM** | คุมภาพรวมโครงการ; **จัดทำและอัปเดตเอกสารเทคนิคทั้งหมดใน `docs/`** (README, API Contract, Application State Machine, Event Catalog, Database Schema) และวางโครง Monorepo กับเทมเพลต Service, Docker Compose และ CI; ออกแบบ Business Logic ของระบบ Verify (Risk Score, Blacklist, Appeal, Report Abuse, `UNDER_REVIEW`, Review Moderation) และดูแล **`Verification & Trust Service`** พร้อมหน้า Admin ของคิวที่เกี่ยวข้อง; ดูแล **โครงเว็บรวมใน `apps/web`** (Header, Footer, เมนูตามบทบาท, Admin Shell/Sidebar, การเปลี่ยนเส้นทางตามสิทธิ์), หน้าแรก (Landing Page) และหน้านโยบายความเป็นส่วนตัว; ร่วมเป็นผู้ทดสอบหลักของ Lifecycle Service |
+| **PM** | คุมภาพรวมโครงการ; **จัดทำและอัปเดตเอกสารเทคนิคทั้งหมดใน `docs/`** (README, API Contract, Application State Machine, Event Catalog, Database Schema) และวางโครง Monorepo กับเทมเพลต Service, Docker Compose และ CI; ออกแบบ Business Logic ของระบบ Verify (Risk Score, Blacklist, Appeal, Report Abuse, `UNDER_REVIEW`, Review Moderation) และดูแล **`Verification & Trust Service`** พร้อมหน้า Admin ของคิวที่เกี่ยวข้อง; ดูแล **โครงเว็บรวมใน `apps/web`** (Header, Footer, เมนูตามบทบาท, Admin Shell/Sidebar, การเปลี่ยนเส้นทางตามสิทธิ์), หน้าแรก (Landing Page) และหน้านโยบายความเป็นส่วนตัว; ดูแล **หน้าเว็บฝั่งผู้ใช้ทั้งหมดที่ไม่ใช่หน้า Admin** (ค้นหาและรายละเอียดงาน, ฝั่ง HR, ฝั่งนักศึกษา, Company Directory, บัญชีและองค์กร, ศูนย์แจ้งเตือน — ตามตารางด้านล่าง ยกเว้นหน้าที่ระบุเป็นของ Tester) โดยเจ้าของ Service จัดเตรียม API และ contract ที่หน้าเว็บเรียก; ร่วมเป็นผู้ทดสอบหลักของ Lifecycle Service |
 | **SA** | **`Identity & Organization Service`** (บัญชีและความปลอดภัย, อาจารย์ที่ปรึกษา, บริษัท, สิทธิ์ Featured/Fast-Track, ป้าย University Partner และ Company Directory) พร้อมหน้า Admin ของ Service นี้ และ **API Gateway** (Routing, ตรวจ Token, Rate Limit) |
-| **Tester** | **`Student Experience & Internship Lifecycle Service`** (State Machine ใบสมัคร, SLA Scheduler, หน้าอาจารย์อนุมัติ/บันทึกผล, หน้า HR ประเมินและออก E-Certificate, รีวิวบริษัท, รายงานปัญหาระหว่างฝึกงาน, โปรไฟล์และ Application Tracker); วางเทมเพลตการทดสอบ (Mocha + Chai + Sinon + c8) และทำ UAT Testing **ของ Service อื่น** (Verification, Identity, Job Management, Notification) |
+| **Tester** | **`Student Experience & Internship Lifecycle Service`** (State Machine ใบสมัคร, SLA Scheduler, หน้าอาจารย์อนุมัติ/บันทึกผล, หน้า HR ประเมินและออก E-Certificate, รีวิวบริษัท, รายงานปัญหาระหว่างฝึกงาน, API ของโปรไฟล์และ Application Tracker — หน้าเว็บส่วนนี้ PM ทำ); วางเทมเพลตการทดสอบ (Mocha + Chai + Sinon + c8) และทำ UAT Testing **ของ Service อื่น** (Verification, Identity, Job Management, Notification) |
 | **Junior Developer** | **`Job Management Service`** (ประกาศงานฝั่ง HR, สถานะประกาศงาน, โควตาตำแหน่งแบบ Atomic และ Job Search) และ **`Notification Service`**; ออกแบบ UI/UX (Figma); ร่วมเป็นผู้ทดสอบหลักของ Lifecycle Service |
 
 **หลักการแบ่งงาน**
-- ทุก Service มีเจ้าของคนเดียว และเจ้าของดูแลหน้า Admin ของ Service ตนเอง โดยเสียบหน้าเข้า **Admin Shell กลางที่ PM ทำใน `apps/web`** และสร้างหน้าจากรายการ endpoint `/admin/**` ของ Service ตนใน [docs/api-contract.md](docs/api-contract.md) (UI Kit กลางอยู่ที่ `apps/web/src/components/ui/` ตอนนี้มี `StatusBadge` ชิ้นอื่นใช้ Design Token ใน `apps/web/tailwind.config.ts` ตามหัวข้อ 8 ไปก่อน)
-- หน้าเว็บที่ไม่ใช่หน้า Admin เป็นของเจ้าของ Service ที่หน้านั้นเรียก API เป็นหลัก ส่วนหน้าที่คร่อมหลาย Service ให้ดูตารางด้านล่าง
+- ทุก Service มีเจ้าของคนเดียว และเจ้าของดูแลหน้า Admin ของ Service ตนเอง โดยเสียบหน้าเข้า **Admin Shell กลางที่ PM ทำใน `apps/web`** และสร้างหน้าจากรายการ endpoint `/admin/**` ของ Service ตนใน [docs/api-contract.md](docs/api-contract.md) (ยังไม่มี UI Kit กลาง: ใช้ Design Token ใน `apps/web/tailwind.config.ts` ตามหัวข้อ 8 ไปก่อน)
+- หน้าเว็บฝั่งผู้ใช้ที่ไม่ใช่หน้า Admin เป็นของ PM (ยกเว้นหน้าที่ตารางด้านล่างระบุเป็นของ Tester) เจ้าของ Service รับผิดชอบ API และ contract ที่หน้าเว็บเรียก และแจ้ง PM เมื่อ endpoint พร้อมใช้งาน
 - ผู้ทดสอบไม่ใช่เจ้าของ Service ที่ทดสอบ: Lifecycle ทดสอบโดย PM และ Junior; Service อื่นทดสอบโดย Tester
 - เอกสารเทคนิคทั้งหมดและโครงพื้นฐานของ Monorepo จัดทำโดย PM
 
@@ -547,11 +547,14 @@
 
 | หน้า | เจ้าของ | หมายเหตุ |
 | :--- | :--- | :--- |
-| โครงเว็บรวม: Header, Footer, เมนูตามบทบาท, Admin Shell/Sidebar, การเปลี่ยนเส้นทางเมื่อยังไม่ล็อกอินหรือผิดบทบาท, 404/หน้า Error | PM | เจ้าของอื่นเสียบหน้าเข้าโครงนี้ |
-| หน้าแรก (Landing Page), หน้านโยบายความเป็นส่วนตัว | PM | หน้าแรกใช้ข้อมูลจำลองจนกว่าจะมี endpoint สาธารณะของงานและบริษัท |
-| หน้า Auth/Account (สมัคร, ล็อกอิน, ยืนยันอีเมล, รีเซ็ตรหัสผ่าน, ปลดล็อก, บัญชี) | SA | ทำแล้ว; รวมถึงโปรไฟล์ความยินยอม PDPA, ผูกอาจารย์ที่ปรึกษา, ออนบอร์ดดิ้ง/โปรไฟล์บริษัทและสมาชิก HR |
-| ค้นหางานและรายละเอียดงาน; ฟอร์มสร้าง/แก้ประกาศและรายการประกาศของ HR | Junior | HR ดูผลตรวจและอุทธรณ์จาก `GET /verification/jobs/{id}/result` และ `POST .../appeal` (Verification ให้ API) |
-| ปุ่มรายงานประกาศและรายงานรีวิว | Junior (บนหน้ารายละเอียดงาน), Tester (บนรีวิว) | เรียก `POST /jobs/{id}/reports` และ `POST /reviews/{id}/reports` ของ Verification |
-| Company Directory ("บริษัทและรีวิว") | SA (รายการและป้าย) + Tester (รายการรีวิว) | SA ทำหน้า เรียก `GET /companies/{id}/reviews` ของ Lifecycle |
-| ศูนย์แจ้งเตือน In-App | Junior | |
-| สมัครงาน, เรซูเม่, โปรไฟล์นักศึกษา, Application Tracker, กระดานผู้สมัครของ HR, หน้าอาจารย์อนุมัติ/บันทึกผล, หน้า HR ประเมินและออกใบรับรอง, เขียนรีวิว, รายงานปัญหาระหว่างฝึกงาน, หน้าตรวจใบรับรองสาธารณะ | Tester | |
+| โครงเว็บรวม: Header, Footer, เมนูตามบทบาท, Admin Shell/Sidebar, การเปลี่ยนเส้นทางเมื่อยังไม่ล็อกอินหรือผิดบทบาท, 404/หน้า Error | PM | เจ้าของอื่นเสียบหน้า Admin เข้าโครงนี้ |
+| หน้าแรก (Landing Page), หน้านโยบายความเป็นส่วนตัว | PM | หน้าแรกใช้ข้อมูลจำลองจนกว่าจะมี endpoint สาธารณะของงานและบริษัท (ต้องตกลงและเพิ่มใน api-contract ก่อน) |
+| หน้า Auth/Account ที่ทำแล้ว (สมัคร, ล็อกอิน, ยืนยันอีเมล, รีเซ็ตรหัสผ่าน, ปลดล็อก, บัญชี) | SA (ทำแล้ว) | PM ดูแลต่อเมื่อต้องแก้ |
+| ออนบอร์ดดิ้งและโปรไฟล์บริษัท, จัดการสมาชิก HR และโอน Owner, ผูกอาจารย์ที่ปรึกษา, PDPA consent, ลบบัญชี | PM | API: SA (Identity); ลบบัญชี: Tester ทำ endpoint ตาม api-contract §4.2 และ §9 |
+| ค้นหางานและรายละเอียดงาน | PM | API: Junior (Job Search), SA (Directory สำหรับป้ายและคะแนนบริษัท) |
+| ฟอร์มสร้าง/แก้ประกาศ, รายการประกาศของ HR, ผลตรวจและปุ่มอุทธรณ์ | PM | API: Junior (HR Job), Verification (`GET /verification/jobs/{id}/result`, `POST .../appeal`) |
+| ปุ่มรายงานประกาศและรายงานรีวิว | PM | เรียก `POST /jobs/{id}/reports` และ `POST /reviews/{id}/reports` ของ Verification |
+| Company Directory ("บริษัทและรีวิว") | PM | API: SA (`/directory/**`), Tester (`GET /companies/{id}/reviews`) |
+| ศูนย์แจ้งเตือน In-App | PM | API: Junior (Notification) |
+| กระดานผู้สมัครของ HR; สมัครงาน, เรซูเม่, โปรไฟล์นักศึกษา, Application Tracker | PM | API: Tester (Lifecycle) |
+| หน้าอาจารย์อนุมัติ/บันทึกผล, หน้า HR ประเมินและออกใบรับรอง, เขียนรีวิว, รายงานปัญหาระหว่างฝึกงาน, หน้าตรวจใบรับรองสาธารณะ | Tester | คงตามหน้าที่เดิมใน §11 |

@@ -38,6 +38,8 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 ใส่ค่าที่สร้างลง `IDENTITY_SERVICE_SECRET_GATEWAY` ใน `.env` ของ Gateway **และ** Identity ให้ตรงกัน และสร้างค่าใหม่แยกสำหรับ `IDENTITY_SERVICE_SECRET_NOTIFICATION` กับ `IDENTITY_SERVICE_SECRET_LIFECYCLE` เมื่อใช้ Service เหล่านั้น หากเปิด Gateway โดยไม่ตั้ง `IDENTITY_SERVICE_SECRET_GATEWAY` หรือค่าสั้นกว่า 32 ตัวอักษร Gateway จะ log ชื่อตัวแปรและไม่เริ่มรับคำขอ เก็บ `.env` และ Private Key ไว้นอก Git เสมอ
 
+Lifecycle ตรวจ Service Token ที่ Identity เซ็น (เรียก `deletion-eligibility`) ด้วย `LIFECYCLE_SERVICE_SECRET_IDENTITY` — ตั้งค่าเดียวกันที่ `.env` ของ Lifecycle และ Identity (สร้างด้วยคำสั่งข้างบน)
+
 ### 1.2 Gateway หลัง proxy
 
 เมื่อวาง Gateway หลัง proxy ให้ตั้ง `EDGE_SHARED_SECRET` เป็นค่าเดียวกันที่ proxy และ Gateway แล้วให้ proxy ส่ง `X-Edge-Secret` พร้อม `x-client-ip` ซึ่งเป็น IP ผู้ใช้จริง โดย proxy ต้องเขียนทับ header ทั้งสองจากคำขอภายนอก และปิดการเข้าถึง Gateway โดยตรงจากอินเทอร์เน็ต
@@ -70,7 +72,7 @@ ADMIN_EMAIL=admin@internpath.local ADMIN_PASSWORD='<อย่างน้อย 
 | Verification & Trust | `apps/verification` | PM | 3003 |
 | Student Experience & Lifecycle | `apps/lifecycle` | Tester | 3004 |
 | Notification | `apps/notification` | Junior Developer | 3005 |
-| Web (Next.js) | `apps/web` | โครงรวมและหน้าแรก: PM; หน้าอื่นเป็นของเจ้าของ Service ที่หน้านั้นเรียก API (ดู [README](../README.md) หัวข้อ 11) | 3100 |
+| Web (Next.js) | `apps/web` | PM: โครงรวม, หน้าแรก และหน้าฝั่งผู้ใช้ส่วนใหญ่; หน้า Admin ของแต่ละ Service เป็นของเจ้าของ Service นั้น; หน้าของ Tester ตามที่ระบุ (ดู [README](../README.md) หัวข้อ 11) | 3100 |
 
 ถ้าต้องแก้ Service ของคนอื่น ให้เปิด PR แล้วให้เจ้าของรีวิว (รายละเอียดทีมดู README หัวข้อ 11)
 
@@ -227,7 +229,7 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 - [ ] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก — Identity ใช้ `ServiceTokenGuard` จาก `libs/common` แล้ว; Job/Lifecycle/Notification ยังต้องผูกเมื่อเพิ่ม endpoint ภายใน
 - [x] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit, Denylist
 - [ ] การลงทะเบียน `JwtAuthGuard` ใน Service ที่เพิ่ม endpoint ซึ่งต้องล็อกอิน (Identity ใช้แล้ว)
-- [ ] **ลบบัญชียังใช้ไม่ได้**: `POST /users/me/deletion-request` มีใน [api-contract.md](api-contract.md) §4.2 แต่ยังไม่มี endpoint จริง; ไม่มี production path ที่เรียก `AccountDeletionService.complete()` และตัวตรวจสิทธิ์ลบตั้งให้ fail-closed ระหว่างรอ Lifecycle Internal API จึงไม่ควรแสดงฟังก์ชันลบบัญชีให้ผู้ใช้ใช้งาน
+- [ ] **ลบบัญชี:** กติกาตัดสินแล้ว (api-contract §4.2/§9, data-schema §2.3 — PM 2026-11-17) ยังไม่มีโค้ด: Tester ทำ `POST /users/me/deletion-request` ใน `apps/identity` (เรียก `request()` แล้ว `complete()` ซิงโครนัส; PR ต้องให้ SA รีวิว), `GET /internal/v1/users/{user_id}/deletion-eligibility` ใน Lifecycle, client ฝั่ง Identity แทน provider ที่ fail-closed อยู่ตอนนี้ และ consumer E15 ของ Lifecycle — ยังไม่ควรแสดงฟังก์ชันลบบัญชีให้ผู้ใช้จนกว่าจะเสร็จ
 - [ ] Scheduler (SLA, Reconciliation โควตา, Fail-safe 5 นาที)
 - [ ] หน้าเว็บของแต่ละ Role (หน้า Auth/Account และหน้าแรกมีแล้ว; หน้า Admin เสียบเข้า Admin Shell กลางที่ PM ทำ — ตารางเจ้าของหน้าอยู่ใน [README](../README.md) หัวข้อ 11)
 - [ ] โครงเว็บรวม (Header, Footer, เมนูตามบทบาท, Admin Shell, หน้านโยบายความเป็นส่วนตัว) — PM
