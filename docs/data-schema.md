@@ -87,6 +87,8 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 
 **ตารางที่เก็บ user id นอก history (PM ตัดสิน 2026-11-16 — Job):** Job แทน `jobs.created_by` และ `job_submissions.submitted_by` ที่ตรงกับ `user_id` ของ `UserDeletionRequested` ด้วย `anonymous_actor_id` ใน transaction เดียวกับ `status_history` — คอลัมน์ยังเป็น `uuid NOT NULL`; เป็น `UPDATE` ธรรมดา (ไม่ผ่าน trigger append-only); **ไม่แตะ `version`/`entity_version` และไม่ส่ง `JobStatusChanged`** เพราะไม่ใช่การเปลี่ยนสถานะ; idempotent (รับซ้ำหรือไม่พบแถวต้องสำเร็จโดยไม่ทำอะไร); ไม่กระทบ id ของประกาศ/การส่งตรวจ, `company_id` และสถานะประกาศ
 
+**Lifecycle เมื่อรับ `UserDeletionRequested` (PM ตัดสิน 2026-11-17):** (1) ใบสมัครที่ยังไม่ถึง `ADVISOR_PENDING` (`PENDING`, `HR_ACCEPTED`) ⇒ `CANCELLED` พร้อมคืนโควตา — ใบสมัครที่ `ADVISOR_PENDING`/`ADVISOR_APPROVED`/`IN_PROGRESS`/`FAIL_DISPUTED`/`REEVALUATION_REQUESTED` ถูกบล็อกตั้งแต่ตอนขอลบแล้ว (`GET /internal/v1/users/{user_id}/deletion-eligibility` ใน api-contract §9); (2) ลบ PII และไฟล์ใน Storage (เรซูเม่ โปรไฟล์ ลิงก์อาจารย์); (3) คอลัมน์ user id ในข้อมูลที่เก็บไว้ (ใบสมัคร ผลประเมิน คำโต้แย้ง ใบรับรอง ฯลฯ) ⇒ `anonymous_actor_id`; ใบรับรองเก็บไว้และชื่อแสดง "ผู้ใช้ที่ลบบัญชีแล้ว"; (4) รีวิว `PUBLISHED` เก็บไว้แบบไม่ระบุตัวตน (ไม่กระทบ `company_review_stats`), รีวิว `SUBMITTED`/`HELD` ⇒ `REMOVED` และล้าง `title`/`body` (E10 ของรีวิวนั้นที่มาทีหลังสถานะไม่ตรง ⇒ ข้ามพร้อม log ตามกติกา E10); (5) `status_history`/`admin_audit_log` ใช้ Authorized Anonymization ข้างต้น; (6) idempotent ผ่าน `processed_events`
+
 ### 2.4 สำเนา (Snapshot) ที่แต่ละ Service เก็บได้
 ตารางเจ้าของข้อมูลฉบับย่ออยู่ใน README 5.8 — ตารางด้านล่างระบุ **ฟิลด์** ที่ Service อื่นเก็บเป็นสำเนาได้ (Snapshot):
 

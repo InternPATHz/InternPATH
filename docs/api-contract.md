@@ -89,7 +89,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | :--- | :--- | :---: | :--- |
 | GET | `/users/me` | Any | ข้อมูลตนเอง + สถานะ advisor link / บริษัท |
 | PATCH | `/users/me` | Any | แก้ชื่อ/โทร |
-| POST | `/users/me/deletion-request` | Any | คำขอลบบัญชี; `422 DELETION_BLOCKED` ถ้ามีใบสมัครที่ยังดำเนินอยู่ / เป็น Owner ที่ยังไม่โอน |
+| POST | `/users/me/deletion-request` | Any | คำขอลบบัญชี (PM ตัดสิน 2026-11-17: **ซิงโครนัส** — Identity ตรวจสิทธิ์แล้วลบในคำขอเดียว) สำเร็จ `204` ไม่มี body และ token ของบัญชีถูกเพิกถอนทันที; `422 DELETION_BLOCKED` ถ้ามีใบสมัครที่ยังดำเนินอยู่ (ตรวจกับ Lifecycle: `ADVISOR_PENDING`, `ADVISOR_APPROVED`, `IN_PROGRESS`, `FAIL_DISPUTED`, `REEVALUATION_REQUESTED`) หรือเป็น Owner ที่ยังไม่โอน; `503 UPSTREAM_UNAVAILABLE` ถ้าตรวจกับ Lifecycle ไม่ได้ (ปฏิเสธไว้ก่อน ไม่ปล่อยผ่าน); สิ่งที่แต่ละ Service ทำหลังลบ ดู data-schema §2.3 |
 | GET | `/advisors` | S | รายชื่ออาจารย์ที่ `ACTIVE` ใน `university_id` เดียวกัน (`?q=`) |
 | POST | `/users/me/advisor-link` | S | `{advisor_id}` → `ADVISOR_LINK_PENDING` (ขอผูก/เปลี่ยน) |
 | DELETE | `/users/me/advisor-link` | S | ยกเลิกคำขอที่ยังรออยู่ |
@@ -326,6 +326,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | job | POST | `/internal/v1/jobs/{job_id}/quota/release` | lifecycle | `{application_id, reason}` → คืนโควตา (idempotent; ไม่มีการจอง = `200` no-op) |
 | job | GET | `/internal/v1/jobs/{job_id}` | lifecycle | สถานะ/โควตา/`target_majors`/deadline ตอนสมัคร (ลดความเสี่ยง Snapshot ล้าสมัย) |
 | lifecycle | POST | `/internal/v1/applications/reservation-check` | job | `{application_ids[]}` → `[{application_id, should_hold_quota: bool}]` (Reconciliation ทุก 30 นาที — Lifecycle ชี้ขาด) |
+| lifecycle | GET | `/internal/v1/users/{user_id}/deletion-eligibility` | identity | `200 {eligible: boolean, blocking_application_count: number}` — `eligible=false` เมื่อผู้ใช้มีใบสมัครสถานะ `ADVISOR_PENDING`/`ADVISOR_APPROVED`/`IN_PROGRESS`/`FAIL_DISPUTED`/`REEVALUATION_REQUESTED`; ไม่มีใบสมัครหรือไม่รู้จักผู้ใช้ ⇒ `eligible=true`; Identity ปฏิเสธการลบเมื่อเรียกไม่สำเร็จ (fail-closed); Service Token: audience `lifecycle`, secret `LIFECYCLE_SERVICE_SECRET_IDENTITY` (PM ตัดสิน 2026-11-17) |
 | identity | GET | `/internal/v1/users/{user_id}/contact` | notification | `{email, full_name}` (ใช้ตอนส่งเท่านั้น; ห้าม cache ถาวร) |
 | identity | GET | `/internal/v1/users/contacts?ids=` | notification | แบบ Batch (≤ 100) |
 | identity | GET | `/internal/v1/students/{user_id}` | lifecycle | `{major, year_level, university_id, email_verified, advisor_id, advisor_link_status}` ตอนสมัครงาน |
