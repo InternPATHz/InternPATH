@@ -159,6 +159,27 @@ export interface UpdateBlacklistTermRequest {
   category?: string;
 }
 
+/** รายการจาก GET /admin/blacklist และผลของ POST/PATCH /admin/blacklist — `HARD` ⇒ `weight = null`; `term` เก็บเป็นตัวพิมพ์เล็กหลัง normalize */
+export interface BlacklistTermItem {
+  id: string;
+  term: string;
+  severity: BlacklistSeverity;
+  weight: number | null;
+  category: string;
+  enabled: boolean;
+  created_at: string;
+}
+
+/** คำที่จับได้ในข้อความ (ออฟเซ็ตอ้างอิงข้อความหลัง normalize ซึ่งไม่ส่งกลับมา) */
+export interface BlacklistMatchedKeyword {
+  term: string;
+  field: string;
+  /** อยู่ในประโยคปฏิเสธ (ไม่นับเป็นคำต้องห้าม) */
+  negated: boolean;
+  start: number;
+  end: number;
+}
+
 export interface BlacklistTestRequest {
   text: string;
 }
@@ -167,7 +188,7 @@ export interface BlacklistTestResponse {
   decision: string;
   risk_level: RiskLevel;
   risk_score: number;
-  matched_keywords: unknown[];
+  matched_keywords: BlacklistMatchedKeyword[];
   reasons: Array<{ code: string; detail: string; matched_text?: string }>;
 }
 
