@@ -5,31 +5,27 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/auth/session';
+import { RequireAuth } from '@/components/layout/require-auth';
 import { ADMIN_NAV } from './admin-nav';
 
-/** เปลือกของหน้า Admin: ตรวจสิทธิ์ PLATFORM_ADMIN แล้วแสดง Sidebar จัดกลุ่มตาม Service */
+/** เปลือกของหน้า Admin: จำกัดเฉพาะ PLATFORM_ADMIN (ผ่าน RequireAuth) แล้วแสดง Sidebar จัดกลุ่มตาม Service */
 export function AdminShell({ children }: { children: ReactNode }) {
+  return (
+    <RequireAuth roles={['PLATFORM_ADMIN']}>
+      <AdminFrame>{children}</AdminFrame>
+    </RequireAuth>
+  );
+}
+
+function AdminFrame({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { ready, user, logout } = useAuth();
+  const { user, logout } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
-
-  useEffect(() => {
-    if (ready && !user) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-  }, [ready, user, pathname, router]);
 
   useEffect(() => { setMenuOpen(false); }, [pathname]);
 
-  if (!ready || !user) return <p className="p-8 text-sm text-ink-soft">กำลังตรวจสอบสิทธิ์…</p>;
-  if (user.role !== 'PLATFORM_ADMIN') {
-    return (
-      <main className="mx-auto max-w-md p-8 text-center">
-        <h1 className="text-xl font-bold">ไม่มีสิทธิ์เข้าหน้านี้</h1>
-        <p className="mt-2 text-sm text-ink-soft">หน้านี้สำหรับผู้ดูแลแพลตฟอร์มเท่านั้น</p>
-        <Link href="/" className="mt-4 inline-block text-sm text-primary hover:underline">กลับหน้าแรก</Link>
-      </main>
-    );
-  }
+  if (!user) return null; // RequireAuth ตรวจแล้ว: ถึงตรงนี้ต้องมี user (กันชนิดเป็น null)
 
   const nav = (
     <nav aria-label="เมนู Admin" className="space-y-6">

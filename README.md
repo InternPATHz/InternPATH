@@ -422,7 +422,7 @@
 ---
 
 ## 🎨 8. การออกแบบ UI/UX (โทนสว่าง - Light Theme)
-- **🧱 เทคโนโลยีหน้าเว็บ:** Next.js (TSX) + Tailwind CSS โดยเก็บสีและฟอนต์ทั้งหมดเป็นตัวแปร (Design Token) ใน `tailwind.config` และสร้าง **UI Kit กลาง** (ปุ่ม ฟอร์ม ตาราง ป้ายสถานะ Timeline Modal Toast) ที่ทุกหน้าใช้ร่วมกัน (ยังไม่กำหนดเจ้าของ: ระหว่างนี้ใช้ Design Token และสร้างคอมโพเนนต์ในแต่ละหน้าไปก่อน) รวมถึง **Admin Layout** (Admin Shell ที่ PM ทำ) ที่ทุก Service ใช้เป็นเปลือกของหน้า Admin ของตน เพื่อให้ปรับโทนสีทั้งเว็บได้ในที่เดียว
+- **🧱 เทคโนโลยีหน้าเว็บ:** Next.js (TSX) + Tailwind CSS โดยเก็บสีและฟอนต์ทั้งหมดเป็นตัวแปร (Design Token) ใน `tailwind.config` และสร้าง **UI Kit กลาง** (ปุ่ม ฟอร์ม ตาราง ป้ายสถานะ Timeline Modal Toast) ที่ทุกหน้าใช้ร่วมกัน (เจ้าของคือ PM คอมโพเนนต์อยู่ที่ `apps/web/src/components/ui/` ตอนนี้มี `StatusBadge` และแมปสถานะที่ `apps/web/src/lib/status-map.ts` ชิ้นที่ยังไม่มีให้ใช้ Design Token สร้างในหน้าไปก่อน และห้ามใช้ emoji ในโค้ดและหน้าเว็บ) รวมถึง **Admin Layout** (Admin Shell ที่ PM ทำ) ที่ทุก Service ใช้เป็นเปลือกของหน้า Admin ของตน เพื่อให้ปรับโทนสีทั้งเว็บได้ในที่เดียว
 - **🔤 ฟอนต์ (Typography):**
   * **ฟอนต์หลัก:** Noto Sans Thai (ภาษาไทยและอังกฤษ) โหลดผ่าน `next/font/google` ตั้งค่าชุดอักขระ `thai` และ `latin`
   * **ขนาดและระยะบรรทัด:** ข้อความเนื้อหา 16 px และความสูงบรรทัดอย่างน้อย 1.6 (ภาษาไทยมีสระและวรรณยุกต์ซ้อน ห้ามบีบระยะบรรทัดจนชน) ไม่ใช้ตัวพิมพ์ใหญ่ทั้งหมดหรือเว้นระยะอักษรกว้างกับข้อความภาษาไทย
@@ -529,7 +529,7 @@
 | **Junior Developer** | **`Job Management Service`** (ประกาศงานฝั่ง HR, สถานะประกาศงาน, โควตาตำแหน่งแบบ Atomic และ Job Search) และ **`Notification Service`**; ออกแบบ UI/UX (Figma); ร่วมเป็นผู้ทดสอบหลักของ Lifecycle Service |
 
 **หลักการแบ่งงาน**
-- ทุก Service มีเจ้าของคนเดียว และเจ้าของดูแลหน้า Admin ของ Service ตนเอง โดยเสียบหน้าเข้า **Admin Shell กลางที่ PM ทำใน `apps/web`** และสร้างหน้าจากรายการ endpoint `/admin/**` ของ Service ตนใน [docs/api-contract.md](docs/api-contract.md) (ยังไม่มี UI Kit กลาง: ใช้ Design Token ใน `apps/web/tailwind.config.ts` ตามหัวข้อ 8 ไปก่อน)
+- ทุก Service มีเจ้าของคนเดียว และเจ้าของดูแลหน้า Admin ของ Service ตนเอง โดยเสียบหน้าเข้า **Admin Shell กลางที่ PM ทำใน `apps/web`** และสร้างหน้าจากรายการ endpoint `/admin/**` ของ Service ตนใน [docs/api-contract.md](docs/api-contract.md) (UI Kit กลางอยู่ที่ `apps/web/src/components/ui/` ตอนนี้มี `StatusBadge` ชิ้นอื่นใช้ Design Token ใน `apps/web/tailwind.config.ts` ตามหัวข้อ 8 ไปก่อน)
 - หน้าเว็บที่ไม่ใช่หน้า Admin เป็นของเจ้าของ Service ที่หน้านั้นเรียก API เป็นหลัก ส่วนหน้าที่คร่อมหลาย Service ให้ดูตารางด้านล่าง
 - ผู้ทดสอบไม่ใช่เจ้าของ Service ที่ทดสอบ: Lifecycle ทดสอบโดย PM และ Junior; Service อื่นทดสอบโดย Tester
 - เอกสารเทคนิคทั้งหมดและโครงพื้นฐานของ Monorepo จัดทำโดย PM
