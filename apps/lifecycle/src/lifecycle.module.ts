@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
-import { MessagingModule } from '@internpath/common';
+import { JwtAuthGuard, MessagingModule, RolesGuard } from '@internpath/common';
 import { LifecycleConfigModule } from './config/lifecycle-config.module';
 import { StorageModule } from './common/storage/storage.module';
 import { InternalModule } from './internal/internal.module';
+import { ProfilesModule } from './modules/profiles/profiles.module';
+import { ResumesModule } from './modules/resumes/resumes.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import type { Tx } from './prisma/types';
@@ -12,6 +14,8 @@ import type { Tx } from './prisma/types';
  * ลงทะเบียน MessagingModule:
  * - publishes: relay อ่าน outbox_events ผ่าน LIFECYCLE_DIRECT_URL
  * - consumes: จัดการ processed_events และ runInTransaction ด้วย Prisma.$transaction
+ * ลงทะเบียน JwtAuthGuard / RolesGuard ของ @internpath/common (ตั้งแต่ 1.3 — controller แรก)
+ * controller ใช้ `@UseGuards(JwtAuthGuard, RolesGuard)` + `@Roles(...)` แล้วตรวจความเป็นเจ้าของเองใน service
  */
 @Module({
   imports: [
@@ -30,7 +34,10 @@ import type { Tx } from './prisma/types';
         }),
       },
     }),
+    ProfilesModule,
+    ResumesModule,
   ],
-  exports: [PrismaModule, LifecycleConfigModule, StorageModule, InternalModule],
+  providers: [JwtAuthGuard, RolesGuard],
+  exports: [PrismaModule, LifecycleConfigModule, StorageModule, InternalModule, JwtAuthGuard, RolesGuard],
 })
 export class LifecycleModule {}
