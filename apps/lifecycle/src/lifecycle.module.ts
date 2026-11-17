@@ -5,6 +5,7 @@ import { StorageModule } from './common/storage/storage.module';
 import { InternalModule } from './internal/internal.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
+import { StateMachineModule } from './state-machine/state-machine.module';
 import type { Tx } from './prisma/types';
 
 /**
@@ -30,7 +31,8 @@ import type { Tx } from './prisma/types';
         }),
       },
     }),
+    StateMachineModule,
   ],
-  exports: [PrismaModule, LifecycleConfigModule, StorageModule, InternalModule],
+  exports: [PrismaModule, LifecycleConfigModule, StorageModule, InternalModule, StateMachineModule],
 })
 export class LifecycleModule {}
