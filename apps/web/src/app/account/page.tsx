@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import type { UserMeResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { AuthShell, Notice } from '@/auth/ui';
+import { RequireAuth } from '@/components/layout/require-auth';
 
 const roleLabel: Record<string, string> = {
   STUDENT: 'นักศึกษา', COMPANY_HR: 'ฝ่ายบุคคลบริษัท',
@@ -13,21 +14,27 @@ const roleLabel: Record<string, string> = {
 };
 
 export default function AccountPage() {
+  return <RequireAuth><AccountContent /></RequireAuth>;
+}
+
+function AccountContent() {
   const router = useRouter();
-  const { ready, user, logout, request } = useAuth();
+  const { user, logout, request } = useAuth();
+  const userId = user?.id;
   const [profile, setProfile] = useState<UserMeResponse | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
+  // ผูกกับ user.id ไม่ใช่ object user: การ refresh token สร้าง object ใหม่ทุกครั้ง
+  // ถ้าอิง object จะโหลดซ้ำวน (และวนไม่รู้จบเมื่อ /users/me ตอบ 401 ซ้ำ)
   useEffect(() => {
-    if (!ready) return;
-    if (!user) { router.replace('/login'); return; }
+    if (!userId) return;
     let active = true;
     void request<UserMeResponse>('/users/me')
       .then((data) => { if (active) setProfile(data); })
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'โหลดข้อมูลบัญชีไม่สำเร็จ'); });
     return () => { active = false; };
-  }, [ready, user, request, router]);
+  }, [userId, request]);
 
   async function signOut() {
     setBusy(true);
@@ -37,7 +44,7 @@ export default function AccountPage() {
   }
 
   return <AuthShell title="บัญชีของฉัน" subtitle="ข้อมูลบัญชีจาก Identity Service">
-    {!ready || (!profile && !error) ? <p className="text-sm text-ink-soft">กำลังโหลดข้อมูลบัญชี…</p> : <div className="space-y-5">
+    {!profile && !error ? <p className="text-sm text-ink-soft">กำลังโหลดข้อมูลบัญชี…</p> : <div className="space-y-5">
       {error && <Notice error>{error}</Notice>}
       {profile && <dl className="grid gap-4 rounded-xl border border-border bg-surface-muted p-5 text-sm sm:grid-cols-2">
         <div><dt className="text-ink-soft">ชื่อ</dt><dd className="mt-1 font-medium">{profile.full_name}</dd></div>
