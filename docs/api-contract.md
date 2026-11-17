@@ -293,7 +293,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 7.7 Admin (Lifecycle)
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/admin/lifecycle/no-evaluation-candidates` | AD | ใบสมัครที่ HR ไม่ประเมินเกิน 14 วัน |
+| GET | `/admin/lifecycle/no-evaluation-candidates` | AD | ใบสมัครที่ HR ไม่ประเมินครบ 14 วัน (`IN_PROGRESS` / `TERMINATED` ฝึก ≥ 30 วัน / `REEVALUATION_REQUESTED`) |
 | POST | `/admin/lifecycle/applications/{id}/actions/confirm-no-evaluation` | AD | → `NO_EVALUATION` |
 | POST | `/admin/lifecycle/applications/{id}/actions/terminate` | AD | `{reason}` |
 | POST | `/admin/lifecycle/certificates/{id}/actions/revoke` | AD | `{reason}` |

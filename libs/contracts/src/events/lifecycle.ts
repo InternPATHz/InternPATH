@@ -13,7 +13,8 @@ export interface ApplicationStatusChangedPayload {
   advisor_user_id?: string;
   /** ผู้รับแจ้งฝั่งบริษัท (ถ้าเจาะจง) */
   hr_user_ids?: string[];
-  from_status: ApplicationStatus;
+  /** ไม่มีเมื่อสร้างใบสมัคร (`to_status = PENDING`) — ห้ามใส่ค่าหลอก */
+  from_status?: ApplicationStatus;
   to_status: ApplicationStatus;
   /** ไม่มี = SYSTEM */
   actor_user_id?: string;

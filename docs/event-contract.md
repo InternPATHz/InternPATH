@@ -267,7 +267,7 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
   student_user_id: string
   advisor_user_id?: string
   hr_user_ids?: string[]          // ผู้รับแจ้งฝั่งบริษัท (ถ้าเจาะจง)
-  from_status: ApplicationStatus
+  from_status?: ApplicationStatus // ไม่มีเมื่อสร้างใบสมัคร (to_status = PENDING) — PM ตัดสิน 2026-11-18: ห้ามใส่ค่าหลอก
   to_status: ApplicationStatus
   actor_user_id?: string          // null = SYSTEM
   actor_role: 'STUDENT' | 'COMPANY_HR' | 'ADVISOR' | 'PLATFORM_ADMIN' | 'SYSTEM'
@@ -423,7 +423,7 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 | `WITHDRAWN` | — | In-app | In-app เฉพาะเมื่อ `from_status` ∈ {`ADVISOR_PENDING`, `ADVISOR_APPROVED`} |
 | `EXPIRED` | In-app | In-app | In-app เฉพาะเมื่อ `from_status = ADVISOR_APPROVED` |
 
-ผู้รับใช้ `advisor_user_id` ของ payload (ผูกกับใบสมัครตั้งแต่ตอนสมัคร) — การจำกัดอาจารย์ตาม `from_status` ในตารางเป็นการตัดสินเรื่องปริมาณการแจ้งเตือน ไม่ใช่ข้อจำกัดทางเทคนิค • Admin ไม่อยู่ใน E08 (Admin รับแจ้งจาก E04, E10, E14 ฯลฯ) • ใบรับรอง/รีวิว/เตือน SLA ใช้ E11–E14 ไม่ใช่ตารางนี้
+ผู้รับใช้ `advisor_user_id` ของ payload (ผูกกับใบสมัครตั้งแต่ตอนสมัคร) — การจำกัดอาจารย์ตาม `from_status` ในตารางเป็นการตัดสินเรื่องปริมาณการแจ้งเตือน ไม่ใช่ข้อจำกัดทางเทคนิค • แถว `PENDING` (สร้างใบสมัคร) ไม่มี `from_status` (ฟิลด์เป็น optional) — Notification ต้องไม่พึ่ง `from_status` เมื่อ `to_status = PENDING` (เงื่อนไข `from_status` ในตารางใช้กับสถานะอื่นเท่านั้น) • Admin ไม่อยู่ใน E08 (Admin รับแจ้งจาก E04, E10, E14 ฯลฯ) • ใบรับรอง/รีวิว/เตือน SLA ใช้ E11–E14 ไม่ใช่ตารางนี้
 
 กฎกลาง: **ไม่แจ้งผู้กระทำเอง** (`actor_user_id`) • ผู้รับฝั่งบริษัทใช้ `hr_user_ids` ถ้ามี ไม่มีให้ดึงสมาชิกบริษัทจาก `GET /internal/v1/companies/{id}/members` • ผู้ใช้ที่ถูกระงับ/ลบไม่ได้รับ • 1 แถวต่อ (`source_event_id`, `user_id`, `type`) (`notifications` UNIQUE) • เมื่อ Event เดียวมีหลายผู้รับ ผู้รับแต่ละคนได้ 1 รายการ
 

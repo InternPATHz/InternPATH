@@ -433,7 +433,7 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
                  ▼
              COMPLETED
 
-  IN_PROGRESS/หลังสิ้นสุด end_date ที่ HR ไม่ประเมิน >14 วัน + Admin ยืนยัน ─► NO_EVALUATION
+  HR ไม่ประเมินครบ 14 วัน + Admin ยืนยัน ─► NO_EVALUATION (จาก IN_PROGRESS / TERMINATED / REEVALUATION_REQUESTED — จุดเริ่มนับดูตาราง)
   ประกาศ AUTO_REJECTED/ADMIN_REJECTED/REMOVED (ก่อน ADVISOR_APPROVED) ─► CANCELLED (release)
 ```
 
@@ -466,7 +466,9 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 | `IN_PROGRESS` | `TERMINATED` | HR / STUDENT / ADVISOR / ADMIN | ต้องมีเหตุผล | บันทึก `terminated_by`, `actual_end_date`, แจ้งอาจารย์; ไม่ release (confirm แล้ว) |
 | `IN_PROGRESS` | `EVALUATED_PASS` / `EVALUATED_FAIL` | HR | ถึง `end_date` แล้ว; FAIL ต้องมีเหตุผล | `actual_end_date = end_date` |
 | `TERMINATED` | `EVALUATED_PASS` / `EVALUATED_FAIL` *(ทางเลือก)* | HR | ฝึกจริง ≥ 30 วันก่อนยุติเท่านั้น | — |
-| `IN_PROGRESS` | `NO_EVALUATION` | ADMIN | เกิน `end_date` 14 วัน & ระบบแจ้งอาจารย์/Admin แล้ว | ไม่มี Certificate |
+| `IN_PROGRESS` | `NO_EVALUATION` | ADMIN | ครบ 14 วัน (`SLA_EVALUATION_DAYS`) นับจาก `end_date` & ระบบแจ้งอาจารย์/Admin แล้ว | ไม่มี Certificate |
+| `TERMINATED` | `NO_EVALUATION` | ADMIN | ฝึกจริง ≥ 30 วันก่อนยุติ (เข้าสู่การประเมินได้) & ครบ 14 วัน (`SLA_EVALUATION_DAYS`) นับจาก `actual_end_date` & ระบบแจ้งอาจารย์/Admin แล้ว *(PM ตัดสิน 2026-11-18)* | ไม่มี Certificate |
+| `REEVALUATION_REQUESTED` | `NO_EVALUATION` | ADMIN | ครบ 14 วัน (`SLA_EVALUATION_DAYS`) นับจาก `status_changed_at` (วันที่อาจารย์สั่งประเมินใหม่) & ระบบแจ้งอาจารย์/Admin แล้ว *(PM ตัดสิน 2026-11-18 — กันใบสมัครค้างและบล็อกการลบบัญชีตลอดไป)* | ไม่มี Certificate |
 | `EVALUATED_FAIL` | `FAIL_DISPUTED` | STUDENT | ภายใน 7 วัน | — |
 | `FAIL_DISPUTED` | `REEVALUATION_REQUESTED` | ADVISOR | `reevaluation_used = false` | `reevaluation_used = true` |
 | `FAIL_DISPUTED` | `EVALUATED_FAIL` | ADVISOR | ยืนยันผลเดิม | — |
@@ -475,7 +477,9 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 | `EVALUATED_FAIL` | `COMPLETED` | ADVISOR | หน้าต่างโต้แย้ง 7 วันสิ้นสุดโดยไม่มีการโต้แย้ง หรือการโต้แย้งจบแล้ว; `academic_result ∈ {ACADEMIC_FAIL, REPEAT_REQUIRED}` เท่านั้น | — |
 | `TERMINATED` / `NO_EVALUATION` | (บันทึกผล) | ADVISOR | บันทึก `academic_result` โดยไม่เปลี่ยนสถานะ | — |
 
-\* `TERMINATED` ปกติเป็นปลายทาง ยกเว้นกรณีฝึกจริง ≥ 30 วันก่อนยุติ ซึ่งยังเข้าสู่การประเมินได้ (README 5.2.2)
+\* `TERMINATED` ปกติเป็นปลายทาง ยกเว้นกรณีฝึกจริง ≥ 30 วันก่อนยุติ ซึ่งยังเข้าสู่การประเมินได้ (README 5.2.2) และไปต่อ `NO_EVALUATION` ได้ถ้า HR ไม่ประเมิน
+
+`NO_EVALUATION` ต้องมี Admin ยืนยันเสมอ (`POST /admin/lifecycle/applications/{id}/actions/confirm-no-evaluation`) และนับ "ครบ 14 วัน" แบบ `≥` (วันที่ 14 ยืนยันได้) ใช้ค่า `SLA_EVALUATION_DAYS` เดียวกันทั้งสามเส้นทาง
 
 **บริษัทถูกระงับขณะ `IN_PROGRESS`:** Lifecycle รับ `CompanyStatusChanged(SUSPENDED)` → ตั้ง `company_suspended_decision = PENDING` + แจ้งอาจารย์/นักศึกษา (ไม่เปลี่ยนสถานะ) → อาจารย์เลือก `continue` (`CONTINUE`) หรือ `terminate` (`TERMINATED`, `terminated_by = ADVISOR`)
 
