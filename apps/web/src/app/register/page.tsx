@@ -121,7 +121,7 @@ export default function RegisterPage() {
           endAction={<VisibilityButton visible={showConfirmPassword} onToggle={() => setShowConfirmPassword((value) => !value)} />} />
         <label className="flex gap-2 text-sm text-ink-soft">
           <input type="checkbox" name="accept_privacy" required className="mt-1 accent-primary" />
-          <span>ยอมรับนโยบายความเป็นส่วนตัวและการเก็บข้อมูลส่วนบุคคล<span aria-hidden="true" className="text-danger"> *</span></span>
+          <span>ยอมรับ<Link href="/privacy" target="_blank" rel="noopener" className="text-primary hover:underline">นโยบายความเป็นส่วนตัว</Link>และการเก็บข้อมูลส่วนบุคคล<span aria-hidden="true" className="text-danger"> *</span></span>
         </label>
         {error && <Notice error>{error}</Notice>}
         <ActionButton busy={busy}>สมัครสมาชิก</ActionButton>
