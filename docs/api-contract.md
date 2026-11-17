@@ -64,6 +64,8 @@
 
 Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และเติม `X-User-Id`, `X-User-Role`, `X-Company-Id` (Service ยังตรวจ JWT ซ้ำเอง)
 
+**เส้นทางอ่านสาธารณะ (PM ตัดสิน 2026-11-18):** 5 เส้นทาง `GET` ต่อไปนี้ **ไม่ต้องล็อกอิน (Public)** — `/search/jobs`, `/jobs/{id}`, `/directory/companies`, `/directory/companies/{id}`, `/companies/{company_id}/reviews` Gateway ข้ามการตรวจ JWT เฉพาะ 5 เส้นทางนี้ (เฉพาะ `GET`; `/jobs/{id}/reports` ยังเป็น `POST` ต้องล็อกอิน) จึง **Service เจ้าของต้องไม่ใส่ JWT Guard ที่ 5 เส้นทางนี้** (ไม่งั้นผู้เยี่ยมชมได้ `401` จาก Service เอง) Response เหมือนกันทุกผู้เรียก ไม่ขึ้นกับตัวตน (ไม่มี `contact_notes`, `registration_no`, `phone`, เอกสารบริษัท) • Rate limit **60 ครั้ง/นาที/IP** รวมทั้ง 5 เส้นทาง เกินแล้ว `429 RATE_LIMITED` • ส่ง `Cache-Control: public, max-age=60` • ต้องมีเทสต์ Routing ใน Gateway ครอบคลุมทั้ง 5 แถว (ผู้เรียกไม่มี Token ต้องผ่านและไม่ถูกส่ง `X-User-*`) • เหตุผลที่ไม่ใช้ prefix `/public/**`: prefix นี้ถูกกำหนดให้ Lifecycle (ตารางด้านบน)
+
 ---
 
 ## 4. Identity & Organization Service
@@ -116,11 +118,11 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/companies/me/owner-transfer` | HO | `{to_user_id}` |
 | POST | `/companies/me/owner-transfer/actions/{accept\|decline\|cancel}` | H/HO | ผู้รับกดยืนยัน |
 
-### 4.4 Company Directory (สาธารณะสำหรับผู้ล็อกอิน)
+### 4.4 Company Directory (สาธารณะ — ไม่ต้องล็อกอิน)
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/directory/companies` | S,A,H,AD | `?q=&category=&partner=true` เฉพาะบริษัท `VERIFIED`; คืน `name, logo_url, university_partner, rating_avg, review_count` |
-| GET | `/directory/companies/{id}` | S,A,H,AD | รายละเอียด + `rating_avg/review_count` (ดึงจาก `company_rating_stats`) |
+| GET | `/directory/companies` | **Public** | `?q=&category=&partner=true&ids=<uuid>,<uuid>` + Pagination มาตรฐาน — เฉพาะบริษัท `VERIFIED`; `ids` = ดึงหลายบริษัทในครั้งเดียว (สูงสุด 50 ตัว ไม่ส่ง `q`/`category` ก็ได้; ใช้ดึงคะแนนดาวของการ์ดงานทั้งหน้าโดยไม่ต้องเรียกทีละบริษัท; มากกว่า 50 หรือรูปแบบผิด ⇒ `400 VALIDATION_FAILED`; ไม่พบ/ไม่ใช่ `VERIFIED` ⇒ ไม่อยู่ในผลลัพธ์ ไม่ error); คืน `id, name, logo_url, university_partner, rating_avg, review_count` |
+| GET | `/directory/companies/{id}` | **Public** | รายละเอียด + `rating_avg/review_count` (ดึงจาก `company_rating_stats`); เฉพาะ `VERIFIED` นอกนั้น `404 NOT_FOUND`; ไม่มี `registration_no`, `phone`, เอกสาร |
 
 ### 4.5 Admin (Identity)
 | Method | Path | Role | คำอธิบาย |
@@ -157,11 +159,11 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 
 **`JobDraftObject` (`status=DRAFT`):** รูปแบบเดียวกับ Job Object แต่ `category, job_title, description, responsibilities, qualifications, allowance, location, work_mode, hours_per_week, period.start/end, target_majors, quota, quota_available, application_deadline` เป็น `null` ได้ (HR สร้าง DRAFT ไม่ครบได้ — data-schema §4); Job Object ปกติ (ทุกสถานะที่ไม่ใช่ `DRAFT`) ฟิลด์เหล่านี้ครบเสมอ; `DRAFT` ปรากฏเฉพาะมุมมอง HR ไม่ปรากฏใน `/jobs/{id}`, `/search/jobs`, Internal; ชนิดใน `@internpath/contracts`: `JobDraftObject`, `HrJobObject` = `JobObject | JobDraftObject`
 
-### 5.2 Job Search (นักศึกษา/ทุก Role ที่ล็อกอิน)
+### 5.2 Job Search (สาธารณะ — ไม่ต้องล็อกอิน)
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/search/jobs` | S,A,H,AD | `?q=&category=&work_mode=&major=&allowance=true&company_id=&sort=` เฉพาะ `PUBLISHED`; `featured` ขึ้นก่อน; คืน `major_mismatch` เมื่อส่ง `major` ของนักศึกษา |
-| GET | `/jobs/{id}` | S,A,H,AD | รายละเอียดสาธารณะ (เฉพาะ `PUBLISHED`/`CLOSED`; HR เจ้าของดูได้ทุกสถานะผ่าน `/hr/jobs/{id}`) |
+| GET | `/search/jobs` | **Public** | `?q=&category=&work_mode=&major=&allowance=true&company_id=&sort=newest\|deadline` + Pagination มาตรฐาน — เฉพาะ `PUBLISHED`; `featured` ขึ้นก่อนเสมอ แล้วเรียงตาม `sort` (ค่าเริ่มต้น `newest` = `published_at` ใหม่ก่อน; `deadline` = `application_deadline` ใกล้ก่อน); คืน `major_mismatch` เมื่อ client ส่ง `major` มา (คำนวณจากพารามิเตอร์ ไม่พึ่งตัวตนผู้เรียก); หน้าแรกใช้ `?page_size=3` ขอ "งานเด่น" ไม่มี endpoint เฉพาะ |
+| GET | `/jobs/{id}` | **Public** | รายละเอียดสาธารณะ (เฉพาะ `PUBLISHED`/`CLOSED`; สถานะอื่น ⇒ `404 NOT_FOUND`; HR เจ้าของดูได้ทุกสถานะผ่าน `/hr/jobs/{id}`); `CLOSED` ส่ง `X-Robots-Tag: noindex` |
 
 > คะแนนดาวบริษัทไม่อยู่ใน Job: Web ดึงจาก `/directory/companies/{id}` (README 4.3)
 
@@ -314,7 +316,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
 | POST | `/applications/{id}/review` | S | `{rating, title?, body, anonymous}` — `409 ALREADY_REVIEWED`; `422 EVALUATION_NOT_OPEN`/ไม่มีสิทธิ์ ถ้ายังไม่ประเมิน/ยุติ; Response `status:'SUBMITTED'` |
-| GET | `/companies/{company_id}/reviews` | S,A,H,AD | เฉพาะ `PUBLISHED`; แสดง `outcome_label`; ถ้า `anonymous` ⇒ `display_major`, `display_year` แทนชื่อ |
+| GET | `/companies/{company_id}/reviews` | **Public** | เฉพาะ `PUBLISHED`; แสดง `outcome_label`; ถ้า `anonymous` ⇒ `display_major`, `display_year` แทนชื่อ |
 | GET | `/me/reviews` | S | |
 
 ### 7.7 Admin (Lifecycle)

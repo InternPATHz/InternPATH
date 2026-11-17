@@ -107,7 +107,8 @@ export interface SearchJobsQuery {
   major?: string;
   allowance?: boolean;
   company_id?: string;
-  sort?: string;
+  /** `featured` ขึ้นก่อนเสมอ แล้วตามค่านี้: `newest` = `published_at` ใหม่ก่อน (ค่าเริ่มต้น), `deadline` = `application_deadline` ใกล้ก่อน */
+  sort?: 'newest' | 'deadline';
 }
 
 /** ผลจาก GET /search/jobs: Job Object + `major_mismatch` เมื่อส่ง `major` */
