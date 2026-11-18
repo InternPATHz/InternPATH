@@ -222,6 +222,8 @@ model StudentProfile {
   skills       String[] @default([])
   bio          String?  @db.Text
   portfolioUrl String?  @map("portfolio_url") @db.Text
+  /// Private bucket — ห้ามคืน key ออก API (ใช้ Signed URL) — api-contract §7.1, data-schema §6 (PM ตัดสิน 2026-11-18)
+  photoKey     String?  @map("photo_key") @db.Text
   major        String   @db.Text
   yearLevel    Int      @map("year_level")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

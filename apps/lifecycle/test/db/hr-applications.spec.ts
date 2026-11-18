@@ -6,6 +6,7 @@ import { OutboxWriter, configureApp } from '@internpath/common';
 import { expect } from 'chai';
 import request from 'supertest';
 import type { ApplicationStatus } from '../../generated/client';
+import { S3StorageService } from '../../src/common/storage/s3-storage.service';
 import { LifecycleConfigModule } from '../../src/config/lifecycle-config.module';
 import { IdentityInternalClient } from '../../src/internal/identity-client.service';
 import { InternalModule } from '../../src/internal/internal.module';
@@ -20,11 +21,17 @@ import { addDays, bangkokToday } from '../../src/state-machine/dates';
 import { FakeJobClient } from '../support/application-fakes';
 import { createTestDatabase, type TestDatabase } from '../support/db';
 import { TEST_JWT, bearer } from '../support/jwt';
-import { FakeIdentity } from '../support/profile-resume-fakes';
+import { FakeIdentity, FakeStorage } from '../support/profile-resume-fakes';
 
 /** OutboxWriter มาจาก MessagingModule (Global) ในแอปจริง — เทสต์ไม่ต่อ RabbitMQ จึงให้ตัวเขียนตรง */
+/** แอปจริงได้ S3StorageService จาก StorageModule (Global) — HR ใช้ออก Signed URL ของรูปโปรไฟล์ */
+const hrStorage = new FakeStorage();
+
 @Global()
-@Module({ providers: [OutboxWriter], exports: [OutboxWriter] })
+@Module({
+  providers: [OutboxWriter, { provide: S3StorageService, useValue: hrStorage }],
+  exports: [OutboxWriter, S3StorageService],
+})
 class OutboxOnlyModule {}
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
