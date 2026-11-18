@@ -1,4 +1,4 @@
-import { generateKeyPairSync, randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
 import { INestApplication } from '@nestjs/common';
@@ -181,5 +181,20 @@ describe('Gateway proxy and security', function () {
     }
     await edge(request(app.getHttpServer()).get('/api/v1/public/certificates/cert-123'))
       .set('X-Client-IP', '198.51.100.60').expect(429);
+  });
+
+  it('streams a 2 MB multipart profile photo to Lifecycle without a Gateway body limit', async () => {
+    // ASCII content so the echo upstream (utf8) can return it byte-for-byte.
+    const photo = randomBytes(1024 * 1024).toString('hex');
+    expect(Buffer.byteLength(photo)).to.equal(2 * 1024 * 1024);
+    const response = await edge(request(app.getHttpServer()).put('/api/v1/me/profile/photo'))
+      .set('Authorization', `Bearer ${token()}`)
+      .attach('file', Buffer.from(photo), { filename: 'photo.png', contentType: 'image/png' })
+      .expect(200);
+    expect(response.body.method).to.equal('PUT');
+    expect(response.body.path).to.equal('/v1/me/profile/photo');
+    expect(response.body.headers['content-type']).to.match(/^multipart\/form-data; boundary=/);
+    expect(response.body.headers['x-user-id']).to.equal(userId);
+    expect(response.body.body).to.include(photo);
   });
 });
