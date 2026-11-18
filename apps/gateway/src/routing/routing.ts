@@ -29,9 +29,27 @@ const PUBLIC_POST = new Set([
   '/auth/password/reset', '/auth/invitations/accept',
 ]);
 
+/**
+ * Public read endpoints (PM decision): GET only, no login. Each regex anchors the full path so
+ * sub-resources such as `/jobs/{id}/reports` stay protected. The name is also the rate-limit
+ * bucket (60/min/IP each, separate per route because the home page calls several at once).
+ */
+export const PUBLIC_READ_ROUTES: readonly { name: string; pattern: RegExp }[] = [
+  { name: 'public-search-jobs', pattern: /^\/search\/jobs$/ },
+  { name: 'public-job-detail', pattern: new RegExp(`^/jobs/${item}$`) },
+  { name: 'public-directory-list', pattern: /^\/directory\/companies$/ },
+  { name: 'public-directory-detail', pattern: new RegExp(`^/directory/companies/${item}$`) },
+  { name: 'public-company-reviews', pattern: new RegExp(`^/companies/${item}/reviews$`) },
+];
+
+export function publicReadRoute(method: string, path: string): string | undefined {
+  if (method !== 'GET') return undefined;
+  return PUBLIC_READ_ROUTES.find(({ pattern }) => pattern.test(path))?.name;
+}
+
 export function isPublicRoute(method: string, path: string): boolean {
   if (method === 'POST' && PUBLIC_POST.has(path)) return true;
   if (method === 'GET' && (path === '/.well-known/jwks.json' ||
       new RegExp(`^/public/certificates/${item}(?:/verify-hash)?$`).test(path))) return true;
-  return false;
+  return publicReadRoute(method, path) !== undefined;
 }

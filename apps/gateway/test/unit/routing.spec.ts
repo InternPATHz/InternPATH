@@ -31,7 +31,21 @@ describe('Gateway routing contract §3', () => {
     expect(isPublicRoute('GET', '/.well-known/jwks.json')).to.equal(true);
     expect(isPublicRoute('GET', '/public/certificates/abc')).to.equal(true);
     expect(isPublicRoute('POST', '/auth/logout')).to.equal(false);
-    expect(isPublicRoute('GET', '/jobs/1')).to.equal(false);
     expect(isPublicRoute('POST', '/public/certificates/abc')).to.equal(false);
+  });
+
+  it('opens the five public read routes for GET only, anchored to the full path', () => {
+    const publicReads = ['/search/jobs', '/jobs/abc', '/directory/companies', '/directory/companies/abc',
+      '/companies/abc/reviews'];
+    for (const path of publicReads) {
+      expect(isPublicRoute('GET', path), path).to.equal(true);
+      for (const method of ['POST', 'PUT', 'PATCH', 'DELETE'])
+        expect(isPublicRoute(method, path), `${method} ${path}`).to.equal(false);
+    }
+    for (const path of ['/jobs/abc/reports', '/jobs/abc/extra', '/jobs', '/search/jobs/x', '/search',
+      '/directory/companies/abc/members', '/directory', '/companies/abc/reviews/1', '/companies/me',
+      '/hr/jobs/abc', '/admin/jobs/abc', '/jobs-extra/abc'])
+      expect(isPublicRoute('GET', path), path).to.equal(false);
+    expect(isPublicRoute('POST', '/jobs/abc/reports')).to.equal(false);
   });
 });
