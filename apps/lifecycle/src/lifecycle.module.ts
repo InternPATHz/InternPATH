@@ -3,6 +3,8 @@ import { JwtAuthGuard, MessagingModule, RolesGuard } from '@internpath/common';
 import { LifecycleConfigModule } from './config/lifecycle-config.module';
 import { StorageModule } from './common/storage/storage.module';
 import { InternalModule } from './internal/internal.module';
+import { ReservationCheckModule } from './internal/reservation-check.controller';
+import { SlaSchedulerModule } from './jobs/sla-scheduler.module';
 import { AdvisorModule } from './modules/advisor/advisor.module';
 import { ReviewConsumersModule } from './events/consumers/review-moderation-result.consumer';
 import { CertificatesModule } from './modules/certificates/certificates.module';
@@ -52,6 +54,8 @@ import type { Tx } from './prisma/types';
     ReviewsModule,
     ReviewConsumersModule,
     CertificatesModule,
+    SlaSchedulerModule,
+    ReservationCheckModule,
   ],
   providers: [JwtAuthGuard, RolesGuard],
   exports: [
