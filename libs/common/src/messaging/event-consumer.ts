@@ -54,6 +54,9 @@ export type DeliveryOutcome =
   | { kind: 'retry'; nextCount: number }
   | { kind: 'dead-letter'; reason: DeadLetterInfo['reason']; eventId?: string; type?: string };
 
+/** A handler can explicitly reject malformed input after its transaction rolls back. */
+export class InvalidMessageError extends Error {}
+
 interface ProcessArgs<Tx extends ProcessedEventsTx> {
   raw: Buffer;
   retryCount: number;
@@ -107,6 +110,9 @@ export async function processDelivery<Tx extends ProcessedEventsTx>(
     });
     return { kind: 'ack' };
   } catch (e) {
+    if (e instanceof InvalidMessageError) {
+      return { kind: 'dead-letter', reason: 'invalid_message', eventId: envelope.event_id, type: envelope.type };
+    }
     a.onError?.(e as Error);
     if (a.retryCount < a.maxRetries) return { kind: 'retry', nextCount: a.retryCount + 1 };
     return { kind: 'dead-letter', reason: 'retries_exhausted', eventId: envelope.event_id, type: envelope.type };

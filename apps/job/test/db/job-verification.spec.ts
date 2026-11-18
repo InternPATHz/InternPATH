@@ -11,6 +11,7 @@ import { expect } from 'chai';
 import sinon from 'sinon';
 import { JobVerifiedConsumer } from '../../src/events/consumers/job-verified.consumer';
 import type { Tx } from '../../src/prisma/types';
+import { JobReportRoundService } from '../../src/status/job-report-round.service';
 import { JobStatusTransitionService } from '../../src/status/job-status-transition.service';
 import { JobVerificationService } from '../../src/status/job-verification.service';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
@@ -61,7 +62,8 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
     sandbox = sinon.createSandbox();
     sandbox.useFakeTimers({ now: NOW, toFake: ['Date'] });
     warn = sandbox.stub(Logger.prototype, 'warn');
-    const service = new JobVerificationService(new JobStatusTransitionService(new OutboxWriter()));
+    const transitions = new JobStatusTransitionService(new OutboxWriter());
+    const service = new JobVerificationService(transitions, new JobReportRoundService(transitions));
     const consumer = {
       subscribe: async (sub: Subscription<Tx>) => {
         subscription = sub;
@@ -273,25 +275,21 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
     expect(after.verifyingSince).to.deep.equal(before.verifyingSince);
   });
 
-  for (const decision of ['RESTORE', 'REMOVE', 'UNKNOWN_DECISION'] as const) {
-    it(`${decision}: unimplemented/unsupported decisions fail explicitly and retain no processed marker`, async () => {
-      const before = await seedJob(db.prisma, 'SUSPENDED', { suspendedFromStatus: 'PUBLISHED' });
-      const env = jobVerified(before.id, before.currentSubmissionId!);
-      env.payload.decision = decision as JobVerifiedPayload['decision'];
-      expect(await deliver(env)).to.deep.equal({ kind: 'retry', nextCount: 1 });
-      expect(await deliver(env, undefined, 3)).to.include({
-        kind: 'dead-letter',
-        reason: 'retries_exhausted',
-      });
-      expect(await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } })).to.deep.equal(
-        before,
-      );
-      expect(await writes(before.id)).to.deep.equal({ history: [], outbox: [] });
-      expect(await db.prisma.processedEvent.count({ where: { eventId: env.event_id } })).to.equal(
-        0,
-      );
+  it('unknown decisions fail explicitly and retain no processed marker', async () => {
+    const before = await seedJob(db.prisma, 'SUSPENDED', { suspendedFromStatus: 'PUBLISHED' });
+    const env = jobVerified(before.id, before.currentSubmissionId!);
+    env.payload.decision = 'UNKNOWN_DECISION' as JobVerifiedPayload['decision'];
+    expect(await deliver(env)).to.deep.equal({ kind: 'retry', nextCount: 1 });
+    expect(await deliver(env, undefined, 3)).to.include({
+      kind: 'dead-letter',
+      reason: 'retries_exhausted',
     });
-  }
+    expect(await db.prisma.job.findUniqueOrThrow({ where: { id: before.id } })).to.deep.equal(
+      before,
+    );
+    expect(await writes(before.id)).to.deep.equal({ history: [], outbox: [] });
+    expect(await db.prisma.processedEvent.count({ where: { eventId: env.event_id } })).to.equal(0);
+  });
 
   it('a missing Job is a warned no-op', async () => {
     const env = jobVerified(randomUUID(), randomUUID());

@@ -1,8 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { EventEnvelope } from '@internpath/contracts';
+import { Logger } from '@nestjs/common';
 import { expect } from 'chai';
+import sinon from 'sinon';
 import {
   EventConsumer,
+  InvalidMessageError,
   ORIGIN_QUEUE_HEADER,
   RETRY_COUNT_HEADER,
   processDelivery,
@@ -236,6 +239,36 @@ function fakeBroker(opts: { publishFails?: boolean } = {}) {
 }
 
 describe('EventConsumer', () => {
+  it('dead-letters classified handler failures immediately after rollback and logs only safe metadata', async () => {
+    const f = fakeBroker();
+    const store = fakeStore();
+    const info: DeadLetterInfo[] = [];
+    const consumer = new EventConsumer<ProcessedEventsTx>(f.broker, {
+      service: 'notification',
+      runInTransaction: store.runInTransaction,
+      onDeadLetter: (entry) => info.push(entry),
+    });
+    const secret = 'sensitive-input';
+    const e = envelope({ payload: { text: secret } });
+    await consumer.subscribe(sub(async () => { throw new InvalidMessageError(secret); }));
+    const error = sinon.spy(Logger.prototype, 'error');
+    try {
+      await f.deliver(f.msg(e));
+      expect(store.state.txCalls).to.equal(1);
+      expect(store.committed.size).to.equal(0);
+      expect(f.order).to.deep.equal(['nack']);
+      expect(f.nacked).to.deep.equal([{ requeue: false }]);
+      expect(info).to.deep.equal([{
+        queue: QUEUE, eventId: e.event_id, type: e.type, reason: 'invalid_message',
+      }]);
+      expect(error.calledOnce).to.equal(true);
+      expect(error.firstCall.args[0]).to.include('invalid_message').and.not.include(secret);
+    } finally {
+      error.restore();
+      await consumer.close();
+    }
+  });
+
   it('ack ถูกเรียกหลัง runInTransaction resolve เท่านั้น (ลำดับ: transaction → ack)', async () => {
     const f = fakeBroker();
     const store = fakeStore();

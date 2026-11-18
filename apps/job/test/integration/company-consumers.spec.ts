@@ -57,7 +57,7 @@ describe('Job company consumers (real RabbitMQ + PostgreSQL, private test vhost)
     });
     snapshots = moduleRef.get(CompanySnapshotService);
     await moduleRef.init();
-    expect(acknowledgements).to.have.length(4);
+    expect(acknowledgements).to.have.length(5);
     sinon.assert.calledOnce(relay);
     publisher = new BrokerConnection({ url: isolated.url });
     await publisher.connect();

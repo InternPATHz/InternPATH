@@ -1,11 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import { Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import {
   BrokerConnection,
+  consumerQueueName,
+  DEFAULT_RETRY_DELAYS_MS,
+  dlqName,
   OutboxRelay,
   PgRelayDb,
   RELAY_FACTORY,
+  RETRY_COUNT_HEADER,
+  retryQueueName,
   type RelayFactory,
 } from '@internpath/common';
 import {
@@ -20,7 +26,7 @@ import { JobModule } from '../../src/job.module';
 import { JobStatusTransitionService } from '../../src/status/job-status-transition.service';
 import { createBrokerSandboxOrSkip, type BrokerSandbox } from '../support/broker';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
-import { jobVerified, seedJob } from '../support/job-events';
+import { jobVerified, reportThreshold, seedJob } from '../support/job-events';
 import { eventually } from '../support/wait';
 
 const TIMESTAMPS = {
@@ -125,14 +131,18 @@ describe('E02 -> atomic Job transition -> E03 shared relay (real RabbitMQ + Post
           where: { eventId: incoming.get(env.payload.job_id)! },
         });
         const history = await db.prisma.statusHistory.count({
-          where: { entityId: env.payload.job_id, toStatus: env.payload.to_status },
+          where: {
+            entityId: env.payload.job_id,
+            toStatus: env.payload.to_status,
+            correlationId: env.correlation_id,
+          },
         });
         expect(marker).to.equal(1);
         expect(history).to.equal(1);
         expect(
           (await db.prisma.job.findUniqueOrThrow({ where: { id: env.payload.job_id } }))
             .entityVersion,
-        ).to.equal(env.payload.entity_version);
+        ).to.be.at.least(env.payload.entity_version);
         visibilityChecks++;
       }
       return publish(exchange, key, body, options);
@@ -159,11 +169,11 @@ describe('E02 -> atomic Job transition -> E03 shared relay (real RabbitMQ + Post
     }
   });
 
-  const send = (env: ReturnType<typeof jobVerified>, retryCount?: number) => {
+  const send = (env: ReturnType<typeof jobVerified> | ReturnType<typeof reportThreshold>) => {
     incoming.set(env.payload.job_id, env.event_id);
     return publisher.publish(
       EVENTS_EXCHANGE,
-      routingKey('verification', 'JobVerified'),
+      routingKey(env.producer, env.type),
       Buffer.from(JSON.stringify(env)),
       {
         contentType: 'application/json',
@@ -171,7 +181,6 @@ describe('E02 -> atomic Job transition -> E03 shared relay (real RabbitMQ + Post
         messageId: env.event_id,
         headers: {
           'x-correlation-id': env.correlation_id,
-          ...(retryCount === undefined ? {} : { 'x-retry-count': retryCount }),
         },
       },
     );
@@ -297,21 +306,272 @@ describe('E02 -> atomic Job transition -> E03 shared relay (real RabbitMQ + Post
     }
   });
 
-  it('a contract-blocked RESTORE is dead-lettered at retry exhaustion without partial state or a marker', async () => {
+  it('acknowledges RESTORE without a queue item ID and makes no transition', async () => {
     const job = await seedJob(db.prisma, 'SUSPENDED', { suspendedFromStatus: 'PUBLISHED' });
     const env = jobVerified(job.id, job.currentSubmissionId!, 'RESTORE');
-    await send(env, 3);
-    let receivedId: string | undefined;
-    await eventually(async () => {
-      const message = await observer.get('job.JobVerified.dlq', { noAck: true });
-      if (!message) return false;
-      receivedId = JSON.parse(message.content.toString()).event_id;
-      return true;
-    });
-    expect(receivedId).to.equal(env.event_id);
+    const before = ackCount;
+    await send(env);
+    await eventually(async () => ackCount === before + 1);
     expect(await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).to.deep.equal(job);
-    expect(await db.prisma.processedEvent.count({ where: { eventId: env.event_id } })).to.equal(0);
+    expect(await db.prisma.processedEvent.count({ where: { eventId: env.event_id } })).to.equal(1);
     expect(await db.prisma.outboxEvent.count({ where: { aggregateId: job.id } })).to.equal(0);
     expect(emitted(job.id)).to.have.length(0);
+  });
+
+  it('retries a rolled-back E04, then publishes RESTORE and REMOVE for matching rounds', async () => {
+    const job = await seedJob(db.prisma, 'PUBLISHED', {
+      publishedAt: TIMESTAMPS.publishedAt,
+      applicationDeadline: new Date('2099-12-01'),
+    });
+    const first = reportThreshold(job.id, job.companyId);
+    const transitions = moduleRef.get(JobStatusTransitionService);
+    const original = transitions.change.bind(transitions);
+    let attempts = 0;
+    const change = sinon.stub(transitions, 'change').callsFake(async (...args) => {
+      const result = await original(...args);
+      if (++attempts === 1) throw new Error('Injected E04 failure after outbox insertion');
+      return result;
+    });
+    try {
+      const before = ackCount;
+      await send(first);
+      await eventually(async () => ackCount === before + 1);
+      expect(await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).to.deep.equal(job);
+      expect(await db.prisma.reportRound.count({ where: { jobId: job.id } })).to.equal(0);
+      expect(await db.prisma.statusHistory.count({ where: { entityId: job.id } })).to.equal(0);
+      expect(await db.prisma.outboxEvent.count({ where: { aggregateId: job.id } })).to.equal(0);
+      expect(await db.prisma.processedEvent.count({ where: { eventId: first.event_id } })).to.equal(
+        0,
+      );
+      await eventually(async () => emitted(job.id).length === 1, 15000);
+      expect(attempts).to.equal(2);
+    } finally {
+      change.restore();
+    }
+    expect(emitted(job.id)[0].env.payload).to.include({
+      to_status: 'SUSPENDED',
+      reason_code: 'REPORT_THRESHOLD',
+      application_effect: 'FREEZE',
+    });
+    const restore = jobVerified(job.id, job.currentSubmissionId!, 'RESTORE');
+    restore.payload.queue_item_id = first.payload.queue_item_id;
+    restore.payload.decided_by = 'ADMIN';
+    await send(restore);
+    await eventually(async () => emitted(job.id).length === 2);
+    expect(emitted(job.id)[1].env.payload).to.include({
+      to_status: 'PUBLISHED',
+      reason_code: 'ADMIN_DISMISSED',
+      application_effect: 'UNFREEZE',
+    });
+    const next = reportThreshold(job.id, job.companyId);
+    next.payload.reached_at = new Date(Date.parse(first.payload.reached_at) + 1).toISOString();
+    await send(next);
+    await eventually(async () => emitted(job.id).length === 3);
+    const remove = jobVerified(job.id, job.currentSubmissionId!, 'REMOVE');
+    remove.payload.queue_item_id = next.payload.queue_item_id;
+    remove.payload.decided_by = 'ADMIN';
+    await send(remove);
+    await eventually(async () => emitted(job.id).length === 4);
+    expect(emitted(job.id)[3].env.payload).to.include({
+      to_status: 'REMOVED',
+      application_effect: 'CANCEL_PRE_APPROVAL',
+    });
+    const final = await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } });
+    expect(final).to.include({ status: 'REMOVED', version: 8, entityVersion: 14 });
+    expect(final.publishedAt).to.deep.equal(job.publishedAt);
+    expect(
+      await db.prisma.reportRound.count({ where: { jobId: job.id, status: 'CLOSED' } }),
+    ).to.equal(2);
+    expect(
+      await db.prisma.statusHistory.count({
+        where: { entityId: job.id, actorRole: 'PLATFORM_ADMIN', actorId: null },
+      }),
+    ).to.equal(2);
+  });
+
+  for (const [decision, decidedBy, role] of [
+    ['RESTORE', 'ADMIN', 'PLATFORM_ADMIN'],
+    ['REMOVE', 'ADMIN', 'PLATFORM_ADMIN'],
+    ['REMOVE', 'SYSTEM', 'SYSTEM'],
+  ] as const) {
+    it(`applies a parked ${decidedBy} ${decision} when E04 returns from the real retry queue`, async () => {
+      const job = await seedJob(db.prisma, 'PUBLISHED', { publishedAt: TIMESTAMPS.publishedAt });
+      const threshold = reportThreshold(job.id, job.companyId);
+      const resolution = jobVerified(job.id, job.currentSubmissionId!, decision);
+      resolution.payload.queue_item_id = threshold.payload.queue_item_id;
+      resolution.payload.decided_by = decidedBy;
+      const transitions = moduleRef.get(JobStatusTransitionService);
+      const original = transitions.change.bind(transitions);
+      let attempts = 0;
+      const change = sinon.stub(transitions, 'change').callsFake(async (...args) => {
+        const result = await original(...args);
+        if (args[1].id === job.id && ++attempts === 1) throw new Error('Injected E04 rollback');
+        return result;
+      });
+      const round = () =>
+        db.prisma.reportRound.findUnique({
+          where: {
+            jobId_queueItemId: { jobId: job.id, queueItemId: threshold.payload.queue_item_id },
+          },
+        });
+      const jobState = () => db.prisma.job.findUniqueOrThrow({ where: { id: job.id } });
+      try {
+        const before = ackCount;
+        await send(threshold);
+        await eventually(async () => ackCount === before + 1);
+        expect(await round()).to.equal(null);
+        expect(await jobState()).to.deep.equal(job);
+        await send(resolution);
+        await eventually(async () => (await round())?.status === 'DECIDED');
+        expect(await round()).to.deep.include({
+          decision,
+          reachedAt: null,
+          decidedBy,
+          correlationId: resolution.correlation_id,
+          decidedAt: new Date(resolution.payload.decided_at),
+        });
+        expect(await jobState()).to.deep.equal(job);
+        expect(emitted(job.id)).to.deep.equal([]);
+        await eventually(async () => (await round())?.status === 'CLOSED', 15000);
+        expect(await round()).to.deep.include({
+          decision,
+          reachedAt: new Date(threshold.payload.reached_at),
+          decidedBy,
+          correlationId: resolution.correlation_id,
+          suspendedFromStatus: decision === 'REMOVE' ? 'PUBLISHED' : null,
+        });
+
+        if (decision === 'RESTORE') {
+          expect(await jobState()).to.deep.equal(job);
+          expect(await db.prisma.statusHistory.count({ where: { entityId: job.id } })).to.equal(0);
+          expect(await db.prisma.outboxEvent.count({ where: { aggregateId: job.id } })).to.equal(0);
+          expect(emitted(job.id)).to.deep.equal([]);
+        } else {
+          await eventually(async () => emitted(job.id).length === 2);
+          const [suspension, removal] = emitted(job.id);
+          const { env: freeze } = suspension;
+          const { env: cancel } = removal;
+          expect(freeze.correlation_id).to.equal(threshold.correlation_id);
+          expect(suspension.correlationId).to.equal(threshold.correlation_id);
+          expect(freeze.payload).to.include({
+            from_status: 'PUBLISHED',
+            to_status: 'SUSPENDED',
+            entity_version: job.entityVersion + 1,
+            application_effect: 'FREEZE',
+            reason_code: 'REPORT_THRESHOLD',
+          });
+          expect(cancel.correlation_id).to.equal(resolution.correlation_id);
+          expect(removal.correlationId).to.equal(resolution.correlation_id);
+          expect(cancel.payload).to.include({
+            from_status: 'SUSPENDED',
+            to_status: 'REMOVED',
+            entity_version: job.entityVersion + 2,
+            application_effect: 'CANCEL_PRE_APPROVAL',
+          });
+          expect(await jobState()).to.deep.include({
+            status: 'REMOVED',
+            version: job.version + 2,
+            entityVersion: cancel.payload.entity_version,
+            publishedAt: job.publishedAt,
+            suspendedFromStatus: null,
+          });
+          const history = await db.prisma.statusHistory.findMany({
+            where: { entityId: job.id },
+            orderBy: { occurredAt: 'asc' },
+          });
+          expect(history).to.have.length(2);
+          expect(history[0]).to.deep.include({
+            actorRole: 'SYSTEM',
+            actorId: null,
+            reason: 'REPORT_THRESHOLD',
+            correlationId: threshold.correlation_id,
+            occurredAt: new Date(freeze.payload.changed_at),
+          });
+          expect(history[1]).to.deep.include({
+            actorRole: role,
+            actorId: null,
+            reason: resolution.payload.decision,
+            correlationId: resolution.correlation_id,
+            occurredAt: new Date(cancel.payload.changed_at),
+          });
+        }
+        expect(
+          await db.prisma.processedEvent.count({
+            where: { eventId: { in: [threshold.event_id, resolution.event_id] } },
+          }),
+        ).to.equal(2);
+      } finally {
+        change.restore();
+      }
+    });
+  }
+
+  it('dead-letters malformed E04 directly and logs at ERROR without committing Job writes', async () => {
+    const job = await seedJob(db.prisma, 'PUBLISHED');
+    const threshold = reportThreshold(job.id, job.companyId);
+    const sensitive = 'fixture-only-private-value';
+    const dlq = dlqName(consumerQueueName('job', threshold.type));
+    const retryQueues = DEFAULT_RETRY_DELAYS_MS.map((_, index) => retryQueueName('job', index + 1));
+    const brokerPublish = moduleRef.get(BrokerConnection).publish as sinon.SinonStub;
+    const publishCount = brokerPublish.callCount;
+
+    const error = sinon.spy(Logger.prototype, 'error');
+    const before = ackCount;
+    try {
+      for (const reached_at of [
+        '2026-11-15T10:00:00.000900Z',
+        '2026-11-15T10:00:00.000100Z',
+        null,
+      ]) {
+        const invalid = {
+          ...threshold,
+          event_id: randomUUID(),
+          payload: {
+            ...threshold.payload,
+            queue_item_id: randomUUID(),
+            reached_at,
+            extra: sensitive,
+          },
+        };
+        await publisher.publish(
+          EVENTS_EXCHANGE,
+          routingKey(invalid.producer, invalid.type),
+          Buffer.from(JSON.stringify(invalid)),
+          { contentType: 'application/json', deliveryMode: 2, messageId: invalid.event_id },
+        );
+        await eventually(async () => (await observer.checkQueue(dlq)).messageCount === 1);
+        const deadLetter = await observer.get(dlq, { noAck: true });
+        expect(deadLetter && JSON.parse(deadLetter.content.toString())).to.deep.equal(invalid);
+        expect(deadLetter && deadLetter.properties.headers?.[RETRY_COUNT_HEADER]).to.equal(
+          undefined,
+        );
+        expect(String(error.lastCall.args[0]))
+          .to.include('invalid_message')
+          .and.include(invalid.event_id)
+          .and.not.include(sensitive);
+        expect(await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).to.deep.equal(job);
+        expect(await db.prisma.reportRound.count({ where: { jobId: job.id } })).to.equal(0);
+        expect(await db.prisma.statusHistory.count({ where: { entityId: job.id } })).to.equal(0);
+        expect(await db.prisma.outboxEvent.count({ where: { aggregateId: job.id } })).to.equal(0);
+        expect(
+          await db.prisma.processedEvent.count({ where: { eventId: invalid.event_id } }),
+        ).to.equal(0);
+      }
+      expect(error.callCount).to.equal(3);
+      expect(ackCount).to.equal(before);
+      expect(
+        brokerPublish
+          .getCalls()
+          .slice(publishCount)
+          .filter(({ args }) => retryQueues.includes(args[1])),
+      ).to.have.length(0);
+      expect(emitted(job.id)).to.deep.equal([]);
+    } finally {
+      error.restore();
+    }
+
+    await send(threshold);
+    await eventually(async () => emitted(job.id).length === 1);
+    expect(emitted(job.id)[0].env.payload.application_effect).to.equal('FREEZE');
   });
 });

@@ -116,10 +116,54 @@ model Job {
   updatedAt             DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   submissions           JobSubmission[]
   quotaReservations     QuotaReservation[]
+  reportRounds          ReportRound[]
 
   @@index([status, featured(sort: Desc), publishedAt(sort: Desc)])
   @@index([targetMajors], type: Gin)
   @@map("jobs")
+}
+
+enum ReportRoundStatus {
+  ACTIVE
+  CLOSED
+  DECIDED
+
+  @@map("report_round_status")
+}
+
+enum ReportRoundDecision {
+  REMOVE
+  RESTORE
+
+  @@map("report_round_decision")
+}
+
+enum ReportRoundDecider {
+  SYSTEM
+  ADMIN
+
+  @@map("report_round_decider")
+}
+
+model ReportRound {
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId               String               @map("job_id") @db.Uuid
+  queueItemId         String               @map("queue_item_id") @db.Uuid
+  status              ReportRoundStatus
+  reachedAt           DateTime?            @map("reached_at") @db.Timestamptz(6)
+  decision            ReportRoundDecision?
+  decidedAt           DateTime?            @map("decided_at") @db.Timestamptz(6)
+  decidedBy           ReportRoundDecider?  @map("decided_by")
+  correlationId       String?              @map("correlation_id") @db.Uuid
+  suspendedFromStatus JobStatus?           @map("suspended_from_status")
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  closedAt            DateTime?            @map("closed_at") @db.Timestamptz(6)
+  job                 Job                  @relation(fields: [jobId], references: [id])
+
+  // The migration also enforces state-dependent fields and at most one ACTIVE round per Job.
+  @@unique([jobId, queueItemId])
+  @@index([jobId, reachedAt])
+  @@map("report_rounds")
 }
 
 model JobSubmission {

@@ -103,6 +103,20 @@ const COLUMNS: Record<string, string[]> = {
     'attempts',
   ],
   processed_events: ['event_id', 'consumer', 'processed_at'],
+  report_rounds: [
+    'id',
+    'job_id',
+    'queue_item_id',
+    'status',
+    'reached_at',
+    'decision',
+    'decided_at',
+    'decided_by',
+    'correlation_id',
+    'suspended_from_status',
+    'created_at',
+    'closed_at',
+  ],
   status_history: [
     'id',
     'entity',
@@ -135,6 +149,9 @@ const ENUMS: Record<string, string[]> = {
   company_status: ['PENDING', 'NEED_MORE_INFO', 'VERIFIED', 'REJECTED', 'SUSPENDED'],
   allowance_type: ['AMOUNT', 'NONE'],
   job_submission_kind: ['NEW', 'EDIT', 'RESUBMIT'],
+  report_round_status: ['ACTIVE', 'CLOSED', 'DECIDED'],
+  report_round_decision: ['REMOVE', 'RESTORE'],
+  report_round_decider: ['SYSTEM', 'ADMIN'],
 };
 
 const REQUIRED = [
@@ -154,7 +171,7 @@ const REQUIRED = [
   'application_deadline',
 ];
 
-describe('Job initial migration (disposable PostgreSQL database)', function () {
+describe('Job migrations (disposable PostgreSQL database)', function () {
   this.timeout(60000);
   let db: TestDatabase | undefined;
   let pg: Client;
@@ -229,7 +246,7 @@ describe('Job initial migration (disposable PostgreSQL database)', function () {
       )
     ).rows;
 
-  it('applies to an empty database and creates exactly the nine approved tables', async () => {
+  it('applies both migrations to an empty database and creates the approved tables', async () => {
     const tables = (
       await pg.query(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'
@@ -238,11 +255,15 @@ describe('Job initial migration (disposable PostgreSQL database)', function () {
     ).rows.map((r) => r.table_name);
     expect(tables).to.deep.equal(Object.keys(COLUMNS).sort());
     const migrations = (
-      await pg.query('SELECT migration_name, finished_at FROM _prisma_migrations')
+      await pg.query(
+        'SELECT migration_name, finished_at FROM _prisma_migrations ORDER BY migration_name',
+      )
     ).rows;
-    expect(migrations).to.have.length(1);
-    expect(migrations[0].migration_name).to.equal('20261115214500_init_job');
-    expect(migrations[0].finished_at).to.be.instanceOf(Date);
+    expect(migrations.map((m) => m.migration_name)).to.deep.equal([
+      '20261115214500_init_job',
+      '20261118120000_add_job_report_rounds',
+    ]);
+    for (const migration of migrations) expect(migration.finished_at).to.be.instanceOf(Date);
   });
 
   it('has every approved column, with no extra application tables or columns', async () => {
@@ -266,6 +287,7 @@ describe('Job initial migration (disposable PostgreSQL database)', function () {
       company_flags: ['company_id'],
       outbox_events: ['id', 'aggregate_id', 'correlation_id'],
       processed_events: ['event_id'],
+      report_rounds: ['id', 'job_id', 'queue_item_id', 'correlation_id'],
       status_history: ['id', 'entity_id', 'actor_id', 'correlation_id'],
     };
     for (const [table, names] of Object.entries(uuids)) {
@@ -301,6 +323,10 @@ describe('Job initial migration (disposable PostgreSQL database)', function () {
       ['job_submissions', 'kind', 'job_submission_kind'],
       ['quota_reservations', 'status', 'quota_reservation_status'],
       ['company_snapshots', 'status', 'company_status'],
+      ['report_rounds', 'status', 'report_round_status'],
+      ['report_rounds', 'decision', 'report_round_decision'],
+      ['report_rounds', 'decided_by', 'report_round_decider'],
+      ['report_rounds', 'suspended_from_status', 'job_status'],
     ])
       expect(rows.find((r) => r.table_name === table && r.column_name === name)?.udt_name).to.equal(
         type,
@@ -315,6 +341,19 @@ describe('Job initial migration (disposable PostgreSQL database)', function () {
       expect(
         rows.find((r) => r.table_name === 'quota_reservations' && r.column_name === name)
           ?.is_nullable,
+      ).to.equal('YES');
+    }
+    for (const name of [
+      'reached_at',
+      'decision',
+      'decided_at',
+      'decided_by',
+      'correlation_id',
+      'suspended_from_status',
+      'closed_at',
+    ]) {
+      expect(
+        rows.find((r) => r.table_name === 'report_rounds' && r.column_name === name)?.is_nullable,
       ).to.equal('YES');
     }
   });
@@ -350,13 +389,14 @@ describe('Job initial migration (disposable PostgreSQL database)', function () {
     );
     expect(index('processed_events_pkey')).to.include('UNIQUE').and.include('(event_id, consumer)');
     expect(index('quota_reservations_pkey')).to.include('UNIQUE').and.include('(application_id)');
+    expect(index('report_rounds_job_id_reached_at_idx')).to.include('(job_id, reached_at)');
     expect(indexes.some((r) => /trgm|tsvector/.test(r.indexdef))).to.equal(false);
     expect(
       (await pg.query("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'")).rowCount,
     ).to.equal(0);
   });
 
-  it('has exactly the two local Job foreign keys and no cross-service foreign keys', async () => {
+  it('has only the approved local Job foreign keys', async () => {
     const keys = (
       await pg.query(
         `SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
@@ -366,11 +406,66 @@ describe('Job initial migration (disposable PostgreSQL database)', function () {
     expect(keys.map((r) => r.conname)).to.deep.equal([
       'job_submissions_job_id_fkey',
       'quota_reservations_job_id_fkey',
+      'report_rounds_job_id_fkey',
     ]);
     for (const row of keys)
       expect(row.definition).to.equal(
         'FOREIGN KEY (job_id) REFERENCES jobs(id) ON UPDATE CASCADE ON DELETE RESTRICT',
       );
+  });
+
+  it('enforces one active report round per Job and retains queue item identity after closure', async () => {
+    const { id } = await insertJob();
+    const other = await insertJob();
+    const first = randomUUID();
+    const add = (key: string, jobId = id) =>
+      pg.query(
+        `INSERT INTO report_rounds (queue_item_id, job_id, reached_at, status, suspended_from_status)
+          VALUES ($1, $2, now(), 'ACTIVE', 'PUBLISHED')`,
+        [key, jobId],
+      );
+    await add(first);
+    await fails(() => add(randomUUID()), '23505', 'report_rounds_one_active_per_job_idx');
+    await pg.query(
+      `UPDATE report_rounds SET status = 'CLOSED', decision = 'RESTORE', decided_at = now(),
+        decided_by = 'ADMIN', correlation_id = $2, closed_at = now() WHERE queue_item_id = $1`,
+      [first, randomUUID()],
+    );
+    await fails(() => add(first), '23505', 'report_rounds_job_id_queue_item_id_key');
+    await add(randomUUID());
+    await add(first, other.id);
+    expect(await db!.prisma.reportRound.count({ where: { jobId: id } })).to.equal(2);
+  });
+
+  it('enforces parked decision provenance and rejects a premature E04 timestamp', async () => {
+    const { id } = await insertJob();
+    const queue = randomUUID();
+    const correlation = randomUUID();
+    const park = (decidedBy: string | null, correlationId: string | null) =>
+      pg.query(
+        `INSERT INTO report_rounds
+          (job_id, queue_item_id, status, decision, decided_at, decided_by, correlation_id)
+          VALUES ($1, $2, 'DECIDED', 'REMOVE', now(), $3, $4)`,
+        [id, queue, decidedBy, correlationId],
+      );
+    await fails(() => park(null, correlation), '23514', 'report_rounds_state_check');
+    await fails(() => park('ADMIN', null), '23514', 'report_rounds_state_check');
+    await park('SYSTEM', correlation);
+    await fails(
+      () =>
+        pg.query('UPDATE report_rounds SET reached_at = now() WHERE queue_item_id = $1', [queue]),
+      '23514',
+      'report_rounds_state_check',
+    );
+    const round = await db!.prisma.reportRound.findUniqueOrThrow({
+      where: { jobId_queueItemId: { jobId: id, queueItemId: queue } },
+    });
+    expect(round).to.include({
+      status: 'DECIDED',
+      decidedBy: 'SYSTEM',
+      correlationId: correlation,
+    });
+    expect(round.reachedAt).to.equal(null);
   });
 
   it('allows incomplete DRAFTs through the isolated Prisma client, with documented defaults', async () => {

@@ -4,6 +4,7 @@ import { CompanyEntitlementChangedConsumer } from './company-entitlement-changed
 import { CompanyFlagChangedConsumer } from './company-flag-changed.consumer';
 import { CompanyStatusChangedConsumer } from './company-status-changed.consumer';
 import { JobVerifiedConsumer } from './job-verified.consumer';
+import { ReportThresholdReachedConsumer } from './report-threshold-reached.consumer';
 import { StatusModule } from '../../status/status.module';
 
 @Module({
@@ -13,6 +14,7 @@ import { StatusModule } from '../../status/status.module';
     CompanyEntitlementChangedConsumer,
     CompanyFlagChangedConsumer,
     JobVerifiedConsumer,
+    ReportThresholdReachedConsumer,
   ],
 })
 export class ConsumersModule {}

@@ -6,6 +6,7 @@ import type {
 } from '@internpath/contracts';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Tx } from '../prisma/types';
+import { JobReportRoundService } from './job-report-round.service';
 import { JobStatusTransitionService } from './job-status-transition.service';
 
 type ScreeningDecision = Exclude<JobVerifiedPayload['decision'], 'RESTORE' | 'REMOVE'>;
@@ -36,19 +37,22 @@ const TRANSITIONS: Record<ScreeningDecision, DecisionTransition> = {
 export class JobVerificationService {
   private readonly log = new Logger(JobVerificationService.name);
 
-  constructor(private readonly transitions: JobStatusTransitionService) {}
+  constructor(
+    private readonly transitions: JobStatusTransitionService,
+    private readonly rounds: JobReportRoundService,
+  ) {}
 
   async handleJobVerified(
     env: EventEnvelope<'JobVerified', JobVerifiedPayload>,
     tx: Tx,
   ): Promise<void> {
     const p = env.payload;
-    // RESTORE/REMOVE await the PM-approved report-round contract. Unknown decisions also
-    // fail explicitly, so shared retry/DLQ handles them without a successful processed marker.
+    if (p.decision === 'RESTORE' || p.decision === 'REMOVE') {
+      return this.rounds.resolve(env, p.decision, tx);
+    }
+    // Unknown decisions still follow the shared retry/DLQ behavior.
     if (!Object.prototype.hasOwnProperty.call(TRANSITIONS, p.decision)) {
-      const error = new Error(
-        'Unsupported JobVerified decision; report decisions await an approved round contract',
-      );
+      const error = new Error('Unsupported JobVerified decision');
       error.name = 'UnsupportedJobVerifiedDecisionError';
       throw error;
     }
