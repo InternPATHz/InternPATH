@@ -39,7 +39,7 @@
                               ┌──────▼───────┐
                               │ notification │ (Junior) ── DB ── [Postgres]
                               └──────────────┘ ── SMTP ──► Mailpit
-   File Storage: MinIO (dev) / Cloudflare R2 (สาธิต) — เข้าถึงผ่าน Service เจ้าของข้อมูลเท่านั้น
+   File Storage: RustFS (dev) / Cloudflare R2 (สาธิต) — เข้าถึงผ่าน Service เจ้าของข้อมูลเท่านั้น
 ```
 
 > แผนภาพนี้คือโครงสร้างภายใน — ตอนสาธิต Browser เข้ามาที่ **Cloudflare Workers** (Front + proxy `/api/*`) แล้วผ่าน **Cloudflare Tunnel** มาที่ gateway ของเครื่องที่รัน Docker ดู §8.1
@@ -157,11 +157,11 @@ Sync Call ภายในทั้งหมดที่มี (รายละ�
 
 | Env | DB | Broker | Storage | Mail | NestJS รันที่ |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| dev (Docker Compose) | Postgres (1 container, DB ต่อ Service) | RabbitMQ | MinIO | Mailpit | เครื่องนักพัฒนา |
+| dev (Docker Compose) | Postgres (1 container, DB ต่อ Service) | RabbitMQ | RustFS | Mailpit | เครื่องนักพัฒนา |
 | test (CI) | Postgres (service container) | Mock / RabbitMQ container | Mock | — | GitHub Actions |
 | demo (สาธิต) | Postgres ใน Docker (บนเครื่องทีม) | CloudAMQP | Cloudflare R2 | Mailpit (ในเครื่อง) | Docker Compose บนเครื่องทีม • Front: Cloudflare Workers |
 
-Docker Compose Profiles: `infra` (Postgres, RabbitMQ, MinIO, Mailpit) + `identity` `job` `verification` `lifecycle` `notification` `gateway` `web`
+Docker Compose Profiles: `infra` (Postgres, RabbitMQ, RustFS, Mailpit) + `identity` `job` `verification` `lifecycle` `notification` `gateway` `web`
 
 ### 8.1 การ Deploy ตอนสาธิต (Front บน Cloudflare, Backend บนเครื่องทีม)
 
@@ -181,7 +181,7 @@ Docker Compose Profiles: `infra` (Postgres, RabbitMQ, MinIO, Mailpit) + `identit
 | Worker proxy | ส่งต่อ `/api/*` ไปที่ `API_ORIGIN` (ตัวแปรของ Worker) พร้อม `X-Edge-Secret`; ทำแค่ proxy เพื่ออยู่ในเพดาน CPU 10 ms ของแผนฟรี |
 | ย้าย Backend ภายหลัง | เปลี่ยน `API_ORIGIN` เป็น URL ใหม่ (เช่น VM ถาวร) — ไม่ต้อง build Front ใหม่ ไม่แก้โค้ด |
 | ตอนเทสเองในเครื่อง | ชี้ `API_ORIGIN` ไป `http://localhost:3000` หรือรัน `apps/web` ในเครื่อง |
-| เปิดออกนอกเครื่อง | เฉพาะ gateway (3000) ผ่าน tunnel; Postgres 5432, RabbitMQ 15672, MinIO 9001/9000 ต้อง bind เฉพาะ `127.0.0.1` |
+| เปิดออกนอกเครื่อง | เฉพาะ gateway (3000) ผ่าน tunnel; Postgres 5432, RabbitMQ 15672, RustFS 9001/9000 ต้อง bind เฉพาะ `127.0.0.1` |
 | Front ต้องรองรับ Backend ออฟไลน์ | เมื่อ `/api/*` ตอบ 5xx/timeout ให้แสดงข้อความ "ระบบหลังบ้านออฟไลน์" ไม่ใช่หน้าพัง |
 | Token ฝั่ง Front | เริ่มจาก access token ในหน่วยความจำ + refresh token ใน `localStorage`; ถ้ามีเวลาให้ย้ายเป็น `httpOnly` cookie ที่ตั้งโดยฝั่ง server (ทำได้ง่ายเพราะ origin เดียวกัน) |
 | ลิงก์ในอีเมล | สร้างจาก `WEB_BASE_URL` (URL ของ Front บน Cloudflare) ไม่ใช่ `localhost` |

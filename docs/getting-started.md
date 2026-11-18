@@ -24,7 +24,9 @@ pnpm keys:generate            # พิมพ์ JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
 ## 3. รัน
 
 ```bash
-pnpm infra:up                                   # Postgres, RabbitMQ, MinIO, Mailpit
+pnpm infra:up                                   # Postgres, RabbitMQ, RustFS (S3), Mailpit
+pnpm infra:init-buckets                         # ครั้งแรกเท่านั้น: สร้าง bucket ใน RustFS (ไฟล์เรซูเม่/โลโก้)
+pnpm storage:check                              # (ไม่บังคับ) ตรวจ storage: อัปโหลด Signed URL หมดอายุ ลบ โลโก้สาธารณะ; กับ R2: pnpm storage:check -- --env .env.r2
 pnpm --filter @internpath/identity start:dev    # รัน Service เดียวแบบ watch (แทน identity ด้วย job, verification, ...)
 pnpm --filter @internpath/web dev               # เว็บ http://localhost:3100
 ```
@@ -40,7 +42,7 @@ pnpm --filter @internpath/web dev               # เว็บ http://localhost:
 | web | 3100 | — | — |
 
 - `/health` = liveness (ไม่ต้องมี DB) • `/ready` = ตรวจ Postgres + RabbitMQ (ตอบ 503 ถ้ายังไม่ได้รัน `pnpm infra:up`)
-- Mailpit UI: http://localhost:8025 • RabbitMQ UI: http://localhost:15672 • MinIO Console: http://localhost:9001
+- Mailpit UI: http://localhost:8025 • RabbitMQ UI: http://localhost:15672 • RustFS: S3 http://localhost:9000 • Console http://localhost:9001/rustfs/console/index.html
 
 จะเริ่มเขียนโค้ดต่อ → อ่าน [developer-guide.md](developer-guide.md)
 

@@ -15,6 +15,8 @@
     "format": "prettier --write .",
     "keys:generate": "node scripts/generate-jwt-keys.mjs",
     "infra:up": "docker compose --profile infra up -d",
+    "infra:init-buckets": "node scripts/dev-init-buckets.cjs",
+    "storage:check": "node scripts/check-storage.cjs",
     "infra:topology": "pnpm --filter @internpath/common exec ts-node scripts/provision-topology.ts",
     "infra:down": "docker compose --profile infra down"
   },

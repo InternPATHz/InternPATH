@@ -233,9 +233,9 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 - [ ] Scheduler (SLA, Reconciliation โควตา, Fail-safe 5 นาที)
 - [ ] หน้าเว็บของแต่ละ Role (หน้า Auth/Account และหน้าแรกมีแล้ว; หน้า Admin เสียบเข้า Admin Shell กลางที่ PM ทำ — ตารางเจ้าของหน้าอยู่ใน [README](../README.md) หัวข้อ 11)
 - [ ] โครงเว็บรวม (Header, Footer, เมนูตามบทบาท, Admin Shell, หน้านโยบายความเป็นส่วนตัว) — PM
-- [ ] Dockerfile ของ Service ยังไม่เคยรัน; `docker compose --profile infra up -d postgres rabbitmq mailpit` รันผ่านแล้ว (2026-11-13) แต่ **MinIO ดึง image ไม่ได้** (`minio/minio` บน Docker Hub ใช้ไม่ได้ และ `quay.io/minio/minio` ตอบ 401) ต้องเปลี่ยนไปใช้ตัวแทนที่รองรับ S3
+- [ ] Dockerfile ของ Service ยังไม่เคยรัน; `docker compose --profile infra up -d postgres rabbitmq mailpit` รันผ่านแล้ว (2026-11-13) ส่วน **MinIO ดึง image ไม่ได้** (`minio/minio` บน Docker Hub ใช้ไม่ได้ และ `quay.io/minio/minio` ตอบ 401) จึงเปลี่ยนเป็น **RustFS** (`rustfs/rustfs:1.0.6`, PM ตัดสิน 2026-11-18): ทดสอบด้วย `S3StorageService` จริง — อัปโหลด 5 MB, Signed URL, หมดอายุ, ลบ (idempotent), public bucket — ผ่าน 13/13; ครั้งแรกหลัง `pnpm infra:up` ให้รัน `pnpm infra:init-buckets` (สร้าง bucket ด้วย region `us-east-1` เพราะ `auto` ถูกปฏิเสธตอน `CreateBucket` และตั้ง policy ให้ public bucket อ่านได้); ใช้เฉพาะ dev/สาธิตในเครื่อง ส่วนสาธิตจริงใช้ Cloudflare R2
 - [ ] การสาธิตผ่าน Cloudflare ([architecture.md](architecture.md) §8.1): Worker proxy `/api/*` + `API_ORIGIN`, ตรวจ `X-Edge-Secret` / CORS / IP ผู้ใช้ที่ Gateway, ข้อความ "ระบบหลังบ้านออฟไลน์" ใน Front, ลิงก์อีเมลจาก `WEB_BASE_URL`
-- [x] `docker-compose.yml`: Postgres / RabbitMQ / MinIO bind เฉพาะ `127.0.0.1` และมี `restart: unless-stopped`
+- [x] `docker-compose.yml`: Postgres / RabbitMQ / RustFS bind เฉพาะ `127.0.0.1` และมี `restart: unless-stopped`
 - [x] Retry queue ร่วมต่อ Service (3 คิวต่อ Service) เพื่ออยู่ในเพดาน queue ของ CloudAMQP แผนฟรี ([event-contract.md](event-contract.md) §3.3) — ยังต้องตรวจตัวเลขเพดานจริงกับ CloudAMQP (ดู [architecture.md](architecture.md) §8.1)
 
 เลือกงานจาก Work Plan ใน README หัวข้อ 9 ตามสัปดาห์ แล้วตรวจกับ Open Decisions ท้าย [architecture.md](architecture.md) ก่อนเริ่ม

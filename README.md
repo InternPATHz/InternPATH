@@ -76,7 +76,7 @@
 | **Message Broker** | **RabbitMQ** | ตอนพัฒนารันใน Docker ในเครื่อง ตอน Deploy ใช้ **CloudAMQP** (แผนฟรีมีเพดานข้อความ/จำนวน connection ดู 5.12) |
 | **Database** | **PostgreSQL (Docker)** | รันใน Docker Compose ทั้งตอนพัฒนาและตอนสาธิต (ไม่ใช้ Neon) — 1 instance แต่แยกฐานข้อมูลต่อ Service (`identity_db`, `job_db`, …) ตาม `docker/postgres/init.sql` |
 | **ORM** | **Prisma** | `schema.prisma` ต่อ 1 Service; ตั้งทั้ง `<PREFIX>_DATABASE_URL` และ `<PREFIX>_DIRECT_URL` เป็นค่าเดียวกัน (ไม่มี connection pooler) เผื่อย้ายไปฐานข้อมูลที่ต้องแยกสองแบบภายหลัง (ดูกติกาด้านล่าง) |
-| **File Storage** | **Cloudflare R2** (สาธิต) / **MinIO** (พัฒนา) | ใช้ผ่าน S3 API (`@aws-sdk/client-s3`) สลับกันได้ด้วยค่า config (ดู 5.9) • ตอนสาธิตต้องใช้ R2 เพราะ Signed URL ต้องเปิดได้จากเบราว์เซอร์ (MinIO ในเครื่องเปิดจากเครื่องอื่นไม่ได้) |
+| **File Storage** | **Cloudflare R2** (สาธิต) / **RustFS** (พัฒนา) | ใช้ผ่าน S3 API (`@aws-sdk/client-s3`) สลับกันได้ด้วยค่า config (ดู 5.9) • ตอนสาธิตต้องใช้ R2 เพราะ Signed URL ต้องเปิดได้จากเบราว์เซอร์ (RustFS ในเครื่องเปิดจากเครื่องอื่นไม่ได้) |
 | **Email** | **Mailpit** | SMTP จำลองใน Docker Compose ใช้ได้ทั้งตอนพัฒนาและสาธิตบนเครื่องเดียว (อีเมลอยู่ใน Mailpit ของเครื่องนั้น) • ถ้าต้องให้คนอื่นรับอีเมลจริง ตั้ง `SMTP_*` ชี้ไปบริการ SMTP แทน (ไม่ต้องแก้โค้ด) |
 | **Repository** | **Monorepo (pnpm workspaces)** | `apps/` = `web`, `gateway`, และ 5 Services; `libs/` = `contracts` (ชนิดข้อมูล Event/DTO) และ `common` (Guard, Logger, Correlation ID); เอกสารอยู่ใน `docs/` |
 | **Testing** | **Mocha + Chai + Sinon + c8** | Unit / Integration Test ของแต่ละ Service ใช้ Mocha เป็น Test Runner (เบาและรัน process เดียว เหมาะกับเครื่องของทีม), Chai เป็น Assertion, Sinon สำหรับ Mock/Stub, c8 วัด Coverage; ทดสอบ API ด้วย `supertest` กับ Test Database แยกต่างหาก (Docker) ไม่ใช้ฐานข้อมูลจริง; แต่ละ Service มี `.mocharc` และสคริปต์ `pnpm test` ของตนเอง (Nest CLI สร้างโปรเจกต์มาพร้อม Jest ต้องถอดออกและตั้งค่า Mocha + `ts-node` แทน); UAT ในหัวข้อ 10 ยังเป็นการทดสอบด้วยมือตามเดิม |
@@ -352,7 +352,7 @@
 - **ลำดับ Event:** Consumer เปรียบเทียบ `version` / เวลาของข้อมูลก่อนเขียนทับ เพื่อไม่ให้ Event เก่ามาถึงทีหลังแล้วทับข้อมูลใหม่ (เช่น Snapshot บริษัท)
 
 ### 5.9 กติกาการเก็บและอัปโหลดไฟล์
-- **ที่เก็บ:** Cloudflare R2 (Deploy) / MinIO (พัฒนา) ผ่าน S3 API; **ฐานข้อมูลเก็บเฉพาะ Object Key** และ metadata ไม่เก็บไฟล์
+- **ที่เก็บ:** Cloudflare R2 (Deploy) / RustFS (พัฒนา) ผ่าน S3 API; **ฐานข้อมูลเก็บเฉพาะ Object Key** และ metadata ไม่เก็บไฟล์
 - **Bucket สาธารณะ:** เฉพาะโลโก้บริษัท (แสดงบนหน้าเว็บ) | **Bucket ส่วนตัว (Private):** เรซูเม่, เอกสารยืนยันบริษัท, PDF E-Certificate — เข้าถึงผ่าน **Signed URL อายุประมาณ 10 นาที** ที่ออกให้หลังตรวจสิทธิ์แล้วเท่านั้น
 - **ชนิดและขนาด:** เรซูเม่/เอกสารเป็น PDF; รูปเป็น jpg / png / webp; ไฟล์ทั่วไป ≤ 5 MB และโลโก้ ≤ 2 MB
 - **ตรวจฝั่ง Server:** ตรวจ MIME จริงจากเนื้อไฟล์ (ไม่เชื่อนามสกุล) ปฏิเสธชนิดอื่น
@@ -406,7 +406,7 @@
    - **Automated Test:** แต่ละ Service เขียน Unit / Integration Test ด้วย **Mocha + Chai + Sinon** และวัด Coverage ด้วย **c8** ทดสอบ API ด้วย `supertest` กับ Test Database แยก (Docker) ไม่ใช้ฐานข้อมูลจริง เคสสำคัญที่ต้องมีเทสอัตโนมัติ ได้แก่ State Machine ใบสมัคร, การจอง/คืนโควตาแบบ Atomic (รวมกรณียิงพร้อมกัน), Idempotency ของ Consumer และ Risk Score
    - **CI:** GitHub Actions รัน Lint, Test และ Build ของ Service ที่ถูกแก้ทุก Pull Request (รันเทสบน CI แทนเครื่องของแต่ละคนเพื่อไม่ให้เครื่องหนักเกินไป)
    - **Integration & UAT:** ทดสอบการส่ง Event ข้าม Service และ UAT ตามหัวข้อ 10 โดย **ผู้ทดสอบต้องไม่ใช่เจ้าของ Service ที่ทดสอบ** (Lifecycle Service ซึ่ง Tester เป็นเจ้าของ ให้ PM และ Junior Developer เป็นผู้ทดสอบหลัก)
-5. **Deployment & Demo:** ตอนพัฒนารันทุกอย่างด้วย **Docker Compose** (PostgreSQL, RabbitMQ, MinIO, Mailpit) โดยแบ่งเป็น **Profile ต่อ Service** เพื่อให้แต่ละคนรันเฉพาะส่วนที่กำลังทำ ตอนสาธิตรัน Backend (NestJS + PostgreSQL) ด้วย Docker Compose บนเครื่องทีม ใช้ CloudAMQP (Broker) และ Cloudflare R2 (ไฟล์) ส่วน Front โฮสต์บน Cloudflare Workers และเรียก Backend ผ่าน Worker proxy + Cloudflare Tunnel (ดู 4.4 และ [docs/architecture.md](docs/architecture.md) §8)
+5. **Deployment & Demo:** ตอนพัฒนารันทุกอย่างด้วย **Docker Compose** (PostgreSQL, RabbitMQ, RustFS, Mailpit) โดยแบ่งเป็น **Profile ต่อ Service** เพื่อให้แต่ละคนรันเฉพาะส่วนที่กำลังทำ ตอนสาธิตรัน Backend (NestJS + PostgreSQL) ด้วย Docker Compose บนเครื่องทีม ใช้ CloudAMQP (Broker) และ Cloudflare R2 (ไฟล์) ส่วน Front โฮสต์บน Cloudflare Workers และเรียก Backend ผ่าน Worker proxy + Cloudflare Tunnel (ดู 4.4 และ [docs/architecture.md](docs/architecture.md) §8)
 
 ---
 
