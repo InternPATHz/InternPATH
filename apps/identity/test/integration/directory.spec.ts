@@ -92,37 +92,61 @@ describe('Identity company directory (Postgres จริง)', function () {
     }
   });
 
-  it('shows only verified companies and supports name/partner filters', async () => {
-    const all = await request(app.getHttpServer()).get('/v1/directory/companies')
-      .set('Authorization', jwt(viewerId)).expect(200);
-    expect(all.body.map((company: { id: string }) => company.id)).to.deep.equal([alphaId, betaId]);
-    expect(all.body[0]).to.include({ name: 'Alpha Studio', university_partner: true, rating_avg: 0, review_count: 0 });
-    expect(all.body[0].logo_url).to.equal('https://assets.example.test/companies/a/logo%20image.png');
-    expect(all.body[0]).not.to.have.property('registration_no');
-    const search = await request(app.getHttpServer()).get('/v1/directory/companies?q=ALPHA&partner=true')
-      .set('Authorization', jwt(viewerId)).expect(200);
-    expect(search.body.map((company: { id: string }) => company.id)).to.deep.equal([alphaId]);
-    const nonPartner = await request(app.getHttpServer()).get('/v1/directory/companies?partner=false')
-      .set('Authorization', jwt(viewerId)).expect(200);
-    expect(nonPartner.body.map((company: { id: string }) => company.id)).to.deep.equal([betaId]);
-    await request(app.getHttpServer()).get('/v1/directory/companies?partner=maybe')
-      .set('Authorization', jwt(viewerId)).expect(400);
-    await request(app.getHttpServer()).get('/v1/directory/companies?category=TECH')
-      .set('Authorization', jwt(viewerId)).expect(400);
+  const ids = (body: { data: { id: string }[] }) => body.data.map((company) => company.id);
+
+  it('shows only verified companies and supports name/partner filters without login', async () => {
+    const all = await request(app.getHttpServer()).get('/v1/directory/companies').expect(200);
+    expect(all.headers['cache-control']).to.equal('public, max-age=60');
+    expect(ids(all.body)).to.deep.equal([alphaId, betaId]);
+    expect(all.body.meta).to.deep.equal({ page: 1, page_size: 20, total: 2 });
+    expect(all.body.data[0]).to.include({ name: 'Alpha Studio', university_partner: true, rating_avg: 0, review_count: 0 });
+    expect(all.body.data[0].logo_url).to.equal('https://assets.example.test/companies/a/logo%20image.png');
+    for (const field of ['registration_no', 'phone', 'documents', 'email_domain'])
+      expect(all.body.data[0]).not.to.have.property(field);
+    const search = await request(app.getHttpServer()).get('/v1/directory/companies?q=ALPHA&partner=true').expect(200);
+    expect(ids(search.body)).to.deep.equal([alphaId]);
+    const nonPartner = await request(app.getHttpServer()).get('/v1/directory/companies?partner=false').expect(200);
+    expect(ids(nonPartner.body)).to.deep.equal([betaId]);
+    await request(app.getHttpServer()).get('/v1/directory/companies?partner=maybe').expect(400);
+    await request(app.getHttpServer()).get('/v1/directory/companies?category=TECH').expect(400);
   });
 
-  it('hides unverified details and requires a live authenticated user', async () => {
-    const detail = await request(app.getHttpServer()).get(`/v1/directory/companies/${alphaId}`)
-      .set('Authorization', jwt(viewerId)).expect(200);
+  it('paginates with the standard page/page_size', async () => {
+    const second = await request(app.getHttpServer()).get('/v1/directory/companies?page=2&page_size=1').expect(200);
+    expect(ids(second.body)).to.deep.equal([betaId]);
+    expect(second.body.meta).to.deep.equal({ page: 2, page_size: 1, total: 2 });
+    for (const query of ['page=0', 'page_size=0', 'page_size=101', 'page=abc'])
+      await request(app.getHttpServer()).get(`/v1/directory/companies?${query}`).expect(400);
+  });
+
+  it('fetches many companies by ids, skipping unknown and unverified ones', async () => {
+    const result = await request(app.getHttpServer())
+      .get(`/v1/directory/companies?ids=${betaId},${pendingId},${randomUUID()},${alphaId.toUpperCase()},${betaId}`)
+      .expect(200);
+    expect(ids(result.body)).to.deep.equal([alphaId, betaId]);
+    expect(result.body.meta.total).to.equal(2);
+    const fifty = Array.from({ length: 50 }, () => randomUUID());
+    await request(app.getHttpServer()).get(`/v1/directory/companies?ids=${[alphaId, ...fifty.slice(1)].join(',')}`)
+      .expect(200);
+    const tooMany = await request(app.getHttpServer())
+      .get(`/v1/directory/companies?ids=${[...fifty, randomUUID()].join(',')}`).expect(400);
+    expect(tooMany.body.error.code).to.equal('VALIDATION_FAILED');
+    for (const bad of ['not-a-uuid', `${alphaId},`, `,${alphaId}`, `${alphaId},,${betaId}`, ''])
+      await request(app.getHttpServer()).get(`/v1/directory/companies?ids=${encodeURIComponent(bad)}`).expect(400);
+  });
+
+  it('serves details publicly, ignores any Authorization and hides unverified companies', async () => {
+    const detail = await request(app.getHttpServer()).get(`/v1/directory/companies/${alphaId}`).expect(200);
+    expect(detail.headers['cache-control']).to.equal('public, max-age=60');
     expect(detail.body).to.include({ id: alphaId, website: 'https://alpha.test' });
-    await request(app.getHttpServer()).get(`/v1/directory/companies/${pendingId}`)
-      .set('Authorization', jwt(viewerId)).expect(404);
-    await request(app.getHttpServer()).get('/v1/directory/companies/not-a-uuid')
-      .set('Authorization', jwt(viewerId)).expect(400);
-    await request(app.getHttpServer()).get('/v1/directory/companies').expect(401);
-    await db.user.update({ where: { id: viewerId }, data: { status: 'SUSPENDED' } });
+    expect(detail.body).not.to.have.property('registration_no');
+    await request(app.getHttpServer()).get(`/v1/directory/companies/${pendingId}`).expect(404);
+    await request(app.getHttpServer()).get('/v1/directory/companies/not-a-uuid').expect(400);
     await request(app.getHttpServer()).get('/v1/directory/companies')
-      .set('Authorization', jwt(viewerId)).expect(401);
+      .set('Authorization', 'Bearer not-a-jwt').expect(200);
+    await db.user.update({ where: { id: viewerId }, data: { status: 'SUSPENDED' } });
+    await request(app.getHttpServer()).get(`/v1/directory/companies/${alphaId}`)
+      .set('Authorization', jwt(viewerId)).expect(200);
     await db.user.update({ where: { id: viewerId }, data: { status: 'ACTIVE' } });
   });
 
