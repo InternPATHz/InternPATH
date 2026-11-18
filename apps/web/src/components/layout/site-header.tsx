@@ -46,7 +46,7 @@ export function SiteHeader() {
             <>
               <NotificationBell />
               <Link href="/account" className="rounded-full border border-border px-4 py-2 font-medium text-ink hover:border-primary hover:text-primary">บัญชี</Link>
-              <button type="button" onClick={() => void signOut()} className="hidden text-ink-soft hover:text-primary sm:inline">ออกจากระบบ</button>
+              <button type="button" onClick={() => void signOut()} className="hidden whitespace-nowrap text-ink-soft hover:text-primary sm:inline">ออกจากระบบ</button>
             </>
           )}
         </div>

@@ -2,7 +2,8 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import type { JobCategory, SearchJobsQuery, WorkMode } from '@internpath/contracts';
+import type { JobCategory, SearchJobsQuery, StudentProfile, WorkMode } from '@internpath/contracts';
+import { useAuth } from '@/auth/session';
 import { FilterSelect } from '@/components/admin/filter-fields';
 import { JobResultCard } from '@/components/jobs/job-result-card';
 import { CATEGORIES } from '@/lib/mock-landing';
@@ -46,18 +47,33 @@ export function JobSearchPage() {
   const [failed, setFailed] = useState(false);
   const [text, setText] = useState(query.q ?? '');
   const [major, setMajor] = useState(query.major ?? '');
+  const { user, request } = useAuth();
+  const [profileMajor, setProfileMajor] = useState<string | undefined>(undefined);
+
+  // นักศึกษาที่ล็อกอิน: ใช้สาขาจากโปรไฟล์เทียบกับประกาศโดยอัตโนมัติ (เทียบแบบตรงทั้งค่า จึงไม่ให้เดาจากการพิมพ์)
+  // เก็บเป็น state ไม่ใส่ใน URL เพื่อไม่ให้ข้อมูลส่วนตัวไปอยู่ในลิงก์ที่แชร์ได้
+  const isStudent = user?.role === 'STUDENT';
+  useEffect(() => {
+    if (!isStudent) { setProfileMajor(undefined); return undefined; }
+    let cancelled = false;
+    request<StudentProfile>('/me/profile').then(
+      (profile) => { if (!cancelled) setProfileMajor(profile.major); },
+      () => { /* ไม่มีโปรไฟล์/โหลดไม่ได้ ⇒ ไม่เตือนสาขา (ผู้ใช้ยังพิมพ์เองได้) */ },
+    );
+    return () => { cancelled = true; };
+  }, [isStudent, request]);
 
   // โหลดผลลัพธ์ใหม่ทุกครั้งที่ตัวกรอง/หน้าใน URL เปลี่ยน; `cancelled` กันผลของคำขอเก่าทับคำขอใหม่
   useEffect(() => {
     let cancelled = false;
     const current = readQuery(new URLSearchParams(key));
     setFailed(false);
-    searchJobs(current.query, current.page).then(
+    searchJobs({ ...current.query, major: current.query.major ?? profileMajor }, current.page).then(
       (next) => { if (!cancelled) setResult(next); },
       () => { if (!cancelled) setFailed(true); },
     );
     return () => { cancelled = true; };
-  }, [key]);
+  }, [key, profileMajor]);
 
   // ให้ช่องข้อความตรงกับ URL เมื่อผู้ใช้กดย้อนกลับ/ล้างตัวกรอง
   useEffect(() => {
@@ -100,9 +116,14 @@ export function JobSearchPage() {
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-ink-soft">สาขาของคุณ (ใช้เตือนเมื่อไม่ตรง)</span>
           <input
-            type="text" value={major} onChange={(event) => setMajor(event.target.value)} placeholder="เช่น วิทยาการคอมพิวเตอร์"
+            type="text" value={major} onChange={(event) => setMajor(event.target.value)}
+            placeholder={profileMajor ? `ใช้สาขาจากโปรไฟล์: ${profileMajor}` : 'เช่น วิทยาการคอมพิวเตอร์'}
+            aria-describedby="major-hint"
             className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary"
           />
+          <span id="major-hint" className="mt-1 block text-xs text-ink-soft">
+            {profileMajor ? 'ใช้สาขาจากโปรไฟล์ของคุณอยู่ พิมพ์ที่นี่เพื่อเปลี่ยน' : 'พิมพ์ชื่อสาขาให้ตรงกับที่ประกาศระบุ จึงจะเทียบได้ถูกต้อง'}
+          </span>
         </label>
         <button type="submit" className="self-end rounded-lg bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
           ค้นหา

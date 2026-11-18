@@ -8,6 +8,7 @@ coverage/
 .claude/
 AGENTS.md
 design.md
+out/
 
 # secrets — ห้ามขึ้น Git (README 5.7)
 .env

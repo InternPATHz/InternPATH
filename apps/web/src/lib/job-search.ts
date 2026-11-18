@@ -24,6 +24,16 @@ const MOCK_LATENCY_MS = 250;
 
 const normalize = (text: string) => text.toLocaleLowerCase('th-TH').trim();
 
+/**
+ * กฎเทียบสาขาเดียวกับ `POST /applications` ของ Lifecycle (api-contract §7.2, §5.2 — PM ตัดสิน 2026-11-18):
+ * ตัดช่องว่างหัวท้าย ยุบช่องว่างซ้อน ไม่สนตัวพิมพ์ แล้วเทียบ "ตรงทั้งค่า" (ไม่ใช่ substring)
+ */
+export const normalizeMajor = (text: string) => text.replace(/\s+/g, ' ').trim().toLocaleLowerCase('th-TH');
+
+/** `major_mismatch`: ประกาศที่ไม่ระบุสาขา ⇒ false (เตือนเท่านั้น ไม่บล็อก) */
+export const isMajorMismatch = (targetMajors: string[], major: string) =>
+  targetMajors.length > 0 && !targetMajors.some((target) => normalizeMajor(target) === normalizeMajor(major));
+
 function byFeaturedThen(sort: NonNullable<SearchJobsQuery['sort']>) {
   return (a: SearchJobItem, b: SearchJobItem) => {
     if (a.featured !== b.featured) return a.featured ? -1 : 1;
@@ -37,7 +47,8 @@ export async function searchJobs(query: SearchJobsQuery, page: number, pageSize 
   await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
 
   const q = query.q ? normalize(query.q) : '';
-  const major = query.major ? normalize(query.major) : '';
+  // `major` ที่มีแต่ช่องว่างถือว่าไม่ส่ง (เหมือนฝั่ง API)
+  const major = query.major && normalizeMajor(query.major) ? query.major : '';
   const matched = MOCK_SEARCH_JOBS
     .filter((job) => job.status === 'PUBLISHED')
     .filter((job) => !query.category || job.category === query.category)
@@ -50,7 +61,7 @@ export async function searchJobs(query: SearchJobsQuery, page: number, pageSize 
   const jobs = matched
     .slice((page - 1) * pageSize, page * pageSize)
     .map((job): SearchJobItem => (major
-      ? { ...job, major_mismatch: !job.target_majors.some((target) => normalize(target).includes(major)) }
+      ? { ...job, major_mismatch: isMajorMismatch(job.target_majors, major) }
       : job));
 
   const ratings: Record<string, CompanyRating> = {};
