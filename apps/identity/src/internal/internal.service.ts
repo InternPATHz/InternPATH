@@ -46,10 +46,15 @@ export class InternalService {
       advisor_link_status: user.studentProfile.advisorLinkStatus };
   }
 
-  /** ชื่อนักศึกษาแบบ Batch ให้ Lifecycle (หน้ารายการของอาจารย์/HR) — ไม่มีอีเมล, ข้ามบัญชีที่ลบแล้วและ id ที่ไม่ใช่นักศึกษา */
+  /**
+   * ชื่อนักศึกษาแบบ Batch ให้ Lifecycle (หน้ารายการของอาจารย์/HR) — ไม่มีอีเมล
+   * คืนเฉพาะนักศึกษาที่ `students/{id}` ตอบ 200 (ACTIVE + มีโปรไฟล์ + มหาวิทยาลัย) เพื่อให้สองเส้นทางตรงกัน:
+   * บัญชีถูกระงับ/ลบ/ยังไม่ยืนยัน และ id ที่ไม่ใช่นักศึกษา จะไม่อยู่ในผลลัพธ์ (Lifecycle แสดงชื่อว่าง)
+   */
   async studentNames(ids: string): Promise<InternalStudentNamesResponse> {
     const unique = parseBatchIds(ids);
-    const users = await this.db.user.findMany({ where: { id: { in: unique }, role: 'STUDENT', status: { not: 'DELETED' } },
+    const users = await this.db.user.findMany({ where: { id: { in: unique }, role: 'STUDENT', status: 'ACTIVE',
+      universityId: { not: null }, studentProfile: { isNot: null } },
       select: { id: true, fullName: true } });
     const byId = new Map(users.map((user) => [user.id, user.fullName]));
     return unique.flatMap((id) => {

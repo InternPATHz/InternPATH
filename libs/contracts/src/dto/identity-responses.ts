@@ -159,7 +159,8 @@ export interface InternalStudentResponse {
 
 /**
  * GET /internal/v1/students/names?ids= (≤ 100, ผู้เรียก lifecycle) — ชื่อนักศึกษาสำหรับหน้ารายการ
- * ไม่มีอีเมล; id ที่ไม่ใช่นักศึกษาหรือบัญชีถูกลบจะไม่อยู่ในผลลัพธ์
+ * ไม่มีอีเมล; คืนเฉพาะนักศึกษา ACTIVE (เงื่อนไขเดียวกับ `students/{id}`) — บัญชีถูกระงับ/ลบ/ยังไม่ยืนยัน
+ * และ id ที่ไม่ใช่นักศึกษาจะไม่อยู่ในผลลัพธ์
  */
 export type InternalStudentNamesResponse = Array<{ user_id: string; full_name: string }>;
 

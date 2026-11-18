@@ -129,19 +129,22 @@ describe('Identity Internal API (Postgres จริง)', function () {
     expect(revoked.body).to.deep.equal({ has_consent: false });
   });
 
-  it('returns student names in batch only to Lifecycle (no email, skips deleted and non-students)', async () => {
+  it('returns student names in batch only to Lifecycle (no email, active students only like students/{id})', async () => {
     const suspendedId = (await db.user.create({ data: { email: 'suspended@test.ac.th', passwordHash: 'secret',
       fullName: 'Suspended Student', role: 'STUDENT', status: 'SUSPENDED', universityId,
       studentProfile: { create: { studentCode: 'S002', major: 'CS', yearLevel: 2 } } } })).id;
+    const pendingId = (await db.user.create({ data: { email: 'pending@test.ac.th', passwordHash: 'secret',
+      fullName: 'Pending Student', role: 'STUDENT', status: 'PENDING_EMAIL', universityId,
+      studentProfile: { create: { studentCode: 'S003', major: 'CS', yearLevel: 1 } } } })).id;
     const unknownId = randomUUID();
     const lifecycle = `Bearer ${serviceToken('lifecycle')}`;
     const names = await request(app.getHttpServer())
-      .get(`/internal/v1/students/names?ids=${suspendedId},${studentId},${deletedId},${hrId},${unknownId},${studentId}`)
+      .get(`/internal/v1/students/names?ids=${suspendedId},${studentId},${pendingId},${deletedId},${hrId},${unknownId},${studentId}`)
       .set('Authorization', lifecycle).expect(200);
-    expect(names.body).to.deep.equal([
-      { user_id: suspendedId, full_name: 'Suspended Student' },
-      { user_id: studentId, full_name: 'Student' },
-    ]);
+    expect(names.body).to.deep.equal([{ user_id: studentId, full_name: 'Student' }]);
+    // สองเส้นทางต้องตรงกัน: คนที่ไม่อยู่ใน batch ต้องได้ 404 จาก students/{id}
+    for (const id of [suspendedId, pendingId])
+      await request(app.getHttpServer()).get(`/internal/v1/students/${id}`).set('Authorization', lifecycle).expect(404);
 
     await request(app.getHttpServer()).get(`/internal/v1/students/names?ids=${studentId}`)
       .set('Authorization', `Bearer ${serviceToken('notification')}`).expect(403);
