@@ -301,6 +301,8 @@ model Application {
   actualStartDate          DateTime?                 @map("actual_start_date") @db.Date
   actualEndDate            DateTime?                 @map("actual_end_date") @db.Date
   quotaReserved            Boolean                   @default(false) @map("quota_reserved")
+  /// Lease กันคำสั่ง reserve/compensate ของใบเดียวกันซ้อนกัน (QIR-01) — NULL หรือ <= now() = ว่าง; ห้ามคืนออก API
+  quotaOpUntil             DateTime?                 @map("quota_op_until") @db.Timestamptz(6)
   statusChangedAt          DateTime                  @default(now()) @map("status_changed_at") @db.Timestamptz(6)
   terminatedBy             TerminatedBy?             @map("terminated_by")
   terminateReason          String?                   @map("terminate_reason") @db.Text

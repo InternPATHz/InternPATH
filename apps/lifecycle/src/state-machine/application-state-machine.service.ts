@@ -14,6 +14,7 @@ import {
 import { computeAvailableActions, type AvailableActions } from './available-actions';
 import { applicationNotFound, stateConflict } from './errors';
 import { checkGuards, type GuardConfig } from './guards';
+import { QuotaLeaseService } from './quota-lease.service';
 import { QuotaService, collectQuotaEffects } from './quota.service';
 import { findTransition } from './transition-table';
 
@@ -36,6 +37,7 @@ export class ApplicationStateMachine {
     private readonly transitions: ApplicationTransitionService,
     private readonly quota: QuotaService,
     private readonly config: LifecycleConfigService,
+    private readonly lease: QuotaLeaseService,
   ) {}
 
   async loadGuardConfig(): Promise<GuardConfig> {
@@ -54,39 +56,53 @@ export class ApplicationStateMachine {
     if (!rule) throw stateConflict();
     const config = await this.loadGuardConfig();
 
-    // ตรวจล่วงหน้านอก Transaction เพื่อไม่จองโควตาทั้งที่ Guard ไม่ผ่าน (ตรวจซ้ำใน Transaction อีกรอบ)
-    if (rule.quota === 'RESERVE') {
-      const failure = checkGuards(
-        rule.guards,
-        {
-          application: before,
-          now,
-          config,
-          input: { ...command.input, reason: command.reason },
-          studentHasOtherConfirmed: await hasOtherConfirmed(this.prisma, before),
-        },
-        'execute',
-      );
-      if (failure) throw failure;
-      await this.quota.reserve(before.jobId, before.id, command.correlationId);
-    }
-
-    let outcome: TransitionOutcome;
+    // คำสั่งที่จองโควตา: ถือ lease ของใบนี้ตั้งแต่ก่อน reserve จนจบขั้น compensate/settle (QIR-01) —
+    // คำสั่งอื่นที่เรียกโควตาของใบเดียวกันต้องรอ (ได้ 409) ไม่ให้ release ชดเชยที่ค้างไปชนกับการจองรอบใหม่
+    let leaseToken: Date | null = null;
     try {
-      outcome = await this.prisma.$transaction(async (tx) => {
-        const fresh = await tx.application.findUnique({ where: { id: applicationId } });
-        if (!fresh) throw applicationNotFound();
-        return this.transitions.apply(tx, fresh, command, now, config);
-      });
-    } catch (error) {
-      if (rule.quota === 'RESERVE' && !(await this.isQuotaHeld(applicationId))) {
-        await this.quota.compensate(before.jobId, before.id, command.correlationId);
+      // ตรวจล่วงหน้านอก Transaction เพื่อไม่จองโควตาทั้งที่ Guard ไม่ผ่าน (ตรวจซ้ำใน Transaction อีกรอบ)
+      if (rule.quota === 'RESERVE') {
+        const failure = checkGuards(
+          rule.guards,
+          {
+            application: before,
+            now,
+            config,
+            input: { ...command.input, reason: command.reason },
+            studentHasOtherConfirmed: await hasOtherConfirmed(this.prisma, before),
+          },
+          'execute',
+        );
+        if (failure) throw failure;
+        leaseToken = await this.lease.acquire(before.id);
+        if (!leaseToken) throw stateConflict('QUOTA_OPERATION_IN_PROGRESS');
+        // ผู้ถือ lease รายก่อนอาจเพิ่ง commit/ล้มไป — ยืนยันว่ายังทำรายการนี้ได้ก่อนเรียก Job
+        const current = await this.prisma.application.findUnique({ where: { id: applicationId } });
+        if (!current || !findTransition(current.status, command.trigger, command.actor.role, command.to)) {
+          throw stateConflict();
+        }
+        await this.quota.reserve(before.jobId, before.id, command.correlationId);
       }
-      throw error;
-    }
 
-    const quotaFailures = await this.quota.settle(collectQuotaEffects(outcome), command.correlationId);
-    return { ...outcome, quotaFailures };
+      let outcome: TransitionOutcome;
+      try {
+        outcome = await this.prisma.$transaction(async (tx) => {
+          const fresh = await tx.application.findUnique({ where: { id: applicationId } });
+          if (!fresh) throw applicationNotFound();
+          return this.transitions.apply(tx, fresh, command, now, config);
+        });
+      } catch (error) {
+        if (rule.quota === 'RESERVE' && !(await this.isQuotaHeld(applicationId))) {
+          await this.quota.compensate(before.jobId, before.id, command.correlationId);
+        }
+        throw error;
+      }
+
+      const quotaFailures = await this.quota.settle(collectQuotaEffects(outcome), command.correlationId);
+      return { ...outcome, quotaFailures };
+    } finally {
+      if (leaseToken) await this.lease.release(before.id, leaseToken);
+    }
   }
 
   /**
