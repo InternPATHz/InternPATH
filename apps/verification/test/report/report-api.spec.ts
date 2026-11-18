@@ -7,6 +7,7 @@ import { ReportModule } from '../../src/report/report.module';
 import { ReportService } from '../../src/report/report.service';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { expectEventTimestamps } from '../support/event-timestamps';
 import { REPORT_CREATED_RESPONSE, expectShape } from '../support/contract-shapes';
 
 const DETAIL = 'ประกาศนี้เรียกเก็บเงินค่าสมัครจากนักศึกษา';
@@ -163,6 +164,7 @@ describe('POST /jobs/{job_id}/reports (Postgres จริง)', function () {
     expect(e04).to.have.length(1);
     expect(e04[0]).to.include({ job_id: jobId, company_id: companyId, report_count: 3, queue_item_id: items[0].id });
     expect(JSON.stringify(e04[0])).to.not.include('reporter');
+    expectEventTimestamps(e04[0], 'E04 ReportThresholdReached');
   });
 
   it('ประกาศไม่เคยมีผลตรวจ ⇒ รายการ JOB_REPORT submission_id = null', async () => {
