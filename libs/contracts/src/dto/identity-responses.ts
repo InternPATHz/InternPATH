@@ -105,6 +105,22 @@ export interface CompanyMemberItem {
   joined_at: string;
 }
 
+/** GET /companies/me/invitations (Owner) — คำเชิญที่ยังรอรับ ไม่คืนโทเคน; ห่อเป็น `{ data }` */
+export interface CompanyInvitationItem {
+  id: string;
+  email: string;
+  invited_at: string;
+  expires_at: string;
+}
+
+/** GET /companies/me/owner-transfer — คำขอโอน Owner ที่ค้างอยู่ของผู้เรียก (ไม่มี ⇒ 404) */
+export interface OwnerTransferPendingResponse {
+  /** `OUTGOING` = ผู้เรียกเป็น Owner ที่ขอโอน, `INCOMING` = ผู้เรียกเป็นผู้รับ */
+  direction: 'OUTGOING' | 'INCOMING';
+  other_user: { user_id: string; full_name: string };
+  requested_at: string;
+}
+
 /** GET /directory/companies/{id} */
 export interface DirectoryCompanyDetail extends DirectoryCompanyListItem {
   id: string;

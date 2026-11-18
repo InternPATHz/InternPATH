@@ -1,7 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException, OutboxWriter, asUuid } from '@internpath/common';
-import type { CompanyMemberItem, CompanyStatusChangedPayload, Paginated, UserSuspendedPayload } from '@internpath/contracts';
+import type { CompanyInvitationItem, CompanyMemberItem, CompanyStatusChangedPayload, OwnerTransferPendingResponse,
+  Paginated, UserSuspendedPayload } from '@internpath/contracts';
 import { Company, Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AcceptInvitationDto, MembersQueryDto } from './company-members.dto';
@@ -103,6 +104,50 @@ export class CompanyMembersService {
         tokenHash: tokenHash(token), expiresAt: new Date(Date.now() + TOKEN_TTL_MS), invitedBy: ownerId } });
     });
     await this.mailer.send(email, token);
+  }
+
+  /** คำเชิญที่ยังรอรับ = ยังไม่ถูกใช้ และยังไม่หมดอายุ/ไม่ถูกยกเลิก (ยกเลิก = ตั้ง expires_at เป็นเวลาที่ยกเลิก) */
+  async invitations(ownerId: string): Promise<{ data: CompanyInvitationItem[] }> {
+    return this.transaction(async (tx) => {
+      const owner = await this.member(tx, ownerId, true);
+      const rows = await tx.companyInvitation.findMany({ where: { companyId: owner.companyId, acceptedAt: null,
+        expiresAt: { gt: new Date() } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+        select: { id: true, email: true, createdAt: true, expiresAt: true } });
+      return { data: rows.map((row) => ({ id: row.id, email: row.email, invited_at: row.createdAt.toISOString(),
+        expires_at: row.expiresAt.toISOString() })) };
+    });
+  }
+
+  /**
+   * ยกเลิกโดยให้หมดอายุทันที (ไม่มีคอลัมน์สถานะใน `company_invitations`) — `accept` ตรวจ `expires_at`
+   * ลิงก์เดิมจึงใช้ไม่ได้ทันที; ไม่พบ/ของบริษัทอื่น/ถูกใช้แล้ว/หมดอายุหรือยกเลิกไปแล้ว ⇒ 404
+   */
+  async cancelInvitation(ownerId: string, invitationId: string, id?: string): Promise<void> {
+    const cid = asUuid(id);
+    await this.transaction(async (tx) => {
+      const owner = await this.member(tx, ownerId, true);
+      const now = new Date();
+      const cancelled = await tx.companyInvitation.updateMany({ where: { id: invitationId, companyId: owner.companyId,
+        acceptedAt: null, expiresAt: { gt: now } }, data: { expiresAt: now } });
+      if (cancelled.count !== 1) throw new AppException('NOT_FOUND', 'ไม่พบคำเชิญที่รอรับ', 404);
+      await this.audit(tx, ownerId, 'COMPANY_INVITATION_CANCEL', owner.companyId,
+        { invitation_id: invitationId }, { invitation_id: invitationId, cancelled: true }, cid);
+    });
+  }
+
+  async pendingTransfer(userId: string): Promise<OwnerTransferPendingResponse> {
+    return this.transaction(async (tx) => {
+      const actor = await this.member(tx, userId);
+      const pending = await tx.ownerTransfer.findFirst({ where: { companyId: actor.companyId, status: 'PENDING',
+        OR: [{ fromUserId: userId }, { toUserId: userId }] }, orderBy: { requestedAt: 'desc' } });
+      if (!pending) throw new AppException('NOT_FOUND', 'ไม่มีคำขอโอน Owner ที่ค้างอยู่', 404);
+      const outgoing = pending.fromUserId === userId;
+      const otherId = outgoing ? pending.toUserId : pending.fromUserId;
+      const other = await tx.user.findUnique({ where: { id: otherId }, select: { fullName: true } });
+      return { direction: outgoing ? 'OUTGOING' : 'INCOMING',
+        other_user: { user_id: otherId, full_name: other?.fullName ?? '' },
+        requested_at: pending.requestedAt.toISOString() };
+    });
   }
 
   async accept(body: AcceptInvitationDto): Promise<void> {
