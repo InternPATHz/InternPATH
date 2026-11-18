@@ -355,7 +355,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 
 | Service | Method | Path | ผู้เรียก | คำอธิบาย |
 | :--- | :--- | :--- | :--- | :--- |
-| job | POST | `/internal/v1/jobs/{job_id}/quota/reserve` | lifecycle | `{application_id}` → `200 {reserved:true}` / `409 QUOTA_FULL`; ซ้ำด้วย `application_id` เดิม ⇒ `200` โดยไม่หักซ้ำ |
+| job | POST | `/internal/v1/jobs/{job_id}/quota/reserve` | lifecycle | `{application_id}` → `200 {reserved:true}` / `409 QUOTA_FULL`; ซ้ำด้วย `application_id` เดิมขณะการจองยังเป็น `RESERVED`/`CONFIRMED` ⇒ `200` โดยไม่หักซ้ำ • **`RELEASED` ไม่ใช่สถานะสิ้นสุด (PM ตัดสิน 2026-11-19):** reserve ด้วย `application_id` เดิมหลัง `RELEASED` ⇒ จองใหม่ตามปกติ (`RESERVED` อีกครั้ง; โควตาเต็ม ⇒ `409 QUOTA_FULL`) เพราะ Lifecycle เป็นผู้เรียกที่ล็อกใบสมัครและชี้ขาดอยู่แล้ว (ผู้ใช้กดตอบรับใหม่หลังธุรกรรมล้มและ release ชดเชย ต้องทำต่อได้ด้วยใบสมัครเดิม) • คำขอ reserve เก่าที่มาช้าแล้วจองซ้อน (ค้างโดยที่ Lifecycle ไม่ถือโควตา) ⇒ Reconciliation (`reservation-check` ทุก 30 นาที — Lifecycle ชี้ขาด) คืนให้เอง จึงไม่ใช้ Attempt Identifier และห้ามตอบ `501` |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/confirm` | lifecycle | `{application_id}` `RESERVED`→`CONFIRMED` (idempotent) |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/release` | lifecycle | `{application_id, reason}` → คืนโควตา (idempotent; ไม่มีการจอง = `200` no-op) |
 | job | GET | `/internal/v1/jobs/{job_id}` | lifecycle | สถานะ/โควตา/`job_title`/`target_majors`/deadline ตอนสมัคร (ลดความเสี่ยง Snapshot ล้าสมัย); `job_title` ใช้เติม `job_snapshots.title` — E03 `JobStatusChanged` ไม่มีชื่อประกาศ จึงสร้าง snapshot ด้วยชื่อว่างได้ และ Lifecycle เติมชื่อตอนมีใบสมัครแรก (PM ตัดสิน 2026-11-18) |
