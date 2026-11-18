@@ -35,6 +35,9 @@ export const LIFECYCLE_DEFAULTS = {
 
   // Storage Presigned URL (~10 นาที ตาม README 5.9)
   SIGNED_URL_EXPIRES_SECONDS: 600,
+
+  // ชั้นกันที่ Service ของหน้าตรวจใบรับรองสาธารณะ (README 5.4, 5.7 — Gateway ตั้ง 30 ครั้ง/นาที/IP เท่ากัน)
+  PUBLIC_CERT_RATE_LIMIT_PER_MINUTE: 30,
 } as const;
 
 export type LifecycleConfigKey = keyof typeof LIFECYCLE_DEFAULTS;

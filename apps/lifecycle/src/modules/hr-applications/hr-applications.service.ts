@@ -20,12 +20,16 @@ import { applicationNotFound, validationFailed } from '../../state-machine/error
 import { startWarning } from '../../state-machine/guards';
 import type { Actor } from '../../state-machine/status-history.writer';
 import { loadSnapshotNames, toHrDetail, toHrItem } from '../applications/application-view';
+import { checkCertificateIssuable, effectiveMinActualDays } from '../certificates/certificate-rules';
 import type { HrAcceptDto, HrApplicationsQueryDto, HrEvaluateDto, HrStartDto, HrTerminateDto } from './hr-applications.dto';
 
 /** action ของ HR ที่รับแค่เหตุผล — `reject` (ไม่บังคับ), `rescind-offer` (บังคับใน Guard) */
 export type HrReasonAction = 'reject' | 'rescind-offer';
 
 type HrProfile = StudentProfile & { full_name: string };
+
+/** ชื่อ action ของ `POST /hr/applications/{id}/certificate` ใน `available_actions[]` (ไม่ใช่ `actions/{x}` แต่ใช้ชื่อ path ท้าย) */
+export const CERTIFICATE_ACTION = 'certificate';
 
 /**
  * ใบสมัครฝั่ง HR (api-contract §7.3, data-schema §8.1, README §5.2)
@@ -68,15 +72,34 @@ export class HrApplicationsService {
     return { data: rows.map((row) => toHrItem(row, names)), meta: { page, page_size: pageSize, total } };
   }
 
-  /** GET /hr/applications/{id} — โปรไฟล์เฉพาะเมื่อมี Consent + `available_actions[]`/`accept_blocked_reason` */
-  async detail(user: JwtClaims, applicationId: string, correlationId?: string, now = new Date()): Promise<HrApplicationDetail> {
+  /**
+   * GET /hr/applications/{id} — โปรไฟล์เฉพาะเมื่อมี Consent + `available_actions[]`/`accept_blocked_reason`
+   * + `evaluation?` (ผลประเมินล่าสุดของบริษัท) + `certificate?` (1.7) • ออกใบรับรองได้ ⇒ มี `certificate` ใน `available_actions`
+   */
+  async detail(
+    user: JwtClaims,
+    applicationId: string,
+    correlationId?: string,
+    now = new Date(),
+  ): Promise<HrApplicationDetail> {
     const app = await this.companyApplication(user, applicationId);
-    const [names, actions, profile] = await Promise.all([
+    const [names, actions, profile, evaluation, certificate, minDays] = await Promise.all([
       loadSnapshotNames(this.db, [app]),
       this.stateMachine.availableActions(app, 'COMPANY_HR', now),
       this.consentedProfile(app, correlationId),
+      this.db.evaluation.findFirst({
+        where: { applicationId: app.id },
+        orderBy: [{ round: 'desc' }, { evaluatedAt: 'desc' }],
+      }),
+      this.db.certificate.findUnique({ where: { applicationId: app.id } }),
+      this.config.getNumber('CERT_MIN_ACTUAL_DAYS'),
     ]);
-    return toHrDetail(app, names, profile, actions);
+    const issuable =
+      !certificate && !('error' in checkCertificateIssuable(app, evaluation?.result, effectiveMinActualDays(minDays)));
+    const available = issuable
+      ? { ...actions, available_actions: [...actions.available_actions, CERTIFICATE_ACTION] }
+      : actions;
+    return toHrDetail(app, names, profile, available, { evaluation, certificate });
   }
 
   // ---------- Actions ----------
