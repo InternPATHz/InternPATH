@@ -10,6 +10,7 @@ import type {
 import { Injectable, Logger } from '@nestjs/common';
 import type { Application } from '../../../generated/client';
 import { assertCompanyOwnership } from '../../common/auth/ownership';
+import { S3StorageService } from '../../common/storage/s3-storage.service';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
 import { IdentityInternalClient } from '../../internal/identity-client.service';
 import { StudentNamesService } from '../../internal/student-names.service';
@@ -44,6 +45,8 @@ export class HrApplicationsService {
 
   constructor(
     private readonly db: PrismaService,
+    // วางถัดจาก db (ไม่ต่อท้าย) — ให้ merge กับ branch อื่นที่เพิ่ม dependency ท้ายรายการได้โดยไม่ชน
+    private readonly storage: S3StorageService,
     private readonly identity: IdentityInternalClient,
     private readonly stateMachine: ApplicationStateMachine,
     private readonly config: LifecycleConfigService,
@@ -307,6 +310,8 @@ export class HrApplicationsService {
         skills: local.skills,
         ...(local.bio ? { bio: local.bio } : {}),
         ...(local.portfolioUrl ? { portfolio_url: local.portfolioUrl } : {}),
+        // รูปเห็นเฉพาะเมื่อมี Consent เหมือนฟิลด์อื่น (ถึงตรงนี้ได้ต้องมี Consent แล้ว) — รายการ HR ไม่มีรูป (api-contract §7.3)
+        ...(local.photoKey ? { photo_url: await this.photoUrl(local.photoKey) } : {}),
         major: local.major,
         year_level: local.yearLevel,
         full_name: fullName,
@@ -314,6 +319,16 @@ export class HrApplicationsService {
     }
     if (!student) return undefined;
     return { skills: [], major: student.major, year_level: student.year_level, full_name: fullName };
+  }
+
+  /** Signed URL ของรูปโปรไฟล์ (~10 นาที) — ออกไม่ได้ (Storage ล่ม) ⇒ ไม่แสดงรูป ไม่ทำให้ทั้งหน้าล้ม */
+  private async photoUrl(key: string): Promise<string | undefined> {
+    try {
+      return await this.storage.getSignedDownloadUrl(key, await this.config.getNumber('SIGNED_URL_EXPIRES_SECONDS'));
+    } catch {
+      this.logger.warn('ออก Signed URL ของรูปโปรไฟล์ไม่สำเร็จ — ไม่แสดงรูป');
+      return undefined;
+    }
   }
 }
 

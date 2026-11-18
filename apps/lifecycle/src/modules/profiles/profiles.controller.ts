@@ -1,6 +1,9 @@
-import { Body, Controller, Get, Headers, Put, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Put, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Roles, RolesGuard } from '@internpath/common';
-import type { StudentProfile } from '@internpath/contracts';
+import type { ProfilePhotoResponse, StudentProfile } from '@internpath/contracts';
+import { PHOTO_FILE_FIELD, PHOTO_MAX_BYTES } from './photo-file';
+import { PhotoUploadErrorInterceptor } from './photo-upload-error.interceptor';
 import { UpdateProfileDto } from './profiles.dto';
 import { ProfilesService } from './profiles.service';
 
@@ -23,5 +26,25 @@ export class ProfilesController {
     @Headers('x-correlation-id') cid?: string,
   ): Promise<StudentProfile> {
     return this.service.update(user.sub, body, cid);
+  }
+
+  /** multipart ฟิลด์ `file` (jpg/png/webp ≤ 2 MB) — multer เก็บในหน่วยความจำและตัดที่ 2 MB */
+  @Put('photo')
+  @UseInterceptors(
+    PhotoUploadErrorInterceptor,
+    FileInterceptor(PHOTO_FILE_FIELD, { limits: { fileSize: PHOTO_MAX_BYTES, files: 1 } }),
+  )
+  uploadPhoto(
+    @CurrentUser() user: JwtClaims,
+    @UploadedFile() file?: Express.Multer.File,
+    @Headers('x-correlation-id') cid?: string,
+  ): Promise<ProfilePhotoResponse> {
+    return this.service.uploadPhoto(user.sub, file, cid);
+  }
+
+  @Delete('photo')
+  @HttpCode(204)
+  async deletePhoto(@CurrentUser() user: JwtClaims): Promise<void> {
+    await this.service.deletePhoto(user.sub);
   }
 }
