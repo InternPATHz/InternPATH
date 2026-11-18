@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { StudentProfile } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { Avatar } from '@/components/ui/avatar';
 import { ApiError } from '@/lib/api';
+import { PROFILE_PHOTO_MOCK, mockPhotoOf, removePhoto, uploadPhoto, validatePhoto } from '@/lib/profile-photo';
 
 // ขีดจำกัดตาม api-contract §7.1 — ตรวจฝั่งหน้าจอเพื่อบอกผู้ใช้เร็ว ค่าจริงตรวจที่ Lifecycle
 const HEADLINE_MAX = 200;
@@ -54,6 +55,10 @@ export function ProfileForm() {
   const [loaded, setLoaded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState<StudentProfile | null>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [mockPhoto, setMockPhoto] = useState<string | undefined>(undefined);
+  const userId = user?.id ?? '';
+  useEffect(() => { if (userId) setMockPhoto(mockPhotoOf(userId)); }, [userId]);
   const [major, setMajor] = useState<{ major: string; year_level: number } | null>(null);
   const [headline, setHeadline] = useState('');
   const [bio, setBio] = useState('');
@@ -95,7 +100,13 @@ export function ProfileForm() {
       // PUT แทนที่ทั้งชุด: ช่องที่ว่าง = ล้างค่า; ห้ามส่ง major/year_level (สำเนาจาก Identity)
       const saved = await request<StudentProfile>('/me/profile', {
         method: 'PUT',
-        body: { headline: headline.trim(), bio: bio.trim(), skills, portfolio_url: portfolio.trim() },
+        // ช่องว่างไม่ส่ง (ไม่ส่ง = ล้างค่า) — ส่งสตริงว่างจะถูกปฏิเสธเป็น 400 (เช่น portfolio_url ว่างไม่ใช่ URL)
+        body: {
+          ...(headline.trim() ? { headline: headline.trim() } : {}),
+          ...(bio.trim() ? { bio: bio.trim() } : {}),
+          skills,
+          ...(portfolio.trim() ? { portfolio_url: portfolio.trim() } : {}),
+        },
       });
       fill(saved);
       setEditing(false);
@@ -107,6 +118,33 @@ export function ProfileForm() {
 
   if (!loaded) return <p className="text-sm text-ink-soft">กำลังโหลด…</p>;
 
+  async function changePhoto(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    const problem = validatePhoto(file);
+    if (problem) { setMessage({ tone: 'error', text: problem }); return; }
+    setBusy(true);
+    setMessage(null);
+    try {
+      const url = await uploadPhoto(request, userId, file);
+      if (PROFILE_PHOTO_MOCK) setMockPhoto(url); else setSaved((current) => (current ? { ...current, photo_url: url } : current));
+      setMessage({ tone: 'success', text: 'เปลี่ยนรูปโปรไฟล์แล้ว' });
+    } catch (cause) { setMessage({ tone: 'error', text: cause instanceof Error ? cause.message : 'เปลี่ยนรูปไม่สำเร็จ กรุณาลองใหม่' }); }
+    finally { setBusy(false); }
+  }
+
+  async function deletePhoto() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await removePhoto(request, userId);
+      if (PROFILE_PHOTO_MOCK) setMockPhoto(undefined); else setSaved((current) => { if (!current) return current; const { photo_url: _removed, ...rest } = current; return rest; });
+      setMessage({ tone: 'success', text: 'ลบรูปโปรไฟล์แล้ว' });
+    } catch (cause) { setMessage({ tone: 'error', text: cause instanceof Error ? cause.message : 'ลบรูปไม่สำเร็จ กรุณาลองใหม่' }); }
+    finally { setBusy(false); }
+  }
+
   function cancelEdit() {
     if (saved) fill(saved); // ทิ้งค่าที่แก้ค้าง กลับเป็นค่าที่บันทึกไว้
     setMessage(null);
@@ -116,8 +154,16 @@ export function ProfileForm() {
   if (!editing && saved) {
     return (
       <section aria-label="โปรไฟล์ของฉัน" className="space-y-5">
+        {PROFILE_PHOTO_MOCK && <p className="text-xs text-warning-text">รูปโปรไฟล์ในหน้านี้เป็นข้อมูลจำลอง เก็บในเบราว์เซอร์นี้เท่านั้น</p>}
         <div className="flex flex-wrap items-center gap-4">
-          <Avatar name={user?.full_name} src={saved.photo_url} size="lg" />
+          <div className="flex flex-col items-center gap-2">
+            <Avatar name={user?.full_name} src={mockPhoto ?? saved.photo_url} size="lg" />
+            <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => void changePhoto(event)} aria-label="เลือกรูปโปรไฟล์" />
+            <div className="flex gap-3 text-xs">
+              <button type="button" disabled={busy} onClick={() => photoInput.current?.click()} className="font-medium text-primary hover:underline disabled:opacity-60">{(mockPhoto ?? saved.photo_url) ? 'เปลี่ยนรูป' : 'เพิ่มรูป'}</button>
+              {(mockPhoto ?? saved.photo_url) && <button type="button" disabled={busy} onClick={() => void deletePhoto()} className="font-medium text-danger-text hover:underline disabled:opacity-60">ลบรูป</button>}
+            </div>
+          </div>
           <div className="min-w-0">
             <h2 className="text-2xl font-bold">{user?.full_name || 'นักศึกษา'}</h2>
             <p className="text-sm text-ink-soft">{saved.major} · ชั้นปี {saved.year_level}</p>
