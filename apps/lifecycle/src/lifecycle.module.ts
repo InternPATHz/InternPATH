@@ -7,6 +7,7 @@ import { ProfilesModule } from './modules/profiles/profiles.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
+import { StateMachineModule } from './state-machine/state-machine.module';
 import type { Tx } from './prisma/types';
 
 /**
@@ -34,10 +35,19 @@ import type { Tx } from './prisma/types';
         }),
       },
     }),
+    StateMachineModule,
     ProfilesModule,
     ResumesModule,
   ],
   providers: [JwtAuthGuard, RolesGuard],
-  exports: [PrismaModule, LifecycleConfigModule, StorageModule, InternalModule, JwtAuthGuard, RolesGuard],
+  exports: [
+    PrismaModule,
+    LifecycleConfigModule,
+    StorageModule,
+    InternalModule,
+    StateMachineModule,
+    JwtAuthGuard,
+    RolesGuard,
+  ],
 })
 export class LifecycleModule {}

@@ -2,6 +2,7 @@ import { ConfigService } from '@nestjs/config';
 import { expect } from 'chai';
 import * as jwt from 'jsonwebtoken';
 import sinon from 'sinon';
+import type { InternalJobResponse } from '@internpath/contracts';
 import { IdentityInternalClient } from '../../src/internal/identity-client.service';
 import { fetchInternal } from '../../src/internal/internal-http.client';
 import { JobInternalClient } from '../../src/internal/job-client.service';
@@ -119,5 +120,32 @@ describe('Internal API Clients (Unit)', () => {
       expect(err.code).to.equal('UPSTREAM_UNAVAILABLE');
       expect(callCount).to.equal(3); // attempt 0, 1, 2
     }
+  });
+  it('JobInternalClient.getJob คืนชนิด InternalJobResponse ตาม GET /internal/v1/jobs/{job_id} (api-contract §9)', async () => {
+    const body: InternalJobResponse = {
+      job_id: 'job-1',
+      company_id: 'company-1',
+      status: 'PUBLISHED',
+      quota: 3,
+      quota_available: 1,
+      target_majors: ['CS'],
+      application_deadline: '2026-12-31T16:59:59.000Z',
+      entity_version: 4,
+    };
+    let capturedUrl = '';
+    let capturedMethod = '';
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      capturedUrl = url;
+      capturedMethod = init?.method ?? '';
+      return new Response(JSON.stringify(body), { status: 200 });
+    }) as any;
+
+    const client = new JobInternalClient(
+      new ConfigService({ JOB_URL: 'http://127.0.0.1:3002', JOB_SERVICE_SECRET_LIFECYCLE: 'x'.repeat(32) }),
+    );
+    const job: InternalJobResponse = await client.getJob('job-1', 'corr-1');
+    expect(capturedUrl).to.equal('http://127.0.0.1:3002/internal/v1/jobs/job-1');
+    expect(capturedMethod).to.equal('GET');
+    expect(job).to.deep.equal(body);
   });
 });
