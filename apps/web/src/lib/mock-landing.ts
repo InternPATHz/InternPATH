@@ -20,7 +20,7 @@ export const CATEGORIES: Array<{ id: JobCategory; label: string; description: st
 export const MOCK_JOBS: LandingJob[] = [
   {
     job: {
-      id: 'mock-1', category: 'TECH_IT', job_title: 'Software Engineer Intern', work_mode: 'HYBRID', featured: true,
+      id: 'mock-job-1', category: 'TECH_IT', job_title: 'Software Engineer Intern', work_mode: 'HYBRID', featured: true,
       allowance: { type: 'AMOUNT', amount_thb: 300, text: '300 บาท/วัน' },
       company: { name: 'บริษัท โนวาเทค จำกัด', badges: ['Verified by Platform', 'University Partner'] },
     },
@@ -28,7 +28,7 @@ export const MOCK_JOBS: LandingJob[] = [
   },
   {
     job: {
-      id: 'mock-2', category: 'BUSINESS_MARKETING', job_title: 'Digital Marketing Intern', work_mode: 'ONSITE', featured: false,
+      id: 'mock-job-3', category: 'BUSINESS_MARKETING', job_title: 'Digital Marketing Intern', work_mode: 'ONSITE', featured: false,
       allowance: { type: 'NONE', text: 'ไม่มีค่าตอบแทน' },
       company: { name: 'บริษัท ไบรท์วิชั่น จำกัด', badges: ['Verified by Platform'] },
     },
@@ -36,7 +36,7 @@ export const MOCK_JOBS: LandingJob[] = [
   },
   {
     job: {
-      id: 'mock-3', category: 'CORPORATE_SERVICES', job_title: 'HR Operations Intern', work_mode: 'ONSITE', featured: false,
+      id: 'mock-job-4', category: 'CORPORATE_SERVICES', job_title: 'HR Operations Intern', work_mode: 'ONSITE', featured: false,
       allowance: { type: 'AMOUNT', amount_thb: 250, text: '250 บาท/วัน' },
       company: { name: 'บริษัท เดลต้าอินโน จำกัด', badges: ['Verified by Platform', 'University Partner'] },
     },

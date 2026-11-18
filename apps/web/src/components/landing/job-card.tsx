@@ -38,7 +38,7 @@ export function JobCard({ item }: { item: LandingJob }) {
         <div><dt className="sr-only">รูปแบบการทำงาน</dt><dd>{workModeLabel[job.work_mode]}</dd></div>
       </dl>
       <Link
-        href={`/jobs/${job.id}`}
+        href={`/jobs/item?id=${job.id}`}
         className="mt-5 inline-block self-start rounded-lg bg-primary-soft px-4 py-2 text-sm font-semibold text-primary hover:bg-primary hover:text-white"
       >
         ดูรายละเอียด
