@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { createSign, generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { INestApplication } from '@nestjs/common';
@@ -27,6 +27,8 @@ function adminUrl(): string | undefined {
   return url.toString();
 }
 
+const ids = (body: { data: { id: string }[] }) => body.data.map((company) => company.id);
+
 describe('Identity company directory (Postgres จริง)', function () {
   this.timeout(90_000);
   let admin: Client;
@@ -34,18 +36,10 @@ describe('Identity company directory (Postgres จริง)', function () {
   let app: INestApplication;
   let db: PrismaService;
   let ratings: DirectoryRatingService;
-  let privateKey: string;
-  let viewerId: string;
   let alphaId: string;
   let betaId: string;
   let pendingId: string;
-  const jwt = (id: string) => {
-    const now = Math.floor(Date.now() / 1000);
-    const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
-    const input = `${encode({ alg: 'RS256', typ: 'JWT' })}.${encode({ sub: id, role: 'STUDENT',
-      jti: randomUUID(), iat: now, exp: now + 900 })}`;
-    return `Bearer ${input}.${createSign('RSA-SHA256').update(input).sign(privateKey).toString('base64url')}`;
-  };
+  const get = (url: string) => request(app.getHttpServer()).get(url);
 
   before(async function () {
     const base = adminUrl();
@@ -63,17 +57,10 @@ describe('Identity company directory (Postgres จริง)', function () {
     process.env.IDENTITY_DATABASE_URL = testUrl;
     process.env.IDENTITY_DIRECT_URL = testUrl;
     process.env.S3_PUBLIC_BASE_URL = 'https://assets.example.test';
-    const pair = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-      publicKeyEncoding: { type: 'spki', format: 'pem' } });
-    privateKey = pair.privateKey;
-    process.env.JWT_PUBLIC_KEY = pair.publicKey;
     const moduleRef = await Test.createTestingModule({ imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
       PrismaModule, DirectoryModule] }).compile();
     app = moduleRef.createNestApplication(); configureApp(app); await app.init();
     db = app.get(PrismaService); ratings = app.get(DirectoryRatingService);
-    const universityId = (await db.university.create({ data: { name: 'Test U', emailDomain: 'test.ac.th' } })).id;
-    viewerId = (await db.user.create({ data: { email: 'directory@test.ac.th', passwordHash: 'secret', fullName: 'Viewer',
-      role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId } })).id;
     alphaId = (await db.company.create({ data: { name: 'Alpha Studio', registrationNo: 'DIR-001',
       emailDomain: 'alpha.test', status: 'VERIFIED', universityPartner: true,
       website: 'https://alpha.test', logoKey: 'companies/a/logo image.png' } })).id;
@@ -87,43 +74,53 @@ describe('Identity company directory (Postgres จริง)', function () {
     await app?.close();
     if (dbName && admin) await admin.query(`DROP DATABASE IF EXISTS ${dbName} WITH (FORCE)`);
     await admin?.end().catch(() => undefined);
-    for (const name of ['IDENTITY_DATABASE_URL', 'IDENTITY_DIRECT_URL', 'S3_PUBLIC_BASE_URL', 'JWT_PUBLIC_KEY']) {
-      delete process.env[name];
+    for (const name of ['IDENTITY_DATABASE_URL', 'IDENTITY_DIRECT_URL', 'S3_PUBLIC_BASE_URL']) delete process.env[name];
+  });
+
+  it('is public: no token needed, and only verified companies are listed', async () => {
+    const all = await get('/v1/directory/companies').expect(200);
+    expect(ids(all.body)).to.deep.equal([alphaId, betaId]);
+    expect(all.body.meta).to.deep.equal({ page: 1, page_size: 20, total: 2 });
+    expect(all.body.data[0]).to.include({ name: 'Alpha Studio', university_partner: true, rating_avg: 0, review_count: 0 });
+    expect(all.body.data[0].logo_url).to.equal('https://assets.example.test/companies/a/logo%20image.png');
+    expect(all.body.data[0]).not.to.have.property('registration_no');
+  });
+
+  it('supports name/partner filters', async () => {
+    expect(ids((await get('/v1/directory/companies?q=ALPHA&partner=true').expect(200)).body)).to.deep.equal([alphaId]);
+    expect(ids((await get('/v1/directory/companies?partner=false').expect(200)).body)).to.deep.equal([betaId]);
+    await get('/v1/directory/companies?partner=maybe').expect(400);
+    await get('/v1/directory/companies?category=TECH').expect(400);
+  });
+
+  it('paginates with page/page_size (max 100)', async () => {
+    const second = await get('/v1/directory/companies?page=2&page_size=1').expect(200);
+    expect(ids(second.body)).to.deep.equal([betaId]);
+    expect(second.body.meta).to.deep.equal({ page: 2, page_size: 1, total: 2 });
+    expect(ids((await get('/v1/directory/companies?page=3&page_size=1').expect(200)).body)).to.deep.equal([]);
+    await get('/v1/directory/companies?page_size=101').expect(400);
+    await get('/v1/directory/companies?page=0').expect(400);
+    await get('/v1/directory/companies?sort=name').expect(400);
+  });
+
+  it('fetches many by ids, silently dropping unknown and unverified ones', async () => {
+    const res = await get(`/v1/directory/companies?ids=${betaId},${pendingId},${randomUUID()},${alphaId.toUpperCase()}`)
+      .expect(200);
+    expect(ids(res.body)).to.deep.equal([alphaId, betaId]);
+    expect(res.body.meta.total).to.equal(2);
+    const fifty = Array.from({ length: 50 }, () => randomUUID());
+    await get(`/v1/directory/companies?ids=${fifty.join(',')}`).expect(200);
+    for (const bad of [[...fifty, randomUUID()].join(','), 'not-a-uuid', `${alphaId},`, '']) {
+      const err = await get(`/v1/directory/companies?ids=${bad}`).expect(400);
+      expect(err.body.error.code).to.equal('VALIDATION_FAILED');
     }
   });
 
-  it('shows only verified companies and supports name/partner filters', async () => {
-    const all = await request(app.getHttpServer()).get('/v1/directory/companies')
-      .set('Authorization', jwt(viewerId)).expect(200);
-    expect(all.body.map((company: { id: string }) => company.id)).to.deep.equal([alphaId, betaId]);
-    expect(all.body[0]).to.include({ name: 'Alpha Studio', university_partner: true, rating_avg: 0, review_count: 0 });
-    expect(all.body[0].logo_url).to.equal('https://assets.example.test/companies/a/logo%20image.png');
-    expect(all.body[0]).not.to.have.property('registration_no');
-    const search = await request(app.getHttpServer()).get('/v1/directory/companies?q=ALPHA&partner=true')
-      .set('Authorization', jwt(viewerId)).expect(200);
-    expect(search.body.map((company: { id: string }) => company.id)).to.deep.equal([alphaId]);
-    const nonPartner = await request(app.getHttpServer()).get('/v1/directory/companies?partner=false')
-      .set('Authorization', jwt(viewerId)).expect(200);
-    expect(nonPartner.body.map((company: { id: string }) => company.id)).to.deep.equal([betaId]);
-    await request(app.getHttpServer()).get('/v1/directory/companies?partner=maybe')
-      .set('Authorization', jwt(viewerId)).expect(400);
-    await request(app.getHttpServer()).get('/v1/directory/companies?category=TECH')
-      .set('Authorization', jwt(viewerId)).expect(400);
-  });
-
-  it('hides unverified details and requires a live authenticated user', async () => {
-    const detail = await request(app.getHttpServer()).get(`/v1/directory/companies/${alphaId}`)
-      .set('Authorization', jwt(viewerId)).expect(200);
+  it('shows details publicly and hides unverified companies', async () => {
+    const detail = await get(`/v1/directory/companies/${alphaId}`).expect(200);
     expect(detail.body).to.include({ id: alphaId, website: 'https://alpha.test' });
-    await request(app.getHttpServer()).get(`/v1/directory/companies/${pendingId}`)
-      .set('Authorization', jwt(viewerId)).expect(404);
-    await request(app.getHttpServer()).get('/v1/directory/companies/not-a-uuid')
-      .set('Authorization', jwt(viewerId)).expect(400);
-    await request(app.getHttpServer()).get('/v1/directory/companies').expect(401);
-    await db.user.update({ where: { id: viewerId }, data: { status: 'SUSPENDED' } });
-    await request(app.getHttpServer()).get('/v1/directory/companies')
-      .set('Authorization', jwt(viewerId)).expect(401);
-    await db.user.update({ where: { id: viewerId }, data: { status: 'ACTIVE' } });
+    await get(`/v1/directory/companies/${pendingId}`).expect(404);
+    await get('/v1/directory/companies/not-a-uuid').expect(400);
   });
 
   it('applies absolute review statistics only when entity_version increases', async () => {
@@ -133,13 +130,11 @@ describe('Identity company directory (Postgres จริง)', function () {
     await db.$transaction((tx) => ratings.apply({ ...base, company_review_count: 1, company_rating_sum: 1,
       entity_version: 1 }, tx));
     await db.$transaction((tx) => ratings.apply({ ...base, company_review_count: 2, company_rating_sum: 2 }, tx));
-    let detail = await request(app.getHttpServer()).get(`/v1/directory/companies/${alphaId}`)
-      .set('Authorization', jwt(viewerId)).expect(200);
+    let detail = await get(`/v1/directory/companies/${alphaId}`).expect(200);
     expect(detail.body).to.include({ rating_avg: 4.5, review_count: 2 });
     await db.$transaction((tx) => ratings.apply({ ...base, company_review_count: 3,
       company_rating_sum: 13, entity_version: 3 }, tx));
-    detail = await request(app.getHttpServer()).get(`/v1/directory/companies/${alphaId}`)
-      .set('Authorization', jwt(viewerId)).expect(200);
+    detail = await get(`/v1/directory/companies/${alphaId}`).expect(200);
     expect(detail.body.rating_avg).to.equal(13 / 3);
     expect(detail.body.review_count).to.equal(3);
     expect((await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: alphaId } })).entityVersion).to.equal(3);
