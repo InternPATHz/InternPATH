@@ -4,6 +4,7 @@ import { LifecycleConfigModule } from './config/lifecycle-config.module';
 import { StorageModule } from './common/storage/storage.module';
 import { InternalModule } from './internal/internal.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
+import { HrApplicationsModule } from './modules/hr-applications/hr-applications.module';
 import { ProblemReportsModule } from './modules/problem-reports/problem-reports.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
@@ -41,6 +42,7 @@ import type { Tx } from './prisma/types';
     ProfilesModule,
     ResumesModule,
     ApplicationsModule,
+    HrApplicationsModule,
     ProblemReportsModule,
   ],
   providers: [JwtAuthGuard, RolesGuard],
