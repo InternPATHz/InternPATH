@@ -29,6 +29,7 @@ export class FakeJobClient {
       status: 'PUBLISHED',
       quota: 3,
       quota_available: 3,
+      job_title: 'Test Job',
       target_majors: [],
       application_deadline: '2099-12-31',
       entity_version: 1,

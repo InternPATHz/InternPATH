@@ -353,7 +353,9 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
   context: { application_id?: string, days_overdue?: number, deadline_at?: string }
 }
 ```
-`reminder_type` ที่ใช้ (ตาม README 5.3): `HR_RESPOND_PENDING_D3`, `HR_RESPOND_PENDING_D7`, `STUDENT_CONFIRM_D3`, `ADVISOR_APPROVE_D3`, `ADVISOR_APPROVE_ESCALATE_ADMIN_D7`, `HR_START_CONFIRM_ON_START`, `HR_START_CONFIRM_D3`, `START_CONFIRM_ESCALATE_D7`, `HR_EVALUATE_D3`, `EVALUATE_ESCALATE_D14`, `HR_ISSUE_CERT_D3`, `ISSUE_CERT_ESCALATE_D14`, `ADVISOR_DISPUTE_D3`, `DISPUTE_ESCALATE_D7`
+`reminder_type` ที่ใช้ (ตาม README 5.3): `HR_RESPOND_PENDING_D3`, `HR_RESPOND_PENDING_D7`, `STUDENT_CONFIRM_D3`, `ADVISOR_APPROVE_D3`, `ADVISOR_APPROVE_ESCALATE_ADMIN_D7`, `HR_START_CONFIRM_ON_START`, `HR_START_CONFIRM_D3`, `START_CONFIRM_ESCALATE_D7`, `HR_EVALUATE_D3`, `EVALUATE_ESCALATE_D14`, `HR_ISSUE_CERT_D3`, `ISSUE_CERT_ESCALATE_D14`, `ADVISOR_DISPUTE_D3`, `DISPUTE_ESCALATE_D7`, `COMPANY_SUSPENDED_DECISION`
+
+`COMPANY_SUSPENDED_DECISION` (PM ตัดสิน 2026-11-18): ไม่ใช่การเตือนตามเวลา แต่ใช้แจ้งว่าบริษัทถูกระงับขณะ `IN_PROGRESS` และอาจารย์ต้องตัดสิน `continue`/`terminate` (data-schema §8) — ส่งตอน Lifecycle ตั้ง `company_suspended_decision = PENDING` (Consumer E05); `entity_type = APPLICATION`, `audience` = อาจารย์ที่ดูแลและนักศึกษาของใบนั้น, `due_date` = วันที่ (Asia/Bangkok) ที่รับ E05 (ชนกับ unique key ของ `reminder_log` ⇒ ไม่แจ้งซ้ำเมื่อรับ E05 ซ้ำ); ถูกระงับรอบใหม่ (คนละวัน) ⇒ แจ้งใหม่ได้
 
 > `EXPIRED` **ไม่ส่งเป็น `ReminderDue`** — เป็นการเปลี่ยนสถานะโดย Lifecycle แล้วส่ง `ApplicationStatusChanged`
 
@@ -398,7 +400,7 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 | `ReviewModerationResult` | นักศึกษา (`student_user_id` ใน payload; เมื่อ `HOLD`/`ADMIN_REMOVE`), Admin (เมื่อ `HOLD` — รายชื่อจาก `GET /internal/v1/admins`) | — |
 | `ReviewPublished` | HR ของบริษัท | มีรีวิวใหม่ |
 | `CertificateIssued` / `CertificateRevoked` | นักศึกษา | — |
-| `ReminderDue` | `audience` ใน Payload | — |
+| `ReminderDue` | `audience` ใน Payload; **ชนิดยกระดับ 5 ชนิด** (`ADVISOR_APPROVE_ESCALATE_ADMIN_D7`, `START_CONFIRM_ESCALATE_D7`, `EVALUATE_ESCALATE_D14`, `ISSUE_CERT_ESCALATE_D14`, `DISPUTE_ESCALATE_D7`) Notification **เพิ่ม Admin เอง** (รายชื่อจาก `GET /internal/v1/admins` — Lifecycle เรียก Identity endpoint นี้ไม่ได้ จึงไม่ใส่ Admin ใน `audience`) • `audience` ว่างได้ (เช่น `ADVISOR_APPROVE_ESCALATE_ADMIN_D7` ส่งถึง Admin อย่างเดียว) ⇒ Notification **ต้องไม่ทิ้ง Event** ต้องเติม Admin แล้วส่งตามปกติ (PM ตัดสิน 2026-11-18) | — |
 | `ProblemReportCreated` | อาจารย์ + Admin | เสมอ |
 | `CompanyFlagChanged` | Admin | `active=true` |
 | `UserDeletionRequested` | — | ลบกล่องข้อความ/บันทึกส่ง |

@@ -111,10 +111,13 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/companies/me/documents` | HO | multipart `file` (PDF ≤ 5 MB), `doc_type` |
 | GET | `/companies/me/documents` | H | รายการ + Signed URL |
 | POST | `/companies/me/resubmit` | HO | ส่งเอกสารเพิ่มเมื่อ `NEED_MORE_INFO` → `PENDING` |
-| GET | `/companies/me/members` | H | |
+| GET | `/companies/me/members` | H | รายชื่อสมาชิกทีม — Pagination มาตรฐาน `{data, meta}` (เหมือน `/documents`) (PM ตัดสิน 2026-11-18) |
+| GET | `/companies/me/invitations` | HO | คำเชิญที่ยังรอรับ (ยังไม่ถูกใช้/ยกเลิก/หมดอายุ) → `{data: [{id, email, invited_at, expires_at}]}` ไม่คืนโทเคน (PM ตัดสิน 2026-11-18) |
 | POST | `/companies/me/invitations` | HO | `{email}` (โดเมนองค์กรเท่านั้น) |
+| DELETE | `/companies/me/invitations/{id}` | HO | ยกเลิกคำเชิญที่ยังรอรับ → `204` (ลิงก์เดิมใช้ไม่ได้ทันที); ไม่พบ/ไม่ใช่ของบริษัทนี้/ถูกใช้แล้ว ⇒ `404 NOT_FOUND` (PM ตัดสิน 2026-11-18) |
 | POST | `/auth/invitations/accept` | Public | `{token, password, full_name}` |
 | DELETE | `/companies/me/members/{user_id}` | HO | |
+| GET | `/companies/me/owner-transfer` | H | คำขอโอนสิทธิ์ Owner ที่ค้างอยู่ของผู้เรียก → `{direction: 'OUTGOING'\|'INCOMING', other_user: {user_id, full_name}, requested_at}` (`OUTGOING` = ผู้เรียกเป็น Owner ที่ขอโอน, `INCOMING` = ผู้เรียกเป็นผู้รับ); ไม่มีคำขอที่เกี่ยวกับผู้เรียก ⇒ `404 NOT_FOUND` (PM ตัดสิน 2026-11-18) |
 | POST | `/companies/me/owner-transfer` | HO | `{to_user_id}` |
 | POST | `/companies/me/owner-transfer/actions/{accept\|decline\|cancel}` | H/HO | ผู้รับกดยืนยัน |
 
@@ -261,7 +264,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 - **ความยาวสูงสุด:** `cover_letter` / `statement` / `detail` ของรายงานปัญหา 5000 ตัวอักษร, `reason` 2000 ตัวอักษร
 - **`request-termination`:** ไม่มี `reason` ⇒ `400 REASON_REQUIRED`; **`dispute-fail`:** โต้แย้งได้ 1 ครั้งต่อผลประเมิน 1 รอบ และคำโต้แย้งเก็บแยกจาก `status_history`/E08 (อาจมีข้อมูลส่วนตัว)
 - **`problem-reports`:** เฉพาะ `IN_PROGRESS` (อื่น ⇒ `409 STATE_CONFLICT` + `NOT_IN_PROGRESS`), `due_at = created_at + 48 ชั่วโมง`, ไม่เปลี่ยนสถานะใบสมัคร และ HR/บริษัทมองไม่เห็น (ไม่มี endpoint ฝั่ง HR)
-- `applications.resume_consent_id` ยังเป็น `null` (`consents/check` คืนแค่ `{has_consent}`) — ถ้าจะผูก ต้องให้ Identity เพิ่ม `consent_id` ในผลของ `POST /internal/v1/consents/check` (เลื่อนไว้)
+- `applications.resume_consent_id` เป็น `null` จนกว่า Identity จะคืน `consent_id` ในผลของ `POST /internal/v1/consents/check` (PM ตัดสิน 2026-11-18 ให้เพิ่ม — เพิ่มฟิลด์อย่างเดียว ไม่กระทบของเดิม); Lifecycle อ่านเมื่อมีค่า ไม่มีค่า ⇒ ยังเป็น `null`
 
 ### 7.3 ใบสมัคร — HR
 | Method | Path | Role | คำอธิบาย |
@@ -355,7 +358,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | job | POST | `/internal/v1/jobs/{job_id}/quota/reserve` | lifecycle | `{application_id}` → `200 {reserved:true}` / `409 QUOTA_FULL`; ซ้ำด้วย `application_id` เดิม ⇒ `200` โดยไม่หักซ้ำ |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/confirm` | lifecycle | `{application_id}` `RESERVED`→`CONFIRMED` (idempotent) |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/release` | lifecycle | `{application_id, reason}` → คืนโควตา (idempotent; ไม่มีการจอง = `200` no-op) |
-| job | GET | `/internal/v1/jobs/{job_id}` | lifecycle | สถานะ/โควตา/`target_majors`/deadline ตอนสมัคร (ลดความเสี่ยง Snapshot ล้าสมัย) |
+| job | GET | `/internal/v1/jobs/{job_id}` | lifecycle | สถานะ/โควตา/`job_title`/`target_majors`/deadline ตอนสมัคร (ลดความเสี่ยง Snapshot ล้าสมัย); `job_title` ใช้เติม `job_snapshots.title` — E03 `JobStatusChanged` ไม่มีชื่อประกาศ จึงสร้าง snapshot ด้วยชื่อว่างได้ และ Lifecycle เติมชื่อตอนมีใบสมัครแรก (PM ตัดสิน 2026-11-18) |
 | lifecycle | POST | `/internal/v1/applications/reservation-check` | job | `{application_ids[]}` → `[{application_id, should_hold_quota: bool}]` (Reconciliation ทุก 30 นาที — Lifecycle ชี้ขาด) |
 | lifecycle | GET | `/internal/v1/users/{user_id}/deletion-eligibility` | identity | `200 {eligible: boolean, blocking_application_count: number}` — `eligible=false` เมื่อผู้ใช้มีใบสมัครสถานะ `ADVISOR_PENDING`/`ADVISOR_APPROVED`/`IN_PROGRESS`/`FAIL_DISPUTED`/`REEVALUATION_REQUESTED`; ไม่มีใบสมัครหรือไม่รู้จักผู้ใช้ ⇒ `eligible=true`; Identity ปฏิเสธการลบเมื่อเรียกไม่สำเร็จ (fail-closed); Service Token: audience `lifecycle`, secret `LIFECYCLE_SERVICE_SECRET_IDENTITY` (PM ตัดสิน 2026-11-17) |
 | identity | GET | `/internal/v1/users/{user_id}/contact` | notification | `{email, full_name}` (ใช้ตอนส่งเท่านั้น; ห้าม cache ถาวร) |
@@ -363,7 +366,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | identity | GET | `/internal/v1/students/names?ids=` | lifecycle | แบบ Batch (≤ 100) → `[{user_id, full_name}]` ชื่อนักศึกษาสำหรับหน้ารายการของ HR/อาจารย์ — ไม่มีอีเมล, ข้ามบัญชีที่ลบแล้วและ id ที่ไม่ใช่นักศึกษา (SA ตัดสิน 2026-11-18) |
 | identity | GET | `/internal/v1/students/{user_id}` | lifecycle | `{full_name, major, year_level, university_id, email_verified, advisor_id, advisor_link_status}` ตอนสมัครงาน และชื่อแสดงผลให้ HR (มี Consent)/อาจารย์ — Lifecycle ดึงสดทุกครั้ง **ห้ามเก็บ `full_name` ลง DB/cache/Event/log** (SA ตัดสิน 2026-11-18) |
 | identity | GET | `/internal/v1/companies/{company_id}/members` | notification, lifecycle | ผู้รับแจ้งเตือนฝั่ง HR |
-| identity | POST | `/internal/v1/consents/check` | lifecycle | `{student_user_id, company_id}` → `{has_consent}` |
+| identity | POST | `/internal/v1/consents/check` | lifecycle | `{student_user_id, company_id}` → `{has_consent, consent_id?}` (`consent_id` = Consent ที่ใช้อยู่ ส่งเมื่อ `has_consent=true`; ใช้ผูก `applications.resume_consent_id` — PM ตัดสิน 2026-11-18) |
 | identity | GET | `/internal/v1/admins` | notification | รายชื่อ `user_id` ของ Admin |
 | identity | GET | `/internal/v1/denylist` | gateway | รายการ `user_id` ที่ถูกระงับ (ดึงตอนเริ่มระบบ/ทุก 30 วินาที) |
 | verification | GET | `/internal/v1/jobs/{job_id}/flags` | job | (สำรอง) สถานะธงบริษัท |
