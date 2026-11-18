@@ -10,7 +10,7 @@ export const STUDENT_NAMES_BATCH_MAX = 100;
  *
  * - ดึงสดทุกครั้ง **ห้ามเก็บลง DB / cache / ใส่ใน Event / log** (api-contract §9)
  * - ผู้เรียกต้องตรวจสิทธิ์ (ความดูแลของอาจารย์ ฯลฯ) ก่อนเรียก
- * - Identity ล่ม / ไม่พบนักศึกษา (บัญชีถูกลบ) ⇒ ชื่อว่าง ไม่ทำให้ทั้งหน้าล้ม
+ * - Identity ล่ม / ไม่พบนักศึกษา (บัญชีถูกระงับหรือลบ) ⇒ ชื่อว่าง ไม่ทำให้ทั้งหน้าล้ม
  */
 @Injectable()
 export class StudentNamesService {
