@@ -10,6 +10,7 @@ import { LifecycleConfigService } from '../../src/config/lifecycle-config.servic
 import { IdentityInternalClient } from '../../src/internal/identity-client.service';
 import { ProfilesModule } from '../../src/modules/profiles/profiles.module';
 import { ResumesModule } from '../../src/modules/resumes/resumes.module';
+import { MAX_ACTIVE_RESUMES } from '../../src/modules/resumes/resumes.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { TEST_JWT, bearer } from '../support/jwt';
 import { FakeIdentity, FakePrisma, FakeStorage, SAMPLE_FILES } from '../support/profile-resume-fakes';
@@ -302,6 +303,30 @@ describe('Lifecycle 1.3 — โปรไฟล์และเรซูเม่ 
       await http().delete('/v1/me/resumes/not-a-uuid').set('Authorization', asStudent()).expect(400);
     });
 
+    it(`เพดาน ${MAX_ACTIVE_RESUMES} ไฟล์: ไฟล์ถัดไป ⇒ 400 VALIDATION_FAILED + RESUME_LIMIT_REACHED และไม่เขียนลง Storage`, async () => {
+      for (let i = 0; i < MAX_ACTIVE_RESUMES; i += 1) prisma.addResume({ studentUserId: studentA, isPrimary: i === 0 });
+      prisma.addResume({ studentUserId: studentA, deletedAt: new Date() }); // ไฟล์ที่ลบแล้วไม่นับ
+      prisma.addResume({ studentUserId: studentB }); // ของคนอื่นไม่นับ
+
+      const res = await upload(SAMPLE_FILES.pdf()).expect(400);
+      expect(res.body.error.code).to.equal('VALIDATION_FAILED');
+      expect(res.body.error.details).to.deep.equal([{ field: 'file', issue: 'RESUME_LIMIT_REACHED' }]);
+      expect(storage.objects.size).to.equal(0);
+
+      // ลบออก 1 ไฟล์ ⇒ อัปโหลดได้อีก
+      const first = prisma.resumes.find((r) => r.studentUserId === studentA && !r.deletedAt)!;
+      await http().delete(`/v1/me/resumes/${first.id}`).set('Authorization', asStudent()).expect(204);
+      await upload(SAMPLE_FILES.pdf()).expect(201);
+      expect(prisma.resumes.filter((r) => r.studentUserId === studentA && !r.deletedAt)).to.have.length(MAX_ACTIVE_RESUMES);
+    });
+
+    it('DELETE ใช้ advisory lock เดียวกับ upload ใน Transaction', async () => {
+      const resume = prisma.addResume({ studentUserId: studentA, isPrimary: true });
+      const before = prisma.executeRawCalls;
+      await http().delete(`/v1/me/resumes/${resume.id}`).set('Authorization', asStudent()).expect(204);
+      expect(prisma.executeRawCalls).to.equal(before + 1);
+    });
+
     it('DELETE: ลบไฟล์ใน Storage ไม่สำเร็จ ⇒ error และยังไม่ mark ว่าลบ (ลองใหม่ได้)', async () => {
       const resume = prisma.addResume({ studentUserId: studentA, isPrimary: true });
       storage.failDelete = true;
@@ -367,24 +392,60 @@ describe('Lifecycle 1.3 — โปรไฟล์และเรซูเม่ 
       expect(storage.signed).to.have.length(0);
     });
 
-    it('ใบสมัครไม่มี / เรซูเม่ถูกลบ / ไม่มีเรซูเม่ / เรซูเม่ไม่ใช่ของเจ้าของใบสมัคร ⇒ 404 NOT_FOUND', async () => {
+    it('ใบสมัครไม่มี / ไม่มีเรซูเม่ / เรซูเม่ไม่ใช่ของเจ้าของใบสมัคร ⇒ 404 NOT_FOUND ไม่มี details', async () => {
       identity.consents.add(`${studentA}:${companyX}`);
       const missing = await http().get(`/v1/hr/applications/${randomUUID()}/resume`).set('Authorization', asHr()).expect(404);
       expect(missing.body.error.code).to.equal('NOT_FOUND');
-
-      const { resume, application } = seed();
-      resume.deletedAt = new Date();
-      await http().get(`/v1/hr/applications/${application.id}/resume`).set('Authorization', asHr()).expect(404);
-      await http().get(`/v1/advisor/applications/${application.id}/resume`).set('Authorization', asAdvisor()).expect(404);
+      expect(missing.body.error.details).to.equal(undefined);
 
       const noResume = prisma.addApplication({ studentUserId: studentA, companyId: companyX, advisorUserId: advisorA });
-      await http().get(`/v1/hr/applications/${noResume.id}/resume`).set('Authorization', asHr()).expect(404);
+      const none = await http().get(`/v1/hr/applications/${noResume.id}/resume`).set('Authorization', asHr()).expect(404);
+      expect(none.body.error.details).to.equal(undefined);
 
       const foreign = prisma.addResume({ studentUserId: studentB });
       const mismatched = prisma.addApplication({ studentUserId: studentA, companyId: companyX, advisorUserId: advisorA, resumeId: foreign.id });
-      await http().get(`/v1/hr/applications/${mismatched.id}/resume`).set('Authorization', asHr()).expect(404);
+      const mis = await http().get(`/v1/hr/applications/${mismatched.id}/resume`).set('Authorization', asHr()).expect(404);
+      expect(mis.body.error.details).to.equal(undefined);
+      // เรซูเม่ของคนอื่นที่ถูกลบ ก็ยังเป็น 404 เฉยๆ (ไม่บอกว่าเคยมี)
+      foreign.deletedAt = new Date();
+      const misDeleted = await http().get(`/v1/hr/applications/${mismatched.id}/resume`).set('Authorization', asHr()).expect(404);
+      expect(misDeleted.body.error.details).to.equal(undefined);
 
       await http().get('/v1/hr/applications/not-a-uuid/resume').set('Authorization', asHr()).expect(400);
+    });
+
+    it('นักศึกษาลบเรซูเม่ของใบสมัครแล้ว ⇒ HR/อาจารย์ได้ 404 NOT_FOUND + RESUME_DELETED_BY_STUDENT และไม่ออก URL', async () => {
+      identity.consents.add(`${studentA}:${companyX}`);
+      const { resume, application } = seed();
+      await http().delete(`/v1/me/resumes/${resume.id}`).set('Authorization', asStudent(studentA)).expect(204);
+
+      const hr = await http().get(`/v1/hr/applications/${application.id}/resume`).set('Authorization', asHr(companyX)).expect(404);
+      expect(hr.body.error.code).to.equal('NOT_FOUND');
+      expect(hr.body.error.details).to.deep.equal([{ field: 'resume', issue: 'RESUME_DELETED_BY_STUDENT' }]);
+
+      const adv = await http().get(`/v1/advisor/applications/${application.id}/resume`).set('Authorization', asAdvisor(advisorA)).expect(404);
+      expect(adv.body.error.code).to.equal('NOT_FOUND');
+      expect(adv.body.error.details).to.deep.equal([{ field: 'resume', issue: 'RESUME_DELETED_BY_STUDENT' }]);
+      expect(storage.signed).to.have.length(0);
+    });
+
+    it('เรซูเม่ถูกลบแต่ผู้เรียกไม่มีสิทธิ์ ⇒ ยังเป็น 403 ก่อน (ไม่เปิดเผยว่านักศึกษาลบ)', async () => {
+      const { resume, application } = seed();
+      resume.deletedAt = new Date();
+      const hr = await http().get(`/v1/hr/applications/${application.id}/resume`).set('Authorization', asHr(companyY)).expect(403);
+      expect(hr.body.error.code).to.equal('NOT_OWNER_OF_RESOURCE');
+      const adv = await http().get(`/v1/advisor/applications/${application.id}/resume`).set('Authorization', asAdvisor(advisorOther)).expect(403);
+      expect(adv.body.error.code).to.equal('NOT_OWNER_OF_RESOURCE');
+    });
+
+    it('HR บริษัทเดียวกันแต่ไม่มี Consent + เรซูเม่ถูกลบ ⇒ 403 CONSENT_REQUIRED (ไม่ใช่ 404 RESUME_DELETED_BY_STUDENT)', async () => {
+      const { resume, application } = seed();
+      resume.deletedAt = new Date();
+      const res = await http().get(`/v1/hr/applications/${application.id}/resume`).set('Authorization', asHr(companyX)).expect(403);
+      expect(res.body.error.code).to.equal('CONSENT_REQUIRED');
+      expect(JSON.stringify(res.body)).to.not.include('RESUME_DELETED_BY_STUDENT');
+      expect(identity.consentCalls).to.deep.equal([{ student: studentA, company: companyX }]);
+      expect(storage.signed).to.have.length(0);
     });
 
     it('อาจารย์ที่ผูกกับใบสมัคร ⇒ 200 (ไม่ต้องใช้ Consent ของบริษัท)', async () => {

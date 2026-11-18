@@ -9,7 +9,8 @@ import type { S3StorageService } from '../../src/common/storage/s3-storage.servi
 import type { LifecycleConfigService } from '../../src/config/lifecycle-config.service';
 import type { IdentityInternalClient } from '../../src/internal/identity-client.service';
 import { ProfilesService } from '../../src/modules/profiles/profiles.service';
-import { ResumesService } from '../../src/modules/resumes/resumes.service';
+import { AppException } from '@internpath/common';
+import { MAX_ACTIVE_RESUMES, ResumesService } from '../../src/modules/resumes/resumes.service';
 import type { PrismaService } from '../../src/prisma/prisma.service';
 import { FakeIdentity, FakeStorage, SAMPLE_FILES } from '../support/profile-resume-fakes';
 
@@ -119,6 +120,56 @@ describe('Lifecycle 1.3 — โปรไฟล์/เรซูเม่บน Po
     const list = await resumes.list(student);
     expect(list.meta.total).to.equal(1);
     expect(list.data[0]).to.include({ id: second.id, is_primary: true });
+  });
+
+  it(`เพดาน ${MAX_ACTIVE_RESUMES} ไฟล์ใต้ล็อก: มี 4 ไฟล์แล้วอัปโหลดพร้อมกัน 3 ไฟล์ ⇒ ผ่าน 1 ไฟล์ ที่เหลือ 400 และลบไฟล์ชดเชย`, async () => {
+    const student = randomUUID();
+    for (let i = 0; i < MAX_ACTIVE_RESUMES - 1; i += 1) await resumes.upload(student, { buffer: SAMPLE_FILES.pdf() });
+    const results = await Promise.allSettled(Array.from({ length: 3 }, () => resumes.upload(student, { buffer: SAMPLE_FILES.pdf() })));
+
+    expect(results.filter((r) => r.status === 'fulfilled')).to.have.length(1);
+    const rejected = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
+    expect(rejected).to.have.length(2);
+    for (const r of rejected) {
+      expect(r.reason).to.be.instanceOf(AppException);
+      expect((r.reason as AppException).code).to.equal('VALIDATION_FAILED');
+      expect((r.reason as AppException).details).to.deep.equal([{ field: 'file', issue: 'RESUME_LIMIT_REACHED' }]);
+    }
+    expect(await prisma.resume.count({ where: { studentUserId: student, deletedAt: null } })).to.equal(MAX_ACTIVE_RESUMES);
+    expect(storage.objects.size).to.equal(MAX_ACTIVE_RESUMES);
+  });
+
+  it('ลบไฟล์หลักพร้อมอัปโหลดไฟล์ใหม่ (ล็อกเดียวกัน) ⇒ เหลือไฟล์หลักพอดี 1 ไฟล์ทุกรอบ', async () => {
+    for (let round = 0; round < 5; round += 1) {
+      const student = randomUUID();
+      const primary = await resumes.upload(student, { buffer: SAMPLE_FILES.pdf() });
+      await Promise.all([resumes.remove(student, primary.id), resumes.upload(student, { buffer: SAMPLE_FILES.pdf() })]);
+      expect(await prisma.resume.count({ where: { studentUserId: student, deletedAt: null } }), `round ${round}`).to.equal(1);
+      expect(await prisma.resume.count({ where: { studentUserId: student, deletedAt: null, isPrimary: true } }), `round ${round}`).to.equal(1);
+    }
+  });
+
+  it('นักศึกษาลบเรซูเม่ของใบสมัครแล้ว ⇒ forHr/forAdvisor โยน 404 + RESUME_DELETED_BY_STUDENT', async () => {
+    const student = randomUUID();
+    const company = randomUUID();
+    const advisor = randomUUID();
+    const uploaded = await resumes.upload(student, { buffer: SAMPLE_FILES.pdf() });
+    const application = await prisma.application.create({
+      data: { jobId: randomUUID(), companyId: company, studentUserId: student, advisorUserId: advisor, resumeId: uploaded.id },
+    });
+    identity.consents.add(`${student}:${company}`);
+    await resumes.remove(student, uploaded.id);
+
+    const calls = [
+      () => resumes.forHr({ role: 'COMPANY_HR', sub: randomUUID(), company_id: company } as never, application.id),
+      () => resumes.forAdvisor({ role: 'ADVISOR', sub: advisor } as never, application.id),
+    ];
+    for (const call of calls) {
+      const error = await call().then(() => null, (e: unknown) => e);
+      expect(error).to.be.instanceOf(AppException);
+      expect((error as AppException).getStatus()).to.equal(404);
+      expect((error as AppException).details).to.deep.equal([{ field: 'resume', issue: 'RESUME_DELETED_BY_STUDENT' }]);
+    }
   });
 
   it('HR/อาจารย์อ่านเรซูเม่ของใบสมัครจากแถวจริง (select + ownership + consent)', async () => {
