@@ -106,7 +106,12 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
 
   if (!loaded.eligibility.can_apply) {
     const reason = loaded.eligibility.blocked_reason ?? '';
-    return <Notice tone="error">{BLOCKED[reason] ?? 'ยังสมัครงานไม่ได้ในขณะนี้'}</Notice>;
+    return (
+      <div className="flex flex-col gap-2">
+        <Notice tone="error">{BLOCKED[reason] ?? 'ยังสมัครงานไม่ได้ในขณะนี้'}</Notice>
+        {reason === 'ADVISOR_NOT_LINKED' && <Link href="/student/advisor" className="text-sm font-medium text-primary hover:underline">ไปผูกอาจารย์ที่ปรึกษา</Link>}
+      </div>
+    );
   }
 
   if (loaded.resumes.length === 0) {
