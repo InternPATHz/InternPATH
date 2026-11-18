@@ -9,6 +9,7 @@ import type {
 } from '@internpath/contracts';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Certificate } from '../../../generated/client';
+import { AUDIT_ACTIONS, recordAdminAudit } from '../../common/audit/admin-audit';
 import { assertCompanyOwnership } from '../../common/auth/ownership';
 import { S3StorageService } from '../../common/storage/s3-storage.service';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
@@ -30,8 +31,8 @@ import { certificateNotFound, checkCertificateIssuable, effectiveMinActualDays }
 
 type RevokerRole = Extract<ActorRole, 'COMPANY_HR' | 'PLATFORM_ADMIN'>;
 
-/** ชื่อ action ใน `admin_audit_log` (README §5.10) */
-export const AUDIT_CERTIFICATE_REVOKE = 'CERTIFICATE_REVOKE';
+/** ชื่อ action ใน `admin_audit_log` (README §5.10) — รายการทั้งหมดอยู่ที่ `AUDIT_ACTIONS` */
+export const AUDIT_CERTIFICATE_REVOKE = AUDIT_ACTIONS.CERTIFICATE_REVOKE;
 
 /** รหัสสุ่มชนกัน (โอกาสน้อยมาก) ⇒ สุ่มใหม่และสร้าง PDF ใหม่ได้กี่ครั้ง */
 const CODE_ATTEMPTS = 3;
@@ -265,18 +266,16 @@ export class CertificatesService {
         occurredAt: now,
       });
       if (role === 'PLATFORM_ADMIN') {
-        await tx.adminAuditLog.create({
-          data: {
-            adminId: actorId,
-            action: AUDIT_CERTIFICATE_REVOKE,
-            targetType: 'CERTIFICATE',
-            targetId: cert.id,
-            before: { status: 'VALID' },
-            after: { status: 'REVOKED' },
-            reason,
-            correlationId: cid,
-            occurredAt: now,
-          },
+        await recordAdminAudit(tx, {
+          adminId: actorId,
+          action: AUDIT_CERTIFICATE_REVOKE,
+          targetType: 'CERTIFICATE',
+          targetId: cert.id,
+          before: { status: 'VALID' },
+          after: { status: 'REVOKED' },
+          reason,
+          correlationId: cid,
+          occurredAt: now,
         });
       }
       await this.outbox.add(tx, {

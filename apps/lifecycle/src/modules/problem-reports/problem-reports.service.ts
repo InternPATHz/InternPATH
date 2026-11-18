@@ -120,6 +120,34 @@ export class ProblemReportsService {
     return { data: rows.map((row) => toProblemReportItem(row, now)), meta: { page, page_size: pageSize, total } };
   }
 
+  /**
+   * GET /admin/lifecycle/problem-reports (1.9) — ทุกรายงาน (Admin ได้รับทุกเรื่องพร้อมอาจารย์ — README §5.2.2, UAT-39)
+   * `?overdue=true` = ยังไม่ `RESOLVED` และเลย `due_at` (48 ชม.) ณ ตอนอ่าน — นิยามเดียวกับธง `overdue` ของแต่ละรายการ
+   * เรียง `due_at` ใกล้/เลยกำหนดก่อน
+   */
+  async listForAdmin(
+    filter: { status?: ProblemReportStatus; overdue?: boolean },
+    page = 1,
+    pageSize = 20,
+    now = new Date(),
+  ): Promise<Paginated<ProblemReportItem>> {
+    const conditions: Prisma.ProblemReportWhereInput[] = [];
+    if (filter.status) conditions.push({ status: filter.status });
+    if (filter.overdue === true) conditions.push({ status: { not: 'RESOLVED' }, dueAt: { lt: now } });
+    if (filter.overdue === false) conditions.push({ OR: [{ status: 'RESOLVED' }, { dueAt: { gte: now } }] });
+    const where: Prisma.ProblemReportWhereInput = conditions.length ? { AND: conditions } : {};
+    const [rows, total] = await Promise.all([
+      this.db.problemReport.findMany({
+        where,
+        orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.db.problemReport.count({ where }),
+    ]);
+    return { data: rows.map((row) => toProblemReportItem(row, now)), meta: { page, page_size: pageSize, total } };
+  }
+
   /** `acknowledge` — `OPEN → ACKNOWLEDGED` เท่านั้น (ไม่ย้อน — data-schema) ไม่งั้น `409 STATE_CONFLICT` + `NOT_OPEN` */
   async acknowledge(user: JwtClaims, reportId: string, now = new Date()): Promise<ProblemReportItem> {
     return this.db.$transaction(async (tx) => {

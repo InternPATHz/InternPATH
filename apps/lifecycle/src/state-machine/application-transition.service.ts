@@ -40,8 +40,11 @@ export interface TransitionCommand {
   input?: Omit<GuardInput, 'reason'>;
   patch?: ApplicationPatch;
   hrUserIds?: string[];
-  /** เขียนแถวที่เกี่ยวข้อง (เช่น evaluations, fail_disputes) ใน Transaction เดียวกัน หลังเปลี่ยนสถานะสำเร็จ */
-  afterTransition?: (tx: Tx, after: Application) => Promise<void>;
+  /**
+   * เขียนแถวที่เกี่ยวข้อง (เช่น evaluations, fail_disputes, admin_audit_log) ใน Transaction เดียวกัน หลังเปลี่ยนสถานะสำเร็จ
+   * `before` = แถวที่อ่านใน Transaction ก่อนเปลี่ยน (ค่า "ก่อน" ของ audit log)
+   */
+  afterTransition?: (tx: Tx, after: Application, before: Application) => Promise<void>;
 }
 
 /** โควตาที่ต้องเรียก Job หลัง commit (Internal API idempotent ด้วย `application_id`) */
@@ -139,7 +142,7 @@ export class ApplicationTransitionService {
       }),
     });
 
-    await command.afterTransition?.(tx, after);
+    await command.afterTransition?.(tx, after, before);
 
     const quota: PendingQuotaEffect[] =
       rule.quota === 'CONFIRM' || rule.quota === 'RELEASE'
