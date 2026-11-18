@@ -12,6 +12,7 @@ import { CertificatesModule } from './modules/certificates/certificates.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { HrApplicationsModule } from './modules/hr-applications/hr-applications.module';
 import { ProblemReportsModule } from './modules/problem-reports/problem-reports.module';
+import { AdminLifecycleModule } from './modules/admin/admin-lifecycle.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
@@ -54,6 +55,7 @@ import type { Tx } from './prisma/types';
     ResumesModule,
     ApplicationsModule,
     HrApplicationsModule,
+    AdminLifecycleModule,
     ProblemReportsModule,
     AdvisorModule,
     ReviewsModule,
