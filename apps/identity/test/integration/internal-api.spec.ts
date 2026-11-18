@@ -122,11 +122,48 @@ describe('Identity Internal API (Postgres จริง)', function () {
     expect(members.body).to.deep.equal([{ user_id: hrId, member_role: 'OWNER' }]);
     const consent = await request(app.getHttpServer()).post('/internal/v1/consents/check').set('Authorization', `Bearer ${token}`)
       .send({ student_user_id: studentId, company_id: companyId }).expect(200);
-    expect(consent.body).to.deep.equal({ has_consent: true });
+    const active = await db.consent.findFirstOrThrow({ where: { userId: studentId, revokedAt: null } });
+    expect(consent.body).to.deep.equal({ has_consent: true, consent_id: active.id });
     await db.consent.updateMany({ where: { userId: studentId }, data: { revokedAt: new Date() } });
     const revoked = await request(app.getHttpServer()).post('/internal/v1/consents/check').set('Authorization', `Bearer ${token}`)
       .send({ student_user_id: studentId, company_id: companyId }).expect(200);
     expect(revoked.body).to.deep.equal({ has_consent: false });
+  });
+
+  it('checks consent in batch for Lifecycle: latest active consent per student, request order, consented only', async () => {
+    const student = (email: string, code: string, status: 'ACTIVE' | 'SUSPENDED' = 'ACTIVE') => db.user.create({ data: {
+      email, passwordHash: 'secret', fullName: code, role: 'STUDENT', status, emailVerifiedAt: new Date(), universityId,
+      studentProfile: { create: { studentCode: code, major: 'CS', yearLevel: 3 } } } });
+    const [a, b, c, suspended] = await Promise.all([student('a@test.ac.th', 'B001'), student('b@test.ac.th', 'B002'),
+      student('c@test.ac.th', 'B003'), student('s@test.ac.th', 'B004', 'SUSPENDED')]);
+    const otherCompany = await db.company.create({ data: { name: 'Other', registrationNo: 'REG-002', emailDomain: 'other.test' } });
+    const grant = (userId: string, at: Date, target = companyId, revokedAt: Date | null = null) => db.consent.create({ data: {
+      userId, type: 'RESUME_SHARE', policyVersion: 'v1', targetCompanyId: target, grantedAt: at, revokedAt } });
+    await grant(a.id, new Date('2026-01-01'));
+    const aLatest = await grant(a.id, new Date('2026-02-01'));
+    await grant(b.id, new Date('2026-03-01'), companyId, new Date());
+    await grant(c.id, new Date('2026-01-01'), otherCompany.id);
+    await grant(suspended.id, new Date('2026-01-01'));
+    const cLatest = await grant(c.id, new Date('2026-01-01'));
+    const lifecycle = `Bearer ${serviceToken('lifecycle')}`;
+    const ids = [c.id, b.id, randomUUID(), suspended.id, a.id, c.id];
+    const batch = await request(app.getHttpServer()).post('/internal/v1/consents/check-batch').set('Authorization', lifecycle)
+      .send({ company_id: companyId, student_user_ids: ids }).expect(200);
+    expect(batch.body).to.deep.equal([
+      { student_user_id: c.id, consent_id: cLatest.id },
+      { student_user_id: a.id, consent_id: aLatest.id },
+    ]);
+    const single = await request(app.getHttpServer()).post('/internal/v1/consents/check').set('Authorization', lifecycle)
+      .send({ student_user_id: a.id, company_id: companyId }).expect(200);
+    expect(single.body).to.deep.equal({ has_consent: true, consent_id: aLatest.id });
+
+    for (const student_user_ids of [[], Array(101).fill(a.id), ['bad'], 'not-array']) {
+      await request(app.getHttpServer()).post('/internal/v1/consents/check-batch').set('Authorization', lifecycle)
+        .send({ company_id: companyId, student_user_ids }).expect(400);
+    }
+    await request(app.getHttpServer()).post('/internal/v1/consents/check-batch')
+      .set('Authorization', `Bearer ${serviceToken('notification')}`)
+      .send({ company_id: companyId, student_user_ids: [a.id] }).expect(403);
   });
 
   it('returns student names in batch only to Lifecycle (no email, active students only like students/{id})', async () => {

@@ -1,6 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { InternalCallers, ServiceTokenGuard, ServiceTokenPolicy } from '@internpath/common';
-import { ConsentCheckDto } from './internal.dto';
+import { ConsentCheckBatchDto, ConsentCheckDto } from './internal.dto';
 import { InternalService } from './internal.service';
 
 @Controller('internal/v1')
@@ -31,6 +31,9 @@ export class InternalController {
 
   @Post('consents/check') @HttpCode(200) @InternalCallers('lifecycle')
   consent(@Body() body: ConsentCheckDto) { return this.service.consent(body); }
+
+  @Post('consents/check-batch') @HttpCode(200) @InternalCallers('lifecycle')
+  consentBatch(@Body() body: ConsentCheckBatchDto) { return this.service.consentBatch(body); }
 
   @Get('admins') @InternalCallers('notification')
   admins() { return this.service.admins(); }
