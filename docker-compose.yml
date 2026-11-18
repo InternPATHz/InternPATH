@@ -109,6 +109,7 @@ services:
       PORT: "3002"
       JOB_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/job_db
       JOB_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/job_db
+      LIFECYCLE_URL: http://lifecycle:3004
 
   verification:
     <<: *service
@@ -131,6 +132,7 @@ services:
       PORT: "3004"
       LIFECYCLE_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/lifecycle_db
       LIFECYCLE_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/lifecycle_db
+      JOB_URL: http://job:3002
 
   notification:
     <<: *service
