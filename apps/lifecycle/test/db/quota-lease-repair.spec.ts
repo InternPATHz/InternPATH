@@ -266,10 +266,10 @@ describe('Lifecycle — lease โควตา + ซ่อม Job (QIR-01/QIR-03,
       expect(job.reservations.get(b.id)).to.equal('RESERVED');
     });
 
-    it('ไม่ซ่อมใบที่ไม่ถือโควตา หรือจบแล้ว ⇒ ไม่เรียก Job เลย', async () => {
+    it('ไม่ซ่อมใบที่ไม่ถือโควตา (quota_reserved = false) ไม่ว่าสถานะใด ⇒ ไม่เรียก Job เลย', async () => {
       await seed('HR_ACCEPTED', { quotaReserved: false });
-      await seed('COMPLETED', { quotaReserved: true });
-      await seed('EVALUATED_PASS', { quotaReserved: true });
+      await seed('STUDENT_DECLINED', { quotaReserved: false });
+      await seed('COMPLETED', { quotaReserved: false });
       const result = await repair.runOnce();
       expect(result).to.include({ scanned: 0, synced: 0 });
       expect(job.calls).to.have.length(0);
@@ -297,6 +297,130 @@ describe('Lifecycle — lease โควตา + ซ่อม Job (QIR-01/QIR-03,
       await repair.runOnce();
       expect(job.reservations.get(a.id)).to.equal('RESERVED');
       expect([...job.reservations.values()].filter((s) => s === 'RESERVED')).to.have.length(1);
+    });
+  });
+
+  // ------------------------------------------------------------------
+  describe('ขอบเขตหลัง start — Termination-before-Repair (JR regression)', () => {
+    const HOUR = 3_600_000;
+    const hoursAgo = (hours: number) => new Date(Date.now() - hours * HOUR);
+
+    it('สถานะหลัง start ที่ยังถือที่นั่ง (TERMINATED/ประเมิน/COMPLETED) แต่ Job เป็น RELEASED ⇒ repair จอง + confirm ให้เป็น CONFIRMED', async () => {
+      const statuses: ApplicationStatus[] = ['TERMINATED', 'EVALUATED_PASS', 'COMPLETED', 'FAIL_DISPUTED'];
+      const rows = [];
+      for (const status of statuses) rows.push(await seed(status, { quotaReserved: true, statusChangedAt: hoursAgo(2) }));
+      for (const row of rows) job.reservations.set(row.id, 'RELEASED');
+
+      const result = await repair.runOnce();
+      expect(result).to.include({ scanned: 4, synced: 4, quotaFull: 0, failed: 0 });
+      for (const row of rows) expect(job.reservations.get(row.id), row.status).to.equal('CONFIRMED');
+    });
+
+    it('ลำดับของ JR: release เก่าทำให้ Job RELEASED ⇒ start ได้ confirm 409 ⇒ ซ่อมทันที Job เป็น CONFIRMED ก่อนที่จะยุติการฝึกได้', async () => {
+      const a = await seed('ADVISOR_APPROVED', {
+        quotaReserved: true,
+        startDate: today(),
+        endDate: addDays(today(), 60),
+      });
+      job.reservations.set(a.id, 'RELEASED');
+
+      const result = await machine.execute(a.id, {
+        trigger: 'start',
+        actor: hr,
+        patch: { actualStartDate: today() },
+        correlationId: randomUUID(),
+      });
+      expect(result.application.status).to.equal('IN_PROGRESS');
+      expect(result.quotaFailures).to.deep.equal([]);
+      expect(job.calls.map((c) => c.op)).to.deep.equal(['confirm', 'reserve', 'confirm']);
+      expect(job.reservations.get(a.id)).to.equal('CONFIRMED');
+    });
+
+    it('ซ่อมทันทีไม่ได้เพราะที่นั่งถูกคนอื่นจองไปก่อน (QUOTA_FULL) ⇒ ใบยัง IN_PROGRESS • ยุติการฝึกแล้ว repair ก็ยังไม่ผ่าน (ไม่หลอกตัวเอง) • มีที่ว่างแล้วจึงซ่อมได้', async () => {
+      const a = await seed('ADVISOR_APPROVED', {
+        quotaReserved: true,
+        startDate: today(),
+        endDate: addDays(today(), 60),
+      });
+      job.reservations.set(a.id, 'RELEASED');
+      job.capacity = 0; // ที่นั่งสุดท้ายถูกคนอื่นจองไปแล้ว
+
+      const result = await machine.execute(a.id, {
+        trigger: 'start',
+        actor: hr,
+        patch: { actualStartDate: today() },
+        correlationId: randomUUID(),
+      });
+      expect(result.application.status).to.equal('IN_PROGRESS');
+      expect(result.quotaFailures).to.have.length(1);
+      expect(job.reservations.get(a.id)).to.equal('RELEASED');
+
+      // นักศึกษายุติการฝึกก่อน Scheduler ซ่อม — ต้องยังอยู่ในขอบเขต repair
+      await prisma.application.update({ where: { id: a.id }, data: { status: 'TERMINATED' } });
+      const stuck = await repair.runOnce();
+      expect(stuck).to.include({ scanned: 1, synced: 0, quotaFull: 1 });
+      expect(await reload(a.id)).to.include({ status: 'TERMINATED', quotaReserved: true, quotaSyncedAt: null });
+
+      job.capacity = 1;
+      const fixed = await repair.runOnce();
+      expect(fixed).to.include({ scanned: 1, synced: 1, quotaFull: 0 });
+      expect(job.reservations.get(a.id)).to.equal('CONFIRMED');
+    });
+
+    it('ใบที่ควรเป็น CONFIRMED: ยืนยันตรงแล้วและสถานะนิ่ง ≥ 1 ชั่วโมง ⇒ จด quota_synced_at และไม่ตรวจซ้ำ', async () => {
+      const a = await seed('TERMINATED', { quotaReserved: true, statusChangedAt: hoursAgo(2) });
+      job.reservations.set(a.id, 'CONFIRMED');
+      expect(await repair.runOnce()).to.include({ scanned: 1, synced: 1 });
+      expect((await reload(a.id)).quotaSyncedAt).to.be.instanceOf(Date);
+
+      job.calls.length = 0;
+      expect(await repair.runOnce()).to.include({ scanned: 0, synced: 0 });
+      expect(job.calls).to.have.length(0);
+    });
+
+    it('ไม่ข้ามถาวร (JR): จดแล้ว แต่ release เก่ามาช้าหลังจดทำให้ Job เป็น RELEASED ⇒ ภายใน 24 ชม. ข้าม • เกิน 24 ชม. ตรวจซ้ำและซ่อมกลับเป็น CONFIRMED', async () => {
+      const a = await seed('COMPLETED', { quotaReserved: true, statusChangedAt: hoursAgo(3) });
+      job.reservations.set(a.id, 'CONFIRMED');
+      await repair.runOnce();
+      expect((await reload(a.id)).quotaSyncedAt).to.be.instanceOf(Date);
+
+      // release เก่าที่ค้างบนเครือข่ายมาถึงหลังจากจดแล้ว
+      await job.releaseQuota(a.jobId, a.id, 'TRANSITION_FAILED');
+      expect(job.reservations.get(a.id)).to.equal('RELEASED');
+
+      job.calls.length = 0;
+      expect(await repair.runOnce()).to.include({ scanned: 0, synced: 0 }); // ยังอยู่ในช่วงข้าม
+      expect(job.reservations.get(a.id)).to.equal('RELEASED');
+
+      await prisma.application.update({ where: { id: a.id }, data: { quotaSyncedAt: hoursAgo(25) } });
+      expect(await repair.runOnce()).to.include({ scanned: 1, synced: 1 });
+      expect(job.reservations.get(a.id)).to.equal('CONFIRMED');
+      const refreshed = (await reload(a.id)).quotaSyncedAt!;
+      expect(Date.now() - refreshed.getTime()).to.be.lessThan(60_000); // จดค่าใหม่
+    });
+
+    it('สถานะเพิ่งเปลี่ยน (< 1 ชั่วโมง) ⇒ ซ่อมแล้วแต่ยังไม่จด ตรวจต่อรอบหน้า (กัน release เก่าที่ตามมา)', async () => {
+      const a = await seed('IN_PROGRESS', { quotaReserved: true, statusChangedAt: new Date() });
+      job.reservations.set(a.id, 'RESERVED');
+      expect(await repair.runOnce()).to.include({ scanned: 1, synced: 1 });
+      expect(job.reservations.get(a.id)).to.equal('CONFIRMED');
+      expect((await reload(a.id)).quotaSyncedAt).to.equal(null);
+      expect(await repair.runOnce()).to.include({ scanned: 1, synced: 1 }); // ยังตรวจอยู่
+
+      // release เก่ามาถึงทีหลังการซ่อมรอบแรก ⇒ รอบถัดไปจับได้
+      await job.releaseQuota(a.jobId, a.id, 'TRANSITION_FAILED');
+      expect(job.reservations.get(a.id)).to.equal('RELEASED');
+      await repair.runOnce();
+      expect(job.reservations.get(a.id)).to.equal('CONFIRMED');
+    });
+
+    it('ใบที่ยังรอยืนยัน (HR_ACCEPTED/ADVISOR_*) ตรวจทุกรอบและไม่จด quota_synced_at', async () => {
+      const a = await seed('ADVISOR_PENDING', { quotaReserved: true, statusChangedAt: hoursAgo(5) });
+      job.reservations.set(a.id, 'RESERVED');
+      await repair.runOnce();
+      expect(await repair.runOnce()).to.include({ scanned: 1 });
+      expect((await reload(a.id)).quotaSyncedAt).to.equal(null);
+      expect(job.reservations.get(a.id)).to.equal('RESERVED'); // ไม่ confirm ก่อน start
     });
   });
 });

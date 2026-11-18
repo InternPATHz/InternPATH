@@ -190,6 +190,7 @@ export function makeApplication(overrides: Partial<Application> = {}): Applicati
     actualEndDate: null,
     quotaReserved: false,
     quotaOpUntil: null,
+    quotaSyncedAt: null,
     statusChangedAt: now,
     terminatedBy: null,
     terminateReason: null,

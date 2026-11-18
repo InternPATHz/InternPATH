@@ -47,8 +47,16 @@ export class QuotaService {
       return 'OK';
     } catch (error) {
       const code = error instanceof AppException ? error.code : 'UNKNOWN';
+      if (code === 'QUOTA_FULL') {
+        // Lifecycle ถือที่นั่งอยู่ แต่ Job จองกลับไม่ได้เพราะมีคนอื่นได้ที่นั่งนั้นไปแล้ว ⇒ จองเกินจริง ต้องมีคนตัดสิน
+        this.log.error(
+          { application_id: applicationId, job_id: jobId, confirmed },
+          'CRITICAL quota inconsistency (over-allocation): Lifecycle holds a seat that Job can no longer reserve',
+        );
+        return 'QUOTA_FULL';
+      }
       this.log.warn({ application_id: applicationId, job_id: jobId, code }, 'Quota repair did not complete');
-      return code === 'QUOTA_FULL' ? 'QUOTA_FULL' : 'FAILED';
+      return 'FAILED';
     }
   }
 
@@ -63,6 +71,11 @@ export class QuotaService {
           await this.job.releaseQuota(effect.jobId, effect.applicationId, effect.reason, correlationId);
         }
       } catch (error) {
+        // confirm ได้ 409 = Job ไม่มีการจองที่ confirm ได้ (เช่น release เก่ามาถึงก่อน) — ซ่อมทันทีหนึ่งครั้ง (reserve + confirm)
+        // แทนรอ Scheduler เพื่อไม่ให้ที่นั่งว่างอยู่ใน Job นานจนคนอื่นจองไปก่อน (QIR-01: ยุติการฝึกก่อนรอบซ่อม)
+        if (effect.effect === 'CONFIRM' && (error as { code?: string }).code === 'STATE_CONFLICT') {
+          if ((await this.repair(effect.jobId, effect.applicationId, true, correlationId)) === 'OK') continue;
+        }
         failed.push(effect);
         // log เฉพาะ id และรหัส error — ไม่ log ข้อความจากปลายทาง
         this.log.warn(

@@ -162,6 +162,51 @@ describe('State Machine — ApplicationStateMachine (โควตา + Transacti
     ]);
   });
 
+  it('confirm ได้ 409 (Job ไม่มีการจองที่ confirm ได้) ⇒ ซ่อมทันที: reserve แล้ว confirm ซ้ำ ไม่รอ Scheduler (QIR-01)', async () => {
+    const app = makeApplication({ status: 'ADVISOR_APPROVED', endDate: toDateOnly('2026-09-30') });
+    db.state.tables.application.push(app);
+    job.confirmQuota.onFirstCall().rejects(new AppException('STATE_CONFLICT', 'reservation released', 409));
+    const result = await machine.execute(
+      app.id,
+      { trigger: 'start', actor: hr, patch: { actualStartDate: toDateOnly('2026-07-01') }, correlationId: 'c' },
+      NOW,
+    );
+    expect(result.application.status).to.equal('IN_PROGRESS');
+    expect(result.quotaFailures).to.deep.equal([]);
+    expect(job.reserveQuota.calledOnceWith(app.jobId, app.id)).to.equal(true);
+    expect(job.confirmQuota.callCount).to.equal(2);
+    expect(job.reserveQuota.firstCall.calledBefore(job.confirmQuota.secondCall)).to.equal(true);
+  });
+
+  it('confirm ได้ 409 แล้วซ่อมทันทีได้ QUOTA_FULL (ที่นั่งถูกจองไปก่อน = จองเกินจริง) ⇒ ยังนับเป็นล้มเหลว ใบยังเป็น IN_PROGRESS', async () => {
+    const app = makeApplication({ status: 'ADVISOR_APPROVED', endDate: toDateOnly('2026-09-30') });
+    db.state.tables.application.push(app);
+    job.confirmQuota.rejects(new AppException('STATE_CONFLICT', 'reservation released', 409));
+    job.reserveQuota.rejects(new AppException('QUOTA_FULL', 'full', 409));
+    const result = await machine.execute(
+      app.id,
+      { trigger: 'start', actor: hr, patch: { actualStartDate: toDateOnly('2026-07-01') }, correlationId: 'c' },
+      NOW,
+    );
+    expect(result.application.status).to.equal('IN_PROGRESS');
+    expect(result.quotaFailures).to.deep.equal([
+      { effect: 'CONFIRM', jobId: app.jobId, applicationId: app.id, reason: 'IN_PROGRESS' },
+    ]);
+  });
+
+  it('confirm ล้มด้วยสาเหตุอื่น (เช่น Job ล่ม 502) ⇒ ไม่ซ่อมทันที รอ Scheduler', async () => {
+    const app = makeApplication({ status: 'ADVISOR_APPROVED', endDate: toDateOnly('2026-09-30') });
+    db.state.tables.application.push(app);
+    job.confirmQuota.rejects(new AppException('UPSTREAM_UNAVAILABLE', 'down', 502));
+    await machine.execute(
+      app.id,
+      { trigger: 'start', actor: hr, patch: { actualStartDate: toDateOnly('2026-07-01') }, correlationId: 'c' },
+      NOW,
+    );
+    expect(job.reserveQuota.called).to.equal(false);
+    expect(job.confirmQuota.callCount).to.equal(1);
+  });
+
   it('ไม่พบใบสมัคร ⇒ 404 NOT_FOUND', async () => {
     await rejects(machine.execute(randomUUID(), { trigger: 'withdraw', actor: hr, correlationId: 'c' }, NOW), 'NOT_FOUND');
   });
