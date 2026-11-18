@@ -19,6 +19,10 @@ export class InternalController {
   @Get('users/contacts') @InternalCallers('notification')
   contacts(@Query('ids') ids: string) { return this.service.contacts(ids); }
 
+  // ต้องประกาศก่อน `students/:user_id` ไม่งั้น "names" ถูกจับเป็น :user_id
+  @Get('students/names') @InternalCallers('lifecycle')
+  studentNames(@Query('ids') ids: string) { return this.service.studentNames(ids); }
+
   @Get('students/:user_id') @InternalCallers('lifecycle')
   student(@Param('user_id', ParseUUIDPipe) userId: string) { return this.service.student(userId); }
 
