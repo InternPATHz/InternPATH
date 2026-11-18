@@ -74,6 +74,7 @@ describe('Lifecycle 1.3 — โปรไฟล์และเรซูเม่ 
     prisma.resumes = [];
     prisma.applications = [];
     prisma.failResumeCreate = false;
+    prisma.profileRaceWinner = null;
     storage.objects.clear();
     storage.deleted = [];
     storage.signed = [];
@@ -208,6 +209,31 @@ describe('Lifecycle 1.3 — โปรไฟล์และเรซูเม่ 
     it('ไม่พบนักศึกษาใน Identity ⇒ 404 NOT_FOUND', async () => {
       const res = await http().get('/v1/me/profile').set('Authorization', asStudent(randomUUID())).expect(404);
       expect(res.body.error.code).to.equal('NOT_FOUND');
+    });
+
+    it('GET ครั้งแรกแพ้การแข่งสร้างแถว (P2002) ⇒ 200 คืนแถวที่อีกคำขอสร้าง ไม่ใช่ 500', async () => {
+      prisma.profileRaceWinner = { userId: studentA, major: 'วิศวกรรมคอมพิวเตอร์', yearLevel: 3 };
+      const res = await http().get('/v1/me/profile').set('Authorization', asStudent()).expect(200);
+      expect(res.body).to.deep.equal({ skills: [], major: 'วิศวกรรมคอมพิวเตอร์', year_level: 3 });
+      expect(await prisma.studentProfile.count({ where: { userId: studentA } })).to.equal(1);
+    });
+
+    it('GET ครั้งแรกสองคำขอพร้อมกัน ⇒ 200 ทั้งคู่ และมีแถวเดียว', async () => {
+      const [a, b] = await Promise.all([
+        http().get('/v1/me/profile').set('Authorization', asStudent()),
+        http().get('/v1/me/profile').set('Authorization', asStudent()),
+      ]);
+      expect([a.status, b.status]).to.deep.equal([200, 200]);
+      expect(a.body).to.deep.equal(b.body);
+      expect(await prisma.studentProfile.count({ where: { userId: studentA } })).to.equal(1);
+    });
+
+    it('PUT ครั้งแรกแพ้การแข่งสร้างแถว (P2002) ⇒ 200 และบันทึกค่าที่ PUT ทับแถวนั้น', async () => {
+      prisma.profileRaceWinner = { userId: studentA, major: 'วิศวกรรมคอมพิวเตอร์', yearLevel: 3 };
+      const res = await http().put('/v1/me/profile').set('Authorization', asStudent()).send({ headline: 'ชนะทีหลัง', skills: ['Go'] }).expect(200);
+      expect(res.body).to.deep.equal({ headline: 'ชนะทีหลัง', skills: ['Go'], major: 'วิศวกรรมคอมพิวเตอร์', year_level: 3 });
+      expect(prisma.profiles).to.have.length(1);
+      expect(prisma.profiles[0]).to.include({ headline: 'ชนะทีหลัง' });
     });
   });
 

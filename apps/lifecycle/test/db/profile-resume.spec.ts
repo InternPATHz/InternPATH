@@ -98,6 +98,47 @@ describe('Lifecycle 1.3 — โปรไฟล์/เรซูเม่บน Po
     expect(cleared).to.deep.equal({ skills: [], major: 'วิทยาการข้อมูล', year_level: 4 });
   });
 
+  it('GET /me/profile ครั้งแรกพร้อมกันหลายคำขอ (React effect สองรอบ/เปิดสองแท็บ) ⇒ สำเร็จทุกคำขอ มีแถวเดียว', async () => {
+    for (let round = 0; round < 5; round++) {
+      const student = randomUUID();
+      identity.setStudent(student, { major: 'วิศวกรรมคอมพิวเตอร์', year_level: 3 });
+      const results = await Promise.all(Array.from({ length: 5 }, () => profiles.get(student)));
+      for (const result of results) {
+        expect(result).to.deep.equal({ skills: [], major: 'วิศวกรรมคอมพิวเตอร์', year_level: 3 });
+      }
+      expect(await prisma.studentProfile.count({ where: { userId: student } })).to.equal(1);
+    }
+  });
+
+  it('PUT ครั้งแรกพร้อม GET ครั้งแรก ⇒ ไม่ชน unique และค่าที่ PUT ถูกบันทึก', async () => {
+    for (let round = 0; round < 5; round++) {
+      const student = randomUUID();
+      identity.setStudent(student, { major: 'บัญชี', year_level: 2 });
+      const [, putResult] = await Promise.all([
+        profiles.get(student),
+        profiles.update(student, { headline: 'พร้อมกัน', skills: ['Excel'] }),
+        profiles.get(student),
+      ]);
+      expect(putResult).to.deep.equal({ headline: 'พร้อมกัน', skills: ['Excel'], major: 'บัญชี', year_level: 2 });
+      const row = await prisma.studentProfile.findUniqueOrThrow({ where: { userId: student } });
+      expect(row.headline).to.equal('พร้อมกัน');
+      expect(row.skills).to.deep.equal(['Excel']);
+    }
+  });
+
+  it('PUT ครั้งแรกพร้อมกันสองคำขอ ⇒ สำเร็จทั้งคู่ มีแถวเดียว', async () => {
+    for (let round = 0; round < 5; round++) {
+      const student = randomUUID();
+      identity.setStudent(student, { major: 'บัญชี', year_level: 2 });
+      const results = await Promise.all([
+        profiles.update(student, { headline: 'A' }),
+        profiles.update(student, { headline: 'B' }),
+      ]);
+      expect(results.map((r) => r.headline).sort()).to.deep.equal(['A', 'B']);
+      expect(await prisma.studentProfile.count({ where: { userId: student } })).to.equal(1);
+    }
+  });
+
   it('อัปโหลดพร้อมกัน 5 ไฟล์ ⇒ มีไฟล์หลักเพียง 1 ไฟล์ (advisory lock ต่อนักศึกษา)', async () => {
     const student = randomUUID();
     const results = await Promise.all(Array.from({ length: 5 }, () => resumes.upload(student, { buffer: SAMPLE_FILES.pdf() })));
