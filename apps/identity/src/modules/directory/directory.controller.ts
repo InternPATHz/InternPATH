@@ -1,21 +1,22 @@
-import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs/common';
-import { CurrentUser, JwtAuthGuard, type JwtClaims, Roles, RolesGuard } from '@internpath/common';
+import { Controller, Get, Param, ParseUUIDPipe, Query } from '@nestjs/common';
 import { DirectoryQueryDto } from './directory.dto';
 import { DirectoryService } from './directory.service';
 
+/**
+ * api-contract §4.4 — Public reads (no JWT guard). The Gateway skips JWT for these GET routes,
+ * so the response must not depend on who is calling.
+ */
 @Controller('directory/companies')
-@UseGuards(JwtAuthGuard, RolesGuard)
-@Roles('STUDENT', 'ADVISOR', 'COMPANY_HR', 'PLATFORM_ADMIN')
 export class DirectoryController {
   constructor(private readonly service: DirectoryService) {}
 
   @Get()
-  list(@CurrentUser() viewer: JwtClaims, @Query() query: DirectoryQueryDto) {
-    return this.service.list(viewer.sub, query);
+  list(@Query() query: DirectoryQueryDto) {
+    return this.service.list(query);
   }
 
   @Get(':id')
-  detail(@CurrentUser() viewer: JwtClaims, @Param('id', ParseUUIDPipe) id: string) {
-    return this.service.detail(viewer.sub, id);
+  detail(@Param('id', ParseUUIDPipe) id: string) {
+    return this.service.detail(id);
   }
 }

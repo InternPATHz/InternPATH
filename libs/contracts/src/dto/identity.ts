@@ -1,6 +1,7 @@
 // ต้องตรงกับ docs/api-contract.md §4 (Identity) — เฉพาะ body/response ที่เอกสารระบุไว้
 // Response ของ endpoint ที่เอกสารไม่ได้ระบุฟิลด์ (เช่น GET /users/me, /companies/me) ยังไม่ถูกล็อก — ดูรายการช่องว่างท้ายเอกสาร api-contract
 import type { CompanyStatus } from '../enums';
+import type { PageQuery } from './common';
 import type { AuthUser, CompanyDocType } from './identity-responses';
 
 // ---- 4.1 Auth ----
@@ -94,7 +95,8 @@ export interface OwnerTransferRequest {
 export type OwnerTransferAction = 'accept' | 'decline' | 'cancel';
 
 // ---- 4.4 Directory ----
-export interface DirectoryCompaniesQuery {
+/** Public (ไม่ต้องล็อกอิน) — ตอบ `Paginated<DirectoryCompanyListItem>` */
+export interface DirectoryCompaniesQuery extends Pick<PageQuery, 'page' | 'page_size'> {
   q?: string;
   category?: string;
   partner?: boolean;

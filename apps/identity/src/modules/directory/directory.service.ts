@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException } from '@internpath/common';
-import type { DirectoryCompanyDetail, DirectoryCompanyListItem } from '@internpath/contracts';
+import type { DirectoryCompanyDetail, DirectoryCompanyListItem, Paginated } from '@internpath/contracts';
 import { Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { DirectoryQueryDto } from './directory.dto';
@@ -9,18 +9,10 @@ import { DirectoryQueryDto } from './directory.dto';
 type DirectoryCompany = Prisma.CompanyGetPayload<{ include: { ratingStats: true } }>;
 type DirectoryCompanySummary = DirectoryCompanyListItem & Pick<DirectoryCompanyDetail, 'id'>;
 
+/** api-contract §4.4 — Public: output never depends on the caller. */
 @Injectable()
 export class DirectoryService {
   constructor(private readonly db: PrismaService, private readonly config: ConfigService) {}
-
-  private async assertViewer(userId: string): Promise<void> {
-    const user = await this.db.user.findUnique({ where: { id: userId }, select: {
-      status: true, emailVerifiedAt: true,
-    } });
-    if (!user || user.status !== 'ACTIVE' || !user.emailVerifiedAt) {
-      throw new AppException('UNAUTHENTICATED', 'บัญชีนี้ยังใช้งานไม่ได้', 401);
-    }
-  }
 
   private logoUrl(key: string): string {
     const publicBase = this.config.get<string>('S3_PUBLIC_BASE_URL');
@@ -44,25 +36,33 @@ export class DirectoryService {
     };
   }
 
-  async list(userId: string, query: DirectoryQueryDto): Promise<DirectoryCompanySummary[]> {
-    await this.assertViewer(userId);
+  async list(query: DirectoryQueryDto): Promise<Paginated<DirectoryCompanySummary>> {
     if (query.category?.trim()) {
       throw new AppException('VALIDATION_FAILED', 'ยังไม่มีแหล่งข้อมูลหมวดหมู่บริษัทสำหรับตัวกรอง category', 400);
     }
     const q = query.q?.trim();
-    const companies = await this.db.company.findMany({
-      where: { status: 'VERIFIED',
-        ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
-        ...(query.partner === undefined ? {} : { universityPartner: query.partner }),
-      },
-      include: { ratingStats: true },
-      orderBy: [{ name: 'asc' }, { id: 'asc' }],
-    });
-    return companies.map((company) => this.summary(company));
+    // Unknown / non-VERIFIED ids simply drop out of the result (no error).
+    const ids = query.ids ? [...new Set(query.ids.toLowerCase().split(','))] : undefined;
+    const where: Prisma.CompanyWhereInput = {
+      status: 'VERIFIED',
+      ...(ids ? { id: { in: ids } } : {}),
+      ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
+      ...(query.partner === undefined ? {} : { universityPartner: query.partner }),
+    };
+    const [total, companies] = await this.db.$transaction([
+      this.db.company.count({ where }),
+      this.db.company.findMany({
+        where, include: { ratingStats: true }, orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip: (query.page - 1) * query.page_size, take: query.page_size,
+      }),
+    ]);
+    return {
+      data: companies.map((company) => this.summary(company)),
+      meta: { page: query.page, page_size: query.page_size, total },
+    };
   }
 
-  async detail(userId: string, id: string): Promise<DirectoryCompanyDetail> {
-    await this.assertViewer(userId);
+  async detail(id: string): Promise<DirectoryCompanyDetail> {
     const company = await this.db.company.findFirst({
       where: { id, status: 'VERIFIED' }, include: { ratingStats: true },
     });
