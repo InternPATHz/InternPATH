@@ -18,10 +18,11 @@ export interface StatusChangedSource {
 /**
  * Payload E08 ตาม event-contract.md — มีแค่ id/สถานะ **ห้ามมีข้อมูลส่วนบุคคล** (ชื่อ อีเมล ฯลฯ)
  * `actor_user_id` ไม่ใส่เมื่อเป็น SYSTEM; `hr_user_ids` ไม่ใส่ ⇒ Notification ดึงสมาชิกบริษัทจาก Identity เอง (§6.1)
+ * `fromStatus = null` (สร้างใบสมัคร → `PENDING`) ⇒ ไม่ใส่ `from_status` เลย — ห้ามใส่ค่าหลอก (PM ตัดสิน 2026-11-18)
  */
 export function buildApplicationStatusChanged(
   after: StatusChangedSource,
-  fromStatus: ApplicationStatus,
+  fromStatus: ApplicationStatus | null,
   actor: Actor,
   changedAt: Date,
   options: { reason?: string | null; hrUserIds?: string[] } = {},
@@ -34,7 +35,7 @@ export function buildApplicationStatusChanged(
     student_user_id: after.studentUserId,
     ...(after.advisorUserId ? { advisor_user_id: after.advisorUserId } : {}),
     ...(options.hrUserIds?.length ? { hr_user_ids: [...options.hrUserIds] } : {}),
-    from_status: fromStatus,
+    ...(fromStatus ? { from_status: fromStatus } : {}),
     to_status: after.status,
     ...(actor.role !== 'SYSTEM' && actor.userId ? { actor_user_id: actor.userId } : {}),
     actor_role: actor.role,
