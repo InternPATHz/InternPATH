@@ -8,6 +8,7 @@ import { ReportModule } from '../../src/report/report.module';
 import { ReportService } from '../../src/report/report.service';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { expectEventTimestamps } from '../support/event-timestamps';
 
 const DETAIL = 'ประกาศนี้เรียกเก็บเงินค่าสมัครจากนักศึกษา';
 
@@ -84,6 +85,7 @@ describe('คำตัดสินรายงานของ Admin: dismiss-rep
       expect(out).to.have.length(1);
       expect(out[0]).to.include({ job_id: jobId, submission_id: submissionId, decision: 'RESTORE', decided_by: 'ADMIN', is_appeal: false, queue_item_id: item.id });
       expect(out[0].reasons[0]).to.include({ code: 'REPORT_DISMISSED', detail: 'ประกาศปกติ' });
+      expectEventTimestamps(out[0], 'E02 JobVerified(RESTORE)');
       expect((await t.prisma.jobReport.findMany({ where: { jobId } })).map((r) => r.status)).to.deep.equal(['DISMISSED', 'DISMISSED', 'DISMISSED']);
       const counter = await t.prisma.jobReportCounter.findUniqueOrThrow({ where: { jobId } });
       expect(counter).to.include({ countedReports: 0, suspendedAt: null });
@@ -120,6 +122,7 @@ describe('คำตัดสินรายงานของ Admin: dismiss-rep
       expect(out).to.have.length(1);
       expect(out[0]).to.include({ job_id: jobId, decision: 'REMOVE', decided_by: 'ADMIN', is_appeal: false, queue_item_id: item.id });
       expect(out[0].reasons[0].code).to.equal('REPORT_UPHELD');
+      expectEventTimestamps(out[0], 'E02 JobVerified(REMOVE)');
       const rows = await t.prisma.jobReport.findMany({ where: { jobId } });
       expect(rows.every((r) => r.status === 'UPHELD' && r.counted)).to.equal(true);
       for (const u of users) expect(await streak(u)).to.equal(0);
