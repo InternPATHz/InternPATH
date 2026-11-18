@@ -98,10 +98,13 @@ export interface DirectoryCompaniesQuery {
   q?: string;
   category?: string;
   partner?: boolean;
+  /** UUID คั่นด้วย `,` สูงสุด 50 ตัว — ดึงหลายบริษัทในครั้งเดียว (ใช้ดึงคะแนนดาวของการ์ดงาน) */
+  ids?: string;
 }
 
 /** รายการจาก GET /directory/companies (เฉพาะบริษัท VERIFIED) */
 export interface DirectoryCompanyListItem {
+  id: string;
   name: string;
   logo_url?: string;
   university_partner: boolean;

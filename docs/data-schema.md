@@ -385,7 +385,7 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 ## 7. Notification Service (`notification_db`)
 
 **`notifications`** (In-App): `id`, `user_id`, `type`, `title`, `body`, `link`, `data jsonb`, `source_event_id`, `read_at null`, `created_at` — UNIQUE (`source_event_id`, `user_id`, `type`) กันซ้ำ
-**`delivery_logs`**: `id`, `notification_id`, `channel NotificationChannel`, `to_user_id`, `status (SENT|FAILED)`, `error null`, `attempts`, `sent_at` — **ไม่เก็บอีเมลปลายทางถาวร** (ดึงจาก Identity ตอนส่ง; log เก็บแค่ `user_id`)
+**`delivery_logs`**: `id`, `notification_id`, `channel NotificationChannel`, `to_user_id`, `status (PENDING|SENT|FAILED)` (PM ตัดสิน 2026-11-18: เขียนแถว `PENDING` ก่อนส่งอีเมลตาม event-contract §6.1 แล้วอัปเดตเป็น `SENT`/`FAILED`; unique ต่อ `notification_id` + `channel`), `error null`, `attempts`, `sent_at` — **ไม่เก็บอีเมลปลายทางถาวร** (ดึงจาก Identity ตอนส่ง; log เก็บแค่ `user_id`)
 **`templates`**: `id`, `key` (เช่น `application.ADVISOR_APPROVED`), `channel`, `subject_th`, `body_th`, `active`
 **`preferences`** *(optional)*: `user_id`, `channel`, `enabled`
 
