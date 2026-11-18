@@ -5,6 +5,7 @@ import { Test } from '@nestjs/testing';
 import { InvalidMessageError, OutboxWriter, configureApp, signServiceToken } from '@internpath/common';
 import type { EventEnvelope, ServiceName } from '@internpath/contracts';
 import { expect } from 'chai';
+import { Client } from 'pg';
 import request from 'supertest';
 import type { ApplicationStatus } from '../../generated/client';
 import { S3StorageService } from '../../src/common/storage/s3-storage.service';
@@ -13,7 +14,7 @@ import { LifecycleEventHandlersModule } from '../../src/events/consumers/lifecyc
 import { AdvisorLinkChangedHandler } from '../../src/events/handlers/advisor-link-changed.handler';
 import { CompanyStatusChangedHandler } from '../../src/events/handlers/company-status-changed.handler';
 import { JobStatusChangedHandler } from '../../src/events/handlers/job-status-changed.handler';
-import { DELETED_HOLDER_NAME, UserDeletionHandler } from '../../src/events/handlers/user-deletion.handler';
+import { ANONYMIZED_COLUMNS, DELETED_HOLDER_NAME, UserDeletionHandler } from '../../src/events/handlers/user-deletion.handler';
 import { DeletionEligibilityModule } from '../../src/internal/deletion-eligibility.controller';
 import { InternalModule } from '../../src/internal/internal.module';
 import { JobInternalClient } from '../../src/internal/job-client.service';
@@ -582,6 +583,66 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
       expect((await reload(s.pending.id)).status).to.equal('PENDING');
       expect(await prisma.resume.count({ where: { studentUserId: s.student } })).to.equal(1);
       expect(await prisma.statusHistory.count({ where: { actorId: s.student } })).to.equal(1);
+    });
+
+    /*
+     * PM ขอ (18 พ.ย. ข้อ B3): ไล่คอลัมน์ uuid ทุกตัวจาก schema จริง — คอลัมน์ที่อ้างผู้ใช้ต้องอยู่ในรายการที่ handler จัดการ
+     * (เพิ่มคอลัมน์ใหม่โดยไม่จัดการ E15 ⇒ เทสต์นี้ล้มพร้อมชื่อคอลัมน์)
+     */
+    it('ทุกคอลัมน์ uuid ใน schema จริงถูกจัดหมวด: อ้างผู้ใช้ ⇒ แทนด้วย anonymous_actor_id / ลบแถว / Authorized Anonymization', async () => {
+      const columns = await prisma.$queryRaw<Array<{ table_name: string; column_name: string }>>`
+        SELECT table_name, column_name FROM information_schema.columns
+        WHERE table_schema = current_schema() AND data_type = 'uuid' AND table_name <> '_prisma_migrations'`;
+      const key = (table: string, column: string) => `${table}.${column}`;
+      /** id ของสิ่งอื่นที่ไม่ใช่ผู้ใช้ */
+      const NOT_USER = new Set(['id', 'application_id', 'job_id', 'company_id', 'review_id', 'resume_id', 'resume_consent_id',
+        'entity_id', 'event_id', 'correlation_id', 'aggregate_id']);
+      const handled = new Set([
+        ...ANONYMIZED_COLUMNS.map(([table, column]) => key(table, column)),
+        // แถวของผู้ใช้ถูกลบทั้งแถว
+        key('resumes', 'student_user_id'),
+        key('student_profiles', 'user_id'),
+        key('student_advisor_links', 'student_user_id'),
+        // ประวัติ — Authorized Anonymization (trigger)
+        key('status_history', 'actor_id'),
+        key('admin_audit_log', 'admin_id'),
+      ]);
+      const userColumns = columns.filter((c) => !NOT_USER.has(c.column_name)).map((c) => key(c.table_name, c.column_name));
+      const unhandled = userColumns.filter((c) => !handled.has(c));
+      expect(unhandled, 'คอลัมน์ที่อ้างผู้ใช้แต่ E15 ไม่จัดการ').to.deep.equal([]);
+      // ทุกรายการที่ handler อ้างถึงต้องมีอยู่จริง (กันพิมพ์ชื่อผิด)
+      const existing = new Set(columns.map((c) => key(c.table_name, c.column_name)));
+      expect([...handled].filter((c) => !existing.has(c)), 'ชื่อคอลัมน์ใน handler ที่ไม่มีใน schema').to.deep.equal([]);
+      expect(userColumns.length).to.be.greaterThan(15);
+    });
+
+    it('set_config(..., true) มีผลเฉพาะ Transaction: หลัง COMMIT/ROLLBACK ค่าหาย และแก้ status_history ไม่ได้อีก (PM ข้อ B2)', async () => {
+      const s = await seedStudent();
+      await handle(e15(s.student, randomUUID()));
+      // หลัง Event commit แล้ว: Transaction ใหม่ (connection pool เดียวกัน) แก้ประวัติไม่ได้
+      let blocked: unknown;
+      await inTx((tx) => tx.statusHistory.updateMany({ where: { entityId: s.pending.id }, data: { actorId: randomUUID() } })).catch(
+        (e: unknown) => (blocked = e),
+      );
+      expect(blocked, 'trigger ต้องปฏิเสธหลัง COMMIT').to.be.instanceOf(Error);
+
+      // ตรวจบน connection เดียวกันตรงๆ (pg) ทั้ง COMMIT และ ROLLBACK
+      const client = new Client({ connectionString: database!.url });
+      await client.connect();
+      try {
+        const read = async () =>
+          (await client.query("SELECT current_setting('internpath.anonymize', true) AS a, current_setting('internpath.anonymous_actor_id', true) AS b")).rows[0];
+        for (const end of ['COMMIT', 'ROLLBACK']) {
+          await client.query('BEGIN');
+          await client.query("SELECT set_config('internpath.anonymize', 'on', true), set_config('internpath.anonymous_actor_id', $1, true)", [randomUUID()]);
+          expect((await read()).a).to.equal('on');
+          await client.query(end);
+          const after = await read();
+          expect([after.a ?? '', after.b ?? ''], end).to.deep.equal(['', '']);
+        }
+      } finally {
+        await client.end();
+      }
     });
 
     it('payload ผิดรูป ⇒ InvalidMessageError (id เดียวกับ anonymous, mode ผิด, producer อื่น)', async () => {
