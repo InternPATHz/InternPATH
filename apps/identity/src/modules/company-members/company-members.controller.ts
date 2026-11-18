@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Public, Roles, RolesGuard } from '@internpath/common';
-import { AcceptInvitationDto, AppointOwnerDto, InviteMemberDto, TransferOwnerDto } from './company-members.dto';
+import { AcceptInvitationDto, AppointOwnerDto, InviteMemberDto, MembersQueryDto, TransferOwnerDto } from './company-members.dto';
 import { CompanyMembersService } from './company-members.service';
 
 @Controller('companies/me')
@@ -10,7 +10,7 @@ export class CompanyMembersController {
   constructor(private readonly service: CompanyMembersService) {}
 
   @Get('members')
-  members(@CurrentUser() actor: JwtClaims) { return this.service.members(actor.sub); }
+  members(@CurrentUser() actor: JwtClaims, @Query() query: MembersQueryDto) { return this.service.members(actor.sub, query); }
 
   @Post('invitations')
   invite(@CurrentUser() actor: JwtClaims, @Body() body: InviteMemberDto) { return this.service.invite(actor.sub, body.email); }
