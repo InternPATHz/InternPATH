@@ -12,6 +12,7 @@ import { InternalModule } from '../../src/internal/internal.module';
 import { JobInternalClient } from '../../src/internal/job-client.service';
 import { ApplicationsModule } from '../../src/modules/applications/applications.module';
 import { HrApplicationsModule } from '../../src/modules/hr-applications/hr-applications.module';
+import { HrApplicationsService } from '../../src/modules/hr-applications/hr-applications.service';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { ApplicationStateMachine } from '../../src/state-machine/application-state-machine.service';
@@ -406,6 +407,41 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
         end_date: ymd(addDays(today(), 20)),
       }).expect(200);
       expect(res.body).to.include({ status: 'IN_PROGRESS', warning: 'NO_CERTIFICATE_ELIGIBLE' });
+    });
+
+    it('ขอบ 30 วัน (รีวิว PM): end = actual_start + 29 ⇒ 200 + warning (ไม่ใช่ 400) • + 30 ⇒ 200 ไม่มี warning', async () => {
+      const short = await seedApproved();
+      const warned = await action(short.id, 'start', {
+        actual_start_date: ymd(today()),
+        end_date: ymd(addDays(today(), 29)),
+      }).expect(200);
+      expect(warned.body).to.include({ status: 'IN_PROGRESS', warning: 'NO_CERTIFICATE_ELIGIBLE' });
+      expect(job.calls.filter((c) => c.op === 'confirm')).to.have.length(1);
+
+      const exact = await seedApproved({ jobId: randomUUID(), studentUserId: randomUUID() });
+      const ok = await action(exact.id, 'start', {
+        actual_start_date: ymd(today()),
+        end_date: ymd(addDays(today(), 30)),
+      }).expect(200);
+      expect(ok.body.status).to.equal('IN_PROGRESS');
+      expect(ok.body).to.not.have.property('warning');
+    });
+
+    it('actual_start_date = วันนี้ตามเวลากรุงเทพผ่าน แม้ UTC ยังเป็นเมื่อวาน (00:30 น. ไทย) • พรุ่งนี้ ⇒ IN_FUTURE', async () => {
+      const service = app.get(HrApplicationsService, { strict: false });
+      const hr = { sub: hrUser, role: 'COMPANY_HR', company_id: companyId } as never;
+      const now = new Date('2026-11-18T17:30:00Z'); // = 2026-11-19 00:30 Asia/Bangkok
+      const body = { start_date: '2026-11-19', end_date: '2027-01-31' };
+
+      const tomorrow = await seedApproved();
+      const error = await service
+        .start(hr, tomorrow.id, { actual_start_date: '2026-11-20', ...body }, undefined, now)
+        .then(() => null, (e: unknown) => e as { getStatus(): number; details: unknown });
+      expect(error?.getStatus()).to.equal(400);
+      expect(error?.details).to.deep.equal([{ field: 'actual_start_date', issue: 'IN_FUTURE' }]);
+
+      const res = await service.start(hr, tomorrow.id, { actual_start_date: '2026-11-19', ...body }, undefined, now);
+      expect(res).to.include({ status: 'IN_PROGRESS', actual_start_date: '2026-11-19' });
     });
 
     it('วันที่ไม่สมเหตุผล ⇒ 400 VALIDATION_FAILED และสถานะไม่เปลี่ยน', async () => {
