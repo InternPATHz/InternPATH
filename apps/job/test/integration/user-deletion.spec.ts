@@ -1,6 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { BrokerConnection, retryQueueName } from '@internpath/common';
+import {
+  BrokerConnection,
+  DEFAULT_RETRY_DELAYS_MS,
+  dlqName,
+  RETRY_COUNT_HEADER,
+  retryQueueName,
+} from '@internpath/common';
 import { EVENTS_EXCHANGE, routingKey } from '@internpath/contracts';
+import { Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { expect } from 'chai';
@@ -116,6 +123,58 @@ describe('Job E15 (real RabbitMQ and PostgreSQL)', function () {
     expect(await deletionMarker(db.prisma, noMatch.event_id)).to.equal(1);
     expect(await fixture.read()).to.deep.equal(expected);
     await expectNoE03();
+  });
+
+  it('dead-letters malformed E15 on the first delivery without retry or writes', async () => {
+    const event = deletionRequested();
+    const invalid = {
+      ...event,
+      payload: { ...event.payload, requested_at: 'fixture-only-private-value' },
+    };
+    const fixture = await seedDeletionFixture(db.prisma, event.payload.user_id);
+    const before = await fixture.read();
+    const startingAcks = ackCount();
+    const dlq = dlqName(DELETION_QUEUE);
+    const retryQueues = DEFAULT_RETRY_DELAYS_MS.map((_, index) => retryQueueName('job', index + 1));
+    const retryPublications = () =>
+      publish
+        .getCalls()
+        .filter(
+          ({ args }) => retryQueues.includes(args[1]) && args[3]?.messageId === event.event_id,
+        );
+    const error = sinon.spy(Logger.prototype, 'error');
+    try {
+      await send(invalid);
+      await eventually(
+        async () =>
+          (await observer.checkQueue(dlq)).messageCount > 0 || retryPublications().length > 0,
+      );
+      expect(retryPublications(), 'retry publications for malformed E15').to.have.length(0);
+      const deadLetter = await observer.get(dlq, { noAck: true });
+      if (!deadLetter) throw new Error('Expected malformed E15 in the DLQ');
+      expect(JSON.parse(deadLetter.content.toString())).to.deep.equal(invalid);
+      expect(deadLetter.properties.messageId).to.equal(event.event_id);
+      const headers = deadLetter.properties.headers;
+      expect(headers?.[RETRY_COUNT_HEADER]).to.equal(undefined);
+      expect(headers?.['x-death']).to.have.length(1);
+      expect(headers?.['x-death']?.[0]).to.deep.include({
+        queue: DELETION_QUEUE,
+        reason: 'rejected',
+        count: 1,
+      });
+      expect(ackCount()).to.equal(startingAcks);
+      const logs = error.args
+        .map(([message]) => message)
+        .filter((message) => String(message).includes(event.event_id));
+      expect(logs).to.deep.equal([
+        `dead-lettered on ${DELETION_QUEUE}: reason=invalid_message event=${event.event_id}`,
+      ]);
+      expect(await deletionMarker(db.prisma, event.event_id)).to.equal(0);
+      expect(await fixture.read()).to.deep.equal(before);
+      await expectNoE03();
+    } finally {
+      error.restore();
+    }
   });
 
   it('rolls back on a database error and completes redelivery through the retry queue', async () => {
