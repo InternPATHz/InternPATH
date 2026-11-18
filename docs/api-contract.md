@@ -227,7 +227,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
 | GET/PUT | `/me/profile` | S | โปรไฟล์ — `PUT` แทนที่ฟิลด์ที่แก้ได้ทั้งชุด (ไม่ส่ง = ล้างค่า): `headline` ≤ 200, `bio` ≤ 2000, `skills` ≤ 30 รายการ (รายการละ 1–50 ตัวอักษร ตัดซ้ำไม่สนตัวพิมพ์), `portfolio_url` http/https ≤ 500; ห้ามส่ง `major`/`year_level` (สำเนาจาก Identity ตอน `GET`/`PUT` — PM ตัดสิน 2026-11-18) |
-| POST | `/me/resumes` | S | multipart PDF ≤ 5 MB (ตรวจ MIME จริง) |
+| POST | `/me/resumes` | S | multipart PDF ≤ 5 MB (ตรวจ MIME จริง); **มีเรซูเม่ที่ยังไม่ลบได้ไม่เกิน 5 ไฟล์ต่อนักศึกษา** — เกินแล้ว `400 VALIDATION_FAILED` + `details: [{field:'file', issue:'RESUME_LIMIT_REACHED'}]` (ตรวจก่อนอัปโหลดและตรวจซ้ำใต้ล็อก; ไม่ทิ้งไฟล์ค้างใน Storage) (PM ตัดสิน 2026-11-18) |
 | GET | `/me/resumes` | S | พร้อม Signed URL (~10 นาที) |
 | DELETE | `/me/resumes/{id}` | S | ลบไฟล์ใน Storage แล้ว soft-delete; **ลบได้แม้ผูกกับใบสมัครที่ยังดำเนินอยู่** (สิทธิ์ลบของเจ้าของข้อมูล — README 5.11) ⇒ HR/อาจารย์ที่เปิดเรซูเม่ของใบสมัครนั้นได้ `404 NOT_FOUND` + `details[].issue = RESUME_DELETED_BY_STUDENT`; เรซูเม่ไฟล์แรกเป็นไฟล์หลักอัตโนมัติ ลบไฟล์หลักแล้วไฟล์ที่อัปโหลดล่าสุดขึ้นแทน (PM ตัดสิน 2026-11-18) |
 | GET | `/hr/applications/{id}/resume` | H | Signed URL — เฉพาะบริษัทที่นักศึกษาสมัครและมี Consent; เห็นได้ทุกสถานะของใบสมัคร (ยังไม่จำกัดตามสถานะ — ทบทวนภายหลัง) |
