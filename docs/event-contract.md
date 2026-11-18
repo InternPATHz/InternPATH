@@ -122,7 +122,7 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
 
 ## 5. Payload รายตัว
 
-ทุก `*_at` เป็น ISO-8601 UTC | `?` = ไม่บังคับ | `entity_version` ดู §3.4
+ทุก `*_at` (รวม `occurred_at` ใน Envelope) เป็น ISO-8601 UTC ลงท้าย `Z` **เศษวินาทีไม่เกิน 3 หลัก** (ระดับมิลลิวินาที เช่น `2026-11-13T08:30:00.000Z` — ผู้ส่งใช้ `Date#toISOString()`) ห้ามส่งไมโครวินาที เพราะ JavaScript `Date` เก็บไม่ได้ การแปลงทำให้เวลาที่ต่างกันกลายเป็นค่าเดียวกันและทำให้การเทียบลำดับผิด (PM ตัดสิน 2026-11-18, E04-05) • `?` = ไม่บังคับ • `entity_version` ดู §3.4
 
 ### E01 `JobSubmitted`  (job → verification)
 ```ts
@@ -212,7 +212,7 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
 
 **คีย์ของรอบรายงาน (Job — PM ตัดสิน 2026-11-16):** `queue_item_id` คือตัวระบุรอบที่ไม่ซ้ำกัน (หนึ่งรอบ = หนึ่งรายการคิว) ไม่ใช่ `event_id` Job เก็บทุก `queue_item_id` ที่เคยรับของแต่ละประกาศ พร้อมสถานะ `ACTIVE`/`CLOSED` และ `reached_at` (เช่นตาราง `report_rounds`) แล้วใช้กติกานี้ — ข้ามพร้อม log ไม่ throw ไม่ retry ทุกกรณี:
 1. **E04 ซ้ำ:** `queue_item_id` เคยรับแล้ว (รอบ `ACTIVE` หรือ `CLOSED`) ⇒ ข้าม แม้ส่งซ้ำด้วย `event_id` ใหม่และแม้ไม่มีรอบ `ACTIVE` แล้ว (เช่นหลัง `RESTORE`)
-2. **E04 มาช้าข้ามรอบ:** `reached_at` เก่ากว่ารอบล่าสุดที่เคยรับของประกาศเดียวกัน ⇒ ข้าม
+2. **E04 มาช้าข้ามรอบ:** `reached_at` เก่ากว่า (น้อยกว่า) รอบล่าสุดที่เคยรับของประกาศเดียวกัน ⇒ ข้าม; เท่ากันพอดีแต่ `queue_item_id` ต่างกัน ⇒ **ไม่ถือว่าเก่ากว่า** (ผ่านเป็นรอบใหม่)
 3. **E04 ใหม่ที่ผ่านข้อ 1–2:** ประกาศอยู่ `PUBLISHED`/`CLOSED` ⇒ ระงับและเปิดรอบ `ACTIVE`; สถานะอื่นให้ข้ามพร้อม log
 4. **E02 `REMOVE`/`RESTORE`:** ปิดรอบ (`ACTIVE → CLOSED`) เฉพาะเมื่อ `queue_item_id` ตรงกับรอบ `ACTIVE` ของประกาศนั้น ไม่เทียบ `submission_id` (ดู E02) — `queue_item_id` เคยรู้จักแล้วแต่ไม่ใช่รอบ `ACTIVE` หรือประกาศไม่ได้ถูกระงับอยู่ ⇒ ข้าม; `queue_item_id` ที่ **ไม่เคยรู้จักเลย** ⇒ ข้อ 5
 5. **คำตัดสินมาก่อน E04 (PM ตัดสิน 2026-11-18):** E04 อาจเข้า Retry Queue แล้ว E02 `REMOVE`/`RESTORE` มาถึงก่อน — ห้ามทิ้งคำตัดสิน ให้ Job บันทึกแถวรอบสถานะ `DECIDED` (เก็บ `decision`, `decided_at`, `decided_by` และ `correlation_id` ของ E02 — รวมทุกฟิลด์ที่เส้นทางปกติดึงจาก E02 ไปสร้าง `status_history`/E03 เช่น `reasons` ถ้าเส้นทางปกติใช้ เพื่อให้ผลลัพธ์ของสองเส้นทางเหมือนกัน; `UNIQUE (job_id, queue_item_id)`) โดยไม่แตะประกาศ แล้วเมื่อ E04 ของ `queue_item_id` นั้นมาถึง (ข้อ 1 ไม่นับ `DECIDED` เป็น "เคยรับ" และข้อ 2 ยังใช้ตามเดิม) ให้ประมวลผลตามคำตัดสินใน Transaction เดียว:
@@ -220,7 +220,7 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
    - `REMOVE` ⇒ ประกาศ `PUBLISHED`/`CLOSED` ⇒ `REMOVED` ส่ง E03 ลำดับเดียวกับเส้นทางปกติ: `FREEZE` (`reason_code=REPORT_THRESHOLD`) ตามด้วย E03 ของ `REMOVE` (Lifecycle/Notification เห็นลำดับเหมือนเดิม) — `correlation_id` ของ `FREEZE` และ `status_history` ของการระงับใช้ของ **E04** (เหตุของรายการนั้น, actor `SYSTEM`) ส่วน E03 ของ `REMOVE` และ `status_history` ของมันใช้ `correlation_id` และ `decided_by` ที่เก็บไว้จาก **E02** (`decided_by = ADMIN` ⇒ `actor_role = PLATFORM_ADMIN`)
    - ประกาศอยู่สถานะอื่น ⇒ ข้ามพร้อม log (เหมือนข้อ 3); รอบที่ถูกประมวลผลแล้วเป็น `CLOSED`
    - แถว `DECIDED` ที่ไม่มี E04 มาจับคู่เกิน 30 วัน ⇒ ล้างพร้อม log ระดับ `warn`
-6. **E04 ที่ payload ไม่ถูกต้อง (PM ตัดสิน 2026-11-18 — ข้อยกเว้นเดียวของ "ไม่ throw ไม่ retry" ข้างต้น):** `job_id`/`company_id`/`queue_item_id` ไม่ใช่ UUID, `report_count` ไม่ใช่จำนวนเต็ม ≥ 1 หรือ `reached_at` ไม่ใช่ ISO-8601 ที่ถูกต้อง (เช่น `null`, สตริงว่าง) ⇒ **ไม่ระงับประกาศ** ส่ง Dead-letter ไม่ retry พร้อม log ระดับ `error` (เป็นข้อผิดพลาดของผู้ส่ง ต้องไม่เงียบ) ห้ามแปลงค่าที่ผิดเป็นวันที่ใดๆ
+6. **E04 ที่ payload ไม่ถูกต้อง (PM ตัดสิน 2026-11-18 — ข้อยกเว้นเดียวของ "ไม่ throw ไม่ retry" ข้างต้น):** `job_id`/`company_id`/`queue_item_id` ไม่ใช่ UUID, `report_count` ไม่ใช่จำนวนเต็ม ≥ 1 หรือ `reached_at` ไม่ตรงรูปแบบ `YYYY-MM-DDTHH:mm:ss(.s{1,3})?Z` (UTC ลงท้าย `Z`, เศษวินาที 0–3 หลัก), เป็นวันที่ที่ไม่มีอยู่จริง (เช่น เดือน 13) หรือเป็นค่าว่าง (`null`, สตริงว่าง) — รวมถึง **เศษวินาทีละเอียดกว่ามิลลิวินาที** เช่น `.000900Z` (ปฏิเสธก่อนแปลงเป็น `Date` เพราะการปัดทำให้ Stale-Round Guard ในข้อ 2 ตรวจไม่พบ — PM ตัดสิน 2026-11-18, E04-05) ⇒ **ไม่ระงับประกาศ** ส่ง Dead-letter ไม่ retry พร้อม log ระดับ `error` (เป็นข้อผิดพลาดของผู้ส่ง ต้องไม่เงียบ) ห้ามแปลงค่าที่ผิดเป็นวันที่ใดๆ
 > **หมายเหตุ:** การแจ้ง "อาจารย์ที่ปรึกษาของนักศึกษาที่มีใบสมัครกับประกาศนั้น" ทำโดย Lifecycle เมื่อรับ `JobStatusChanged` (to=`SUSPENDED`) เพราะ Lifecycle รู้ใบสมัคร Notification ที่รับ E04 แจ้งเฉพาะ Admin
 
 ### E05 `CompanyStatusChanged`  (identity → job, lifecycle, verification, notification)
