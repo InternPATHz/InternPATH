@@ -81,8 +81,8 @@ describe('Job company consumer wiring', () => {
       .map((c) => c.args[0] as Subscription<Tx>)
       .find((s) => s.type === type)!;
 
-  it('registers E05/E06/E18 and E02/E04 with their respective producers', () => {
-    expect(subscribe.callCount).to.equal(5);
+  it('registers E05/E06/E18, E02/E04 and E15 with their respective producers', () => {
+    expect(subscribe.callCount).to.equal(6);
     expect(
       subscribe
         .getCalls()
@@ -94,6 +94,7 @@ describe('Job company consumer wiring', () => {
       { type: 'CompanyStatusChanged', producer: 'identity' },
       { type: 'JobVerified', producer: 'verification' },
       { type: 'ReportThresholdReached', producer: 'verification' },
+      { type: 'UserDeletionRequested', producer: 'identity' },
     ]);
   });
 
