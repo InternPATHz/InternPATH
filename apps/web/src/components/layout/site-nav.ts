@@ -8,7 +8,7 @@ import type { Role } from '@internpath/contracts';
 export type NavItem = { label: string; href: string; ready: boolean };
 
 export const PUBLIC_NAV: NavItem[] = [
-  { label: 'ค้นหางาน', href: '/jobs', ready: false },
+  { label: 'ค้นหางาน', href: '/jobs', ready: true },
   { label: 'บริษัทและรีวิว', href: '/companies', ready: false },
 ];
 
