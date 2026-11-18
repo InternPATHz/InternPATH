@@ -168,6 +168,8 @@ export class FakeIdentity {
   students = new Map<string, InternalStudentResponse>();
   /** คู่ `${student}:${company}` ที่มี Consent */
   consents = new Set<string>();
+  /** `consent_id` ที่คืนพร้อม `has_consent=true` (คีย์เดียวกับ `consents`) — ไม่มี ⇒ ไม่ส่งฟิลด์ (เหมือน Identity ก่อนเพิ่ม) */
+  consentIds = new Map<string, string>();
   unavailable = false;
   consentCalls: Array<{ student: string; company: string }> = [];
 
@@ -193,7 +195,10 @@ export class FakeIdentity {
   async checkConsent(student: string, company: string): Promise<ConsentCheckResponse> {
     if (this.unavailable) throw new AppException('UPSTREAM_UNAVAILABLE', 'identity down', 502);
     this.consentCalls.push({ student, company });
-    return { has_consent: this.consents.has(`${student}:${company}`) };
+    const key = `${student}:${company}`;
+    if (!this.consents.has(key)) return { has_consent: false };
+    const consentId = this.consentIds.get(key);
+    return consentId === undefined ? { has_consent: true } : { has_consent: true, consent_id: consentId };
   }
 
   /** `GET /internal/v1/students/names?ids=` — แต่ละครั้งที่เรียก (ตรวจการแบ่ง batch ≤ 100) */

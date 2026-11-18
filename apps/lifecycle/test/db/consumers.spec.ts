@@ -322,6 +322,56 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
       expect((await reload(running.id)).companySuspendedDecision).to.equal(null);
     });
 
+    it('SUSPENDED ⇒ E14 COMPANY_SUSPENDED_DECISION ถึงอาจารย์ + นักศึกษาเฉพาะใบที่เพิ่งรอตัดสิน • วันเดียวกันไม่แจ้งซ้ำ • คนละวันแจ้งใหม่ (PM ตัดสิน 18 พ.ย.)', async () => {
+      const reminders = (aggregateId: string) =>
+        prisma.outboxEvent.findMany({ where: { aggregateId, type: 'ReminderDue' }, orderBy: { createdAt: 'asc' } });
+      const at = (iso: string) => new Date(iso);
+      const handleAt = (env: ReturnType<typeof e05>, now: Date) => inTx((tx) => companies.handle(env as never, tx, now));
+
+      await handle(e05(1, 'VERIFIED'));
+      const running = await seed('IN_PROGRESS');
+      const noAdvisor = await seed('IN_PROGRESS', { advisorUserId: null });
+      const decided = await seed('IN_PROGRESS', { companySuspendedDecision: 'TERMINATE' });
+      const notStarted = await seed('ADVISOR_APPROVED');
+
+      // 23:30 เวลาไทย 20 พ.ย. = 16:30Z ⇒ due_date เป็นวันที่ไทย
+      await handleAt(e05(2, 'SUSPENDED'), at('2026-11-20T16:30:00Z'));
+      const [first] = await reminders(running.id);
+      expect(first.payload).to.deep.equal({
+        reminder_type: 'COMPANY_SUSPENDED_DECISION',
+        entity_type: 'APPLICATION',
+        entity_id: running.id,
+        due_date: '2026-11-20',
+        audience: [
+          { user_id: advisor, role: 'ADVISOR' },
+          { user_id: running.studentUserId, role: 'STUDENT' },
+        ],
+        context: { application_id: running.id, days_overdue: 0 },
+      });
+      expect((await reminders(noAdvisor.id))[0].payload).to.have.deep.property('audience', [
+        { user_id: noAdvisor.studentUserId, role: 'STUDENT' },
+      ]);
+      expect(await reminders(decided.id)).to.have.length(0);
+      expect(await reminders(notStarted.id)).to.have.length(0);
+
+      // กลับ VERIFIED แล้วถูกระงับอีกในวันเดียวกัน ⇒ ตั้ง PENDING ใหม่ แต่ reminder_log ชน ⇒ ไม่แจ้งซ้ำ
+      await handleAt(e05(3, 'VERIFIED'), at('2026-11-20T16:40:00Z'));
+      await handleAt(e05(4, 'SUSPENDED'), at('2026-11-20T16:50:00Z'));
+      expect((await reload(running.id)).companySuspendedDecision).to.equal('PENDING');
+      expect(await reminders(running.id)).to.have.length(1);
+
+      // ระงับซ้ำโดยยังไม่กลับ VERIFIED ⇒ ใบยังรอตัดสินอยู่ ไม่แจ้งเพิ่ม
+      await handleAt(e05(5, 'SUSPENDED'), at('2026-11-21T03:00:00Z'));
+      expect(await reminders(running.id)).to.have.length(1);
+
+      // รอบใหม่คนละวัน ⇒ แจ้งใหม่
+      await handleAt(e05(6, 'VERIFIED'), at('2026-11-21T04:00:00Z'));
+      await handleAt(e05(7, 'SUSPENDED'), at('2026-11-21T05:00:00Z'));
+      const all = await reminders(running.id);
+      expect(all).to.have.length(2);
+      expect((all[1].payload as { due_date: string }).due_date).to.equal('2026-11-21');
+      expect(await prisma.reminderLog.count({ where: { entityId: running.id, type: 'COMPANY_SUSPENDED_DECISION' } })).to.equal(2);
+    });
     it('VERIFIED ไม่ปลดใบที่ประกาศยังถูกซ่อน (VERIFYING/PENDING_REVIEW/SUSPENDED)', async () => {
       await prisma.jobSnapshot.create({ data: { jobId, companyId, status: 'PENDING_REVIEW', title: 'x' } });
       const pending = await seed('PENDING');
@@ -447,7 +497,9 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
       const resumeKey = `resumes/${randomUUID()}.pdf`;
       storage.objects.set(resumeKey, Buffer.from('%PDF'));
       await prisma.resume.create({ data: { studentUserId: student, objectKey: resumeKey, sizeBytes: 4, isPrimary: true } });
-      await prisma.studentProfile.create({ data: { userId: student, major: 'CS', yearLevel: 4, bio: 'ข้อมูลส่วนตัว' } });
+      const photoKey = `profile-photos/${randomUUID()}`;
+      storage.objects.set(photoKey, Buffer.from('img'));
+      await prisma.studentProfile.create({ data: { userId: student, major: 'CS', yearLevel: 4, bio: 'ข้อมูลส่วนตัว', photoKey } });
       await prisma.studentAdvisorLink.create({ data: { studentUserId: student, advisorUserId: advisor, linkStatus: 'LINKED' } });
       await prisma.evaluation.create({ data: { applicationId: completed.id, round: 1, result: 'PASS', evaluatedBy: hr } });
       const cert = await prisma.certificate.create({
@@ -485,7 +537,7 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
           correlationId: randomUUID(),
         },
       });
-      return { student, hr, pending, accepted, completed, terminatedApp, resumeKey, cert, published, held };
+      return { student, hr, pending, accepted, completed, terminatedApp, resumeKey, photoKey, cert, published, held };
     }
 
     it('นักศึกษาลบบัญชี: ยกเลิกใบก่อนขั้นอาจารย์ + คืนโควตา, ลบไฟล์/PII, รีวิว/ใบรับรองไม่ระบุตัวตน, id ⇒ anonymous_actor_id', async () => {
@@ -503,7 +555,8 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
       expect(cancelHistory).to.include({ actorRole: 'SYSTEM', reason: 'USER_DELETED' });
 
       // 2. ไฟล์ + PII
-      expect(storage.deleted).to.deep.equal([s.resumeKey]);
+      // ไฟล์รูปโปรไฟล์ถูกลบด้วย (B4 — PM 18 พ.ย.)
+      expect(storage.deleted).to.deep.equal([s.resumeKey, s.photoKey]);
       expect(await prisma.resume.count({ where: { studentUserId: { in: [s.student, anon] } } })).to.equal(0);
       expect(await prisma.studentProfile.count({ where: { userId: s.student } })).to.equal(0);
       expect(await prisma.studentAdvisorLink.count({ where: { studentUserId: s.student } })).to.equal(0);
@@ -582,6 +635,7 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
       expect(error).to.be.instanceOf(Error);
       expect((await reload(s.pending.id)).status).to.equal('PENDING');
       expect(await prisma.resume.count({ where: { studentUserId: s.student } })).to.equal(1);
+      expect((await prisma.studentProfile.findUniqueOrThrow({ where: { userId: s.student } })).photoKey).to.equal(s.photoKey);
       expect(await prisma.statusHistory.count({ where: { actorId: s.student } })).to.equal(1);
     });
 

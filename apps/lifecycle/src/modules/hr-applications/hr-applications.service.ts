@@ -9,6 +9,7 @@ import type {
 } from '@internpath/contracts';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Application } from '../../../generated/client';
+import { mapWithConcurrency } from '../../common/async/concurrency';
 import { assertCompanyOwnership } from '../../common/auth/ownership';
 import { S3StorageService } from '../../common/storage/s3-storage.service';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
@@ -24,6 +25,9 @@ import type { Actor } from '../../state-machine/status-history.writer';
 import { loadSnapshotNames, toHrDetail, toHrItem } from '../applications/application-view';
 import { checkCertificateIssuable, effectiveMinActualDays } from '../certificates/certificate-rules';
 import type { HrAcceptDto, HrApplicationsQueryDto, HrEvaluateDto, HrStartDto, HrTerminateDto } from './hr-applications.dto';
+
+/** จำนวนการตรวจ Consent ที่ยิง Identity พร้อมกันต่อหน้ารายการ HR (page_size ≤ 100) */
+const CONSENT_CHECK_CONCURRENCY = 10;
 
 /** action ของ HR ที่รับแค่เหตุผล — `reject` (ไม่บังคับ), `rescind-offer` (บังคับใน Guard) */
 export type HrReasonAction = 'reject' | 'rescind-offer';
@@ -264,29 +268,31 @@ export class HrApplicationsService {
   }
 
   /**
+   * ชื่อของนักศึกษาที่มี Consent กับบริษัทนี้ — ตรวจไม่สำเร็จ ⇒ ถือว่าไม่มี Consent
+   * ตรวจทีละคนแต่พร้อมกันไม่เกิน `CONSENT_CHECK_CONCURRENCY` (PM รีวิว #71 — กันยิง Identity ทีเดียวทั้งหน้า
+   * จนกว่า SA จะมี `consents/check-batch`)
+   */
+  private async consentedNames(companyId: string, studentUserIds: readonly string[]): Promise<Map<string, string>> {
+    const unique = [...new Set(studentUserIds)];
+    const consented = (
+      await mapWithConcurrency(unique, CONSENT_CHECK_CONCURRENCY, async (id) => {
+        try {
+          return (await this.identity.checkConsent(id, companyId)).has_consent ? id : null;
+        } catch {
+          return null;
+        }
+      })
+    ).filter((id): id is string => id !== null);
+    return consented.length ? this.studentNames.names(consented) : new Map();
+  }
+
+  /**
    * โปรไฟล์นักศึกษาเมื่อมี Consent ให้บริษัทนี้เท่านั้น (README §5.11) — ไม่มี Consent/Identity ล่ม ⇒ ไม่ส่ง `profile`
    * (fail-closed เฉพาะข้อมูลส่วนบุคคล ไม่ทำให้ทั้งหน้าใช้ไม่ได้)
    * ใช้โปรไฟล์ของ Lifecycle (`student_profiles`); ยังไม่เคยสร้าง ⇒ ใช้ major/year_level จาก Identity
    * `full_name` ดึงสดจาก Identity (`students/{id}`) ทุกครั้ง — **ห้ามเก็บลง DB/cache/log** (api-contract §9)
    * Identity อ่านไม่ได้ (ล่ม/บัญชีถูกระงับ) แต่มีโปรไฟล์ใน Lifecycle ⇒ ส่งโปรไฟล์โดย `full_name` ว่าง
    */
-  /** ชื่อของนักศึกษาที่มี Consent กับบริษัทนี้ (ตรวจพร้อมกันต่อคน) — ตรวจไม่สำเร็จ ⇒ ถือว่าไม่มี Consent */
-  private async consentedNames(companyId: string, studentUserIds: readonly string[]): Promise<Map<string, string>> {
-    const unique = [...new Set(studentUserIds)];
-    const consented = (
-      await Promise.all(
-        unique.map(async (id) => {
-          try {
-            return (await this.identity.checkConsent(id, companyId)).has_consent ? id : null;
-          } catch {
-            return null;
-          }
-        }),
-      )
-    ).filter((id): id is string => id !== null);
-    return consented.length ? this.studentNames.names(consented) : new Map();
-  }
-
   private async consentedProfile(app: Application, correlationId?: string): Promise<HrProfile | undefined> {
     try {
       const consent = await this.identity.checkConsent(app.studentUserId, app.companyId, correlationId);

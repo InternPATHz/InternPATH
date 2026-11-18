@@ -35,7 +35,8 @@ export type JobEventOutcome = 'applied' | 'stale';
  * 2. `application_effect`: `FREEZE` / `UNFREEZE` (ไม่ปลดถ้าบริษัทยังถูกระงับ) / `CANCEL_PRE_APPROVAL`
  *    (ก่อน `ADVISOR_APPROVED` ⇒ `CANCELLED` + E08 + คืนโควตา; ตั้งแต่ `ADVISOR_APPROVED`/`IN_PROGRESS` ⇒ `flagged_for_advisor`) /
  *    `FLAG_POST_APPROVAL` (สงวน — ติดธงอย่างเดียว) / `NONE` ⇒ snapshot อย่างเดียว
- * 3. **ช่องว่างของ contract:** E03 ไม่มี `title`/`target_majors` ⇒ snapshot ที่ยังไม่มีสร้างด้วยชื่อว่าง และคงค่าเดิมเมื่อมีอยู่แล้ว
+ * 3. E03 ไม่มี `title`/`target_majors` ⇒ snapshot ที่ยังไม่มีสร้างด้วยชื่อว่าง และคงค่าเดิมเมื่อมีอยู่แล้ว —
+ *    ชื่อเติมตอนสมัครจาก `job_title` ของ `GET /internal/v1/jobs/{id}` (`fillJobSnapshotTitle` — PM ตัดสิน 2026-11-18)
  */
 @Injectable()
 export class JobStatusChangedHandler {

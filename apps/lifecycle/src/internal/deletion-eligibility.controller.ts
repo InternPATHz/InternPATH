@@ -1,16 +1,11 @@
 import { Controller, Get, Injectable, Module, Param, ParseUUIDPipe, UseGuards } from '@nestjs/common';
 import { InternalCallers, ServiceTokenGuard, ServiceTokenPolicy } from '@internpath/common';
+import type { DeletionEligibilityResponse } from '@internpath/contracts';
 import { PrismaService } from '../prisma/prisma.service';
 import { DELETION_BLOCKING_STATUSES } from '../state-machine/transition-table';
 
 /** secret ที่ Identity ใช้เรียก Lifecycle — มีใน `.env.example` แล้ว (api-contract §9, PM ตัดสิน 2026-11-17) */
 export const IDENTITY_CALLER_SECRET_ENV = 'LIFECYCLE_SERVICE_SECRET_IDENTITY';
-
-/** api-contract §9 — ชนิด Response (contract ไม่มี interface ใน `libs/contracts`) */
-export interface DeletionEligibilityResponse {
-  eligible: boolean;
-  blocking_application_count: number;
-}
 
 @Injectable()
 export class DeletionEligibilityService {

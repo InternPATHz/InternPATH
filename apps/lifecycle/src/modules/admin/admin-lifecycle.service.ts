@@ -7,6 +7,7 @@ import type {
   CompanyLifecycleStats,
   NoEvaluationCandidate,
   Paginated,
+  ReapplyUnlockResponse,
 } from '@internpath/contracts';
 import { Injectable } from '@nestjs/common';
 import { Prisma, type Application } from '../../../generated/client';
@@ -21,15 +22,6 @@ import { ReapplyPolicy } from '../../state-machine/reapply-policy';
 import { NO_EVALUATION_SOURCE_STATUSES } from '../../state-machine/transition-table';
 import { formatDate, loadSnapshotNames, toApplicationBase } from '../applications/application-view';
 import type { AuditLogsQueryDto } from './admin.dto';
-
-/** ผลของ `POST /admin/lifecycle/students/{user_id}/reapply-unlock` (contract ไม่กำหนด Response — แถว `reapply_unlocks`) */
-export interface ReapplyUnlockItem {
-  id: string;
-  student_user_id: string;
-  unlocked_by: string;
-  reason: string;
-  created_at: string;
-}
 
 /** `details[].issue` ของ `409 STATE_CONFLICT` เมื่อปลดล็อกสมัครซ้ำไม่ได้ */
 export const REAPPLY_NOT_BLOCKED = 'REAPPLY_NOT_BLOCKED';
@@ -180,7 +172,7 @@ export class AdminLifecycleService {
     rawReason: string | undefined,
     correlationId?: string,
     now = new Date(),
-  ): Promise<ReapplyUnlockItem> {
+  ): Promise<ReapplyUnlockResponse> {
     const reason = rawReason?.trim();
     if (!reason) throw reasonRequired();
     const cid = asUuid(correlationId);

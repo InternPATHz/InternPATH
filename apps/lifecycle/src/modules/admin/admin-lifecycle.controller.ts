@@ -1,12 +1,13 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Roles, RolesGuard } from '@internpath/common';
 import type {
-  ApplicationBase,
+  AdminApplicationActionResponse,
   AuditLogEntry,
   CompanyLifecycleStats,
   NoEvaluationCandidate,
   Paginated,
   ProblemReportItem,
+  ReapplyUnlockResponse,
 } from '@internpath/contracts';
 import { ProblemReportsService } from '../problem-reports/problem-reports.service';
 import {
@@ -15,7 +16,7 @@ import {
   AuditLogsQueryDto,
   NoEvaluationCandidatesQueryDto,
 } from './admin.dto';
-import { AdminLifecycleService, type ReapplyUnlockItem } from './admin-lifecycle.service';
+import { AdminLifecycleService } from './admin-lifecycle.service';
 
 /**
  * api-contract §7.7 — Admin ของ Lifecycle (เฉพาะ `PLATFORM_ADMIN`; Role อื่น ⇒ `403 FORBIDDEN_ROLE`)
@@ -42,7 +43,7 @@ export class AdminLifecycleController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: AdminReasonDto,
     @Headers('x-correlation-id') cid?: string,
-  ): Promise<ApplicationBase> {
+  ): Promise<AdminApplicationActionResponse> {
     return this.service.confirmNoEvaluation(user, id, body.reason, cid);
   }
 
@@ -53,7 +54,7 @@ export class AdminLifecycleController {
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: AdminReasonDto,
     @Headers('x-correlation-id') cid?: string,
-  ): Promise<ApplicationBase> {
+  ): Promise<AdminApplicationActionResponse> {
     return this.service.terminate(user, id, body.reason, cid);
   }
 
@@ -64,7 +65,7 @@ export class AdminLifecycleController {
     @Param('user_id', ParseUUIDPipe) studentUserId: string,
     @Body() body: AdminReasonDto,
     @Headers('x-correlation-id') cid?: string,
-  ): Promise<ReapplyUnlockItem> {
+  ): Promise<ReapplyUnlockResponse> {
     return this.service.reapplyUnlock(user, studentUserId, body.reason, cid);
   }
 

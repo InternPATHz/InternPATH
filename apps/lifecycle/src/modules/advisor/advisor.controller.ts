@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Roles, RolesGuard } from '@internpath/common';
-import type { AdvisorApplicationItem, AdvisorStudentOverview, Paginated } from '@internpath/contracts';
+import type { AdvisorApplicationItem, AdvisorDisputeItem, AdvisorStudentOverview, Paginated } from '@internpath/contracts';
 import { PageQueryDto } from '../resumes/resumes.dto';
 import { AcademicResultDto, AdvisorApplicationsQueryDto, AdvisorReasonDto, DisputeDecisionDto } from './advisor.dto';
-import { AdvisorService, type AdvisorDisputeItem } from './advisor.service';
+import { AdvisorService } from './advisor.service';
 
 /**
  * api-contract §7.4 — อาจารย์ที่ปรึกษา (`/advisor/...`)

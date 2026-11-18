@@ -129,6 +129,15 @@ export interface AdvisorApplicationItem extends ApplicationBase {
   flagged_for_advisor: boolean;
 }
 
+/**
+ * รายการ GET /advisor/disputes (คิว `FAIL_DISPUTED`) — คำโต้แย้งของนักศึกษา + ผลประเมินรอบที่ถูกโต้แย้ง
+ * `evaluation` ไม่มีเมื่อข้อมูลไม่สอดคล้อง (ไม่พบผลประเมิน) — PM เพิ่ม 2026-11-19
+ */
+export interface AdvisorDisputeItem extends AdvisorApplicationItem {
+  dispute: { id: string; statement: string; created_at: string };
+  evaluation?: Pick<EvaluationView, 'round' | 'result' | 'reason' | 'evaluated_at'>;
+}
+
 /** GET /advisor/students/{id}/overview */
 export interface AdvisorStudentOverview {
   student_user_id: string;
@@ -214,6 +223,13 @@ export interface ReplyReviewRequest {
   body: string;
 }
 
+/** ผลของ POST /hr/reviews/{id}/reply (201) — รูปเดียวกับ `reply` ใน `PublicReviewItem` + `review_id` (PM เพิ่ม 2026-11-19) */
+export interface ReplyReviewResponse {
+  review_id: string;
+  body: string;
+  created_at: string;
+}
+
 // ---- 7.7 Admin ----
 /** GET /admin/lifecycle/no-evaluation-candidates */
 export interface NoEvaluationCandidate extends ApplicationBase {
@@ -225,6 +241,18 @@ export interface CompanyLifecycleStats {
   company_id: string;
   rescinded_count: number;
   terminated_count: number;
+}
+
+/** ผลของ POST /admin/lifecycle/applications/{id}/actions/{confirm-no-evaluation|terminate} (200) — ใบสมัครหลังเปลี่ยนสถานะ (PM เพิ่ม 2026-11-19) */
+export type AdminApplicationActionResponse = ApplicationBase;
+
+/** ผลของ POST /admin/lifecycle/students/{user_id}/reapply-unlock (201) — แถว `reapply_unlocks` ที่สร้าง (PM เพิ่ม 2026-11-19) */
+export interface ReapplyUnlockResponse {
+  id: string;
+  student_user_id: string;
+  unlocked_by: string;
+  reason: string;
+  created_at: string;
 }
 
 // ---- 8 Notification ----
@@ -257,4 +285,11 @@ export interface InternalJobResponse {
   target_majors: string[];
   application_deadline: string;
   entity_version: number;
+}
+
+// ---- 9 Internal (identity → lifecycle) ----
+/** GET /internal/v1/users/{user_id}/deletion-eligibility — `eligible=false` เมื่อมีใบสมัครสถานะที่บล็อกการลบ (PM เพิ่ม 2026-11-19) */
+export interface DeletionEligibilityResponse {
+  eligible: boolean;
+  blocking_application_count: number;
 }

@@ -87,6 +87,7 @@ describe('Lifecycle 1.4 — ใบสมัครฝั่งนักศึก�
     job.reset();
     identity.students.clear();
     identity.consents.clear();
+    identity.consentIds.clear();
     identity.unavailable = false;
     // นักศึกษา/บริษัทใหม่ทุกเทสต์ ⇒ ไม่ต้องล้างตาราง (status_history เป็น append-only)
     student = randomUUID();
@@ -312,6 +313,45 @@ describe('Lifecycle 1.4 — ใบสมัครฝั่งนักศึก�
         expect(res.status, JSON.stringify(body).slice(0, 80)).to.equal(400);
         expect(res.body.error.code).to.equal('VALIDATION_FAILED');
       }
+    });
+
+    it('ผูก resume_consent_id จาก consent_id ของ Identity เมื่อมี • ค่าไม่ใช่ uuid ⇒ null ไม่ทำให้สมัครล้ม (PM ตัดสิน 18 พ.ย.)', async () => {
+      const consentId = randomUUID();
+      identity.consentIds.set(`${student}:${companyId}`, consentId);
+      const first = await apply((await openJob()).job_id).expect(201);
+      expect((await prisma.application.findUniqueOrThrow({ where: { id: first.body.id } })).resumeConsentId).to.equal(consentId);
+
+      identity.consentIds.set(`${student}:${companyId}`, 'not-a-uuid');
+      const second = await apply((await openJob()).job_id).expect(201);
+      expect((await prisma.application.findUniqueOrThrow({ where: { id: second.body.id } })).resumeConsentId).to.equal(null);
+    });
+
+    it('เติม job_snapshots.title จาก job_title ของ Job เมื่อชื่อยังว่าง • ไม่ทับชื่อเดิม • ไม่มี snapshot ⇒ สร้าง placeholder v0 (PM ตัดสิน 18 พ.ย.)', async () => {
+      // snapshot จาก E03 (ชื่อว่าง) ⇒ เติมชื่อ และคำตอบมีชื่อประกาศ
+      const fromE03 = job.addJob({ company_id: companyId, job_title: '  ฝึกงาน Data  ', entity_version: 4 });
+      await prisma.jobSnapshot.create({
+        data: { jobId: fromE03.job_id, companyId, status: 'PUBLISHED', title: '', entityVersion: 3 },
+      });
+      expect((await apply(fromE03.job_id).expect(201)).body.job_title).to.equal('ฝึกงาน Data');
+      const filled = await prisma.jobSnapshot.findUniqueOrThrow({ where: { jobId: fromE03.job_id } });
+      expect(filled).to.include({ title: 'ฝึกงาน Data', entityVersion: 3, status: 'PUBLISHED' });
+
+      // มีชื่ออยู่แล้ว ⇒ ไม่ทับ (openJob ตั้งชื่อ "นักศึกษาฝึกงาน Backend" แต่ Job ส่ง "Test Job")
+      const named = await openJob();
+      await apply(named.job_id).expect(201);
+      expect((await prisma.jobSnapshot.findUniqueOrThrow({ where: { jobId: named.job_id } })).title).to.equal('นักศึกษาฝึกงาน Backend');
+
+      // ยังไม่มี snapshot ⇒ สร้างด้วย entity_version 0 ให้ E03 ถัดไปเขียนทับได้เสมอ
+      const noSnapshot = job.addJob({ company_id: companyId, job_title: 'ฝึกงาน QA' });
+      await apply(noSnapshot.job_id).expect(201);
+      const created = await prisma.jobSnapshot.findUniqueOrThrow({ where: { jobId: noSnapshot.job_id } });
+      expect(created).to.include({ title: 'ฝึกงาน QA', entityVersion: 0, companyId });
+
+      // Job ยังไม่ส่ง job_title (ว่าง) ⇒ ไม่แตะ snapshot
+      const untitled = job.addJob({ company_id: companyId, job_title: '' });
+      await prisma.jobSnapshot.create({ data: { jobId: untitled.job_id, companyId, status: 'PUBLISHED', title: '' } });
+      await apply(untitled.job_id).expect(201);
+      expect((await prisma.jobSnapshot.findUniqueOrThrow({ where: { jobId: untitled.job_id } })).title).to.equal('');
     });
 
     it('สมัครซ้ำประกาศเดิมที่ยังดำเนินอยู่ ⇒ 409 ALREADY_APPLIED • ถอนแล้วสมัครใหม่ได้', async () => {
