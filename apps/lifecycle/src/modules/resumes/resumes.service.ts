@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AppException, type JwtClaims } from '@internpath/common';
 import type { Paginated, ResumeItem, ResumeUrlResponse } from '@internpath/contracts';
-import type { Resume } from '../../../generated/client';
+import type { Prisma, Resume } from '../../../generated/client';
 import { assertAdvisorOwnership, assertCompanyOwnership } from '../../common/auth/ownership';
 import { S3StorageService } from '../../common/storage/s3-storage.service';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
@@ -12,7 +12,23 @@ import { RESUME_MIME, assertResumeFile, type UploadedResumeFile } from './resume
 /** prefix ของ Object Key ใน Private Bucket — ส่วนที่เหลือเป็น UUID สุ่ม (README §5.9) */
 export const RESUME_KEY_PREFIX = 'resumes';
 
+/** เพดานเรซูเม่ที่ยังไม่ลบต่อนักศึกษา (PM เสนอ 5 — รีวิว PR #37) */
+export const MAX_ACTIVE_RESUMES = 5;
+
 const notFound = () => new AppException('NOT_FOUND', 'ไม่พบเรซูเม่', 404);
+
+/** HR/อาจารย์เปิดเรซูเม่ที่นักศึกษาลบแล้ว ⇒ 404 + issue ให้หน้าเว็บแยกจาก "ไม่พบ" (api-contract §2, §7.1) */
+const deletedByStudent = () =>
+  new AppException('NOT_FOUND', 'นักศึกษาลบเรซูเม่นี้แล้ว', 404, [{ field: 'resume', issue: 'RESUME_DELETED_BY_STUDENT' }]);
+
+const limitReached = () =>
+  new AppException('VALIDATION_FAILED', `มีเรซูเม่ได้ไม่เกิน ${MAX_ACTIVE_RESUMES} ไฟล์ — ลบไฟล์เดิมก่อน`, 400, [
+    { field: 'file', issue: 'RESUME_LIMIT_REACHED' },
+  ]);
+
+/** ล็อกต่อนักศึกษาใน tx — upload()/remove() ใช้ตัวเดียวกัน กันไฟล์หลักซ้ำ/หาย และกันเกินเพดาน */
+const lockStudent = (tx: Pick<Prisma.TransactionClient, '$executeRaw'>, studentUserId: string) =>
+  tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${studentUserId}))`;
 
 /**
  * เรซูเม่ (api-contract §7.1, README §5.9 / §5.11)
@@ -36,6 +52,10 @@ export class ResumesService {
   /** POST /me/resumes — ตรวจไฟล์ → อัปโหลด → บันทึกแถว (ล้มหลังอัปโหลด ⇒ ลบไฟล์ชดเชย) */
   async upload(studentUserId: string, file: UploadedResumeFile | undefined): Promise<ResumeItem> {
     await assertResumeFile(file);
+    // ตรวจเพดานก่อนอัปโหลด (ไม่ล็อก — แค่กันอัปโหลดเปล่า) แล้วตรวจซ้ำใต้ล็อกใน tx
+    if ((await this.db.resume.count({ where: { studentUserId, deletedAt: null } })) >= MAX_ACTIVE_RESUMES) {
+      throw limitReached();
+    }
     const buffer = file!.buffer;
     const key = this.storage.generateKey(RESUME_KEY_PREFIX, 'pdf');
     await this.storage.upload(key, buffer, RESUME_MIME);
@@ -43,9 +63,10 @@ export class ResumesService {
     let row: Resume;
     try {
       row = await this.db.$transaction(async (tx) => {
-        // ล็อกต่อนักศึกษาใน tx นี้ กันอัปโหลดพร้อมกันแล้วได้ไฟล์หลัก 2 ไฟล์
-        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${studentUserId}))`;
+        // ล็อกต่อนักศึกษาใน tx นี้ กันอัปโหลดพร้อมกันแล้วได้ไฟล์หลัก 2 ไฟล์ / เกินเพดาน
+        await lockStudent(tx, studentUserId);
         const active = await tx.resume.count({ where: { studentUserId, deletedAt: null } });
+        if (active >= MAX_ACTIVE_RESUMES) throw limitReached();
         return tx.resume.create({
           data: {
             studentUserId,
@@ -97,6 +118,8 @@ export class ResumesService {
     await this.storage.delete(resume.objectKey);
 
     await this.db.$transaction(async (tx) => {
+      // ล็อกเดียวกับ upload(): ลบไฟล์หลักพร้อมอัปโหลด ⇒ ไม่จบที่ไม่มีไฟล์หลัก
+      await lockStudent(tx, studentUserId);
       const marked = await tx.resume.updateMany({
         where: { id: resume.id, deletedAt: null },
         data: { deletedAt: new Date(), isPrimary: false },
@@ -150,11 +173,15 @@ export class ResumesService {
     return application;
   }
 
-  /** เรซูเม่ของใบสมัครต้องเป็นของนักศึกษาเจ้าของใบสมัคร และยังไม่ถูกลบ (นักศึกษาลบได้ตาม README §5.11) */
+  /**
+   * เรซูเม่ของใบสมัครต้องเป็นของนักศึกษาเจ้าของใบสมัคร และยังไม่ถูกลบ (นักศึกษาลบได้ตาม README §5.11)
+   * ลบแล้ว ⇒ 404 + `RESUME_DELETED_BY_STUDENT` • ไม่มี/ไม่ใช่ของเจ้าของใบสมัคร ⇒ 404 เฉยๆ
+   */
   private async activeResume(resumeId: string | null, studentUserId: string): Promise<Resume> {
     if (!resumeId) throw notFound();
-    const resume = await this.db.resume.findFirst({ where: { id: resumeId, studentUserId, deletedAt: null } });
+    const resume = await this.db.resume.findFirst({ where: { id: resumeId, studentUserId } });
     if (!resume) throw notFound();
+    if (resume.deletedAt) throw deletedByStudent();
     return resume;
   }
 
