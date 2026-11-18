@@ -3,8 +3,6 @@ import { JwtAuthGuard, MessagingModule, RolesGuard } from '@internpath/common';
 import { LifecycleConfigModule } from './config/lifecycle-config.module';
 import { StorageModule } from './common/storage/storage.module';
 import { InternalModule } from './internal/internal.module';
-import { ReservationCheckModule } from './internal/reservation-check.controller';
-import { SlaSchedulerModule } from './jobs/sla-scheduler.module';
 import { AdvisorModule } from './modules/advisor/advisor.module';
 import { ReviewConsumersModule } from './events/consumers/review-moderation-result.consumer';
 import { CertificatesModule } from './modules/certificates/certificates.module';
@@ -14,6 +12,8 @@ import { ProblemReportsModule } from './modules/problem-reports/problem-reports.
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { ReservationCheckModule } from './internal/reservation-check.controller';
+import { SlaSchedulerModule } from './jobs/sla-scheduler.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import { StateMachineModule } from './state-machine/state-machine.module';
@@ -45,6 +45,8 @@ import type { Tx } from './prisma/types';
       },
     }),
     StateMachineModule,
+    SlaSchedulerModule,
+    ReservationCheckModule,
     ProfilesModule,
     ResumesModule,
     ApplicationsModule,
@@ -54,8 +56,6 @@ import type { Tx } from './prisma/types';
     ReviewsModule,
     ReviewConsumersModule,
     CertificatesModule,
-    SlaSchedulerModule,
-    ReservationCheckModule,
   ],
   providers: [JwtAuthGuard, RolesGuard],
   exports: [
