@@ -201,7 +201,7 @@ describe('Job AppModule infrastructure selection', () => {
           expect(consumer.subscribe.callCount).to.equal(0);
         } else {
           expect(app.get(PrismaService).constructor === PrismaService).to.equal(true);
-          expect(consumer.subscribe.callCount).to.equal(5);
+          expect(consumer.subscribe.callCount).to.equal(6);
           expect(broker.connect.callCount).to.equal(1);
         }
         expect(connect.callCount).to.equal(0);
