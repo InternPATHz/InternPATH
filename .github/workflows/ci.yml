@@ -79,3 +79,60 @@ jobs:
         run: pnpm --filter @internpath/identity exec mocha --forbid-pending
       - name: Gateway RabbitMQ integration tests
         run: pnpm --filter @internpath/gateway exec mocha --forbid-pending
+
+  # เทสต์ที่ต้องใช้ Postgres/RabbitMQ จริงของ Lifecycle, Job, Verification — job `check` ข้ามเทสต์เหล่านี้เงียบๆ เพราะไม่มี DB
+  # --forbid-pending ทำให้ job ล้มถ้ามี suite ข้าม (เช่น ต่อ Postgres/RabbitMQ ไม่ได้) จึงไม่มีทางผ่านโดยไม่ได้รันจริง
+  service-integration:
+    name: integration (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [lifecycle, job, verification]
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: internpath
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: internpath
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U internpath -d internpath"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      rabbitmq:
+        image: rabbitmq:3.13-management
+        env:
+          RABBITMQ_DEFAULT_USER: internpath
+          RABBITMQ_DEFAULT_PASS: ci-only-password
+        ports:
+          - 5672:5672
+          # Job สร้าง vhost แยกต่อเทสต์ผ่าน Management API
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      LIFECYCLE_IT_ADMIN_URL: postgresql://internpath:ci-only-password@127.0.0.1:5432/postgres
+      JOB_IT_ADMIN_URL: postgresql://internpath:ci-only-password@127.0.0.1:5432/postgres
+      VERIFICATION_IT_ADMIN_URL: postgresql://internpath:ci-only-password@127.0.0.1:5432/postgres
+      RABBITMQ_URL: amqp://internpath:ci-only-password@127.0.0.1:5672
+      RUN_RABBITMQ_TESTS: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Prisma generate
+        run: pnpm --filter @internpath/${{ matrix.service }} prisma:generate
+      - name: Integration tests (${{ matrix.service }})
+        run: pnpm --filter @internpath/${{ matrix.service }} exec mocha --forbid-pending

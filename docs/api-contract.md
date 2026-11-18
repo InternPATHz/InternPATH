@@ -247,6 +247,18 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/applications/{id}/actions/dispute-fail` | S | ภายใน 7 วัน `{statement}` → `422 DISPUTE_WINDOW_CLOSED` |
 | POST | `/applications/{id}/problem-reports` | S | เฉพาะ `IN_PROGRESS`; `{category, detail}` |
 
+**กติกาของ `POST /applications` และ action ฝั่งนักศึกษา (PM ตัดสิน 2026-11-18 — รีวิว PR #42):** ใช้เฉพาะ `code` ในตาราง §2 รายละเอียดอยู่ใน `details[].issue`
+- **ลำดับตรวจตอนสมัคร:** `consent` ในคำขอ → อีเมลยืนยัน/ผูกอาจารย์ → `REAPPLY_BLOCKED` → เรซูเม่เป็นของตนและไม่ถูกลบ → ประกาศเปิดรับ (ข้อมูลสดจาก Job) → บริษัท `VERIFIED` → Consent ที่ Identity → ไม่มีใบสมัครซ้ำที่ยังดำเนินอยู่ (`409 ALREADY_APPLIED`)
+- **Consent:** ไม่ติ๊ก `consent` ⇒ `403 CONSENT_REQUIRED` + `CONSENT_NOT_ACCEPTED`; Identity ไม่มี Consent ของบริษัทนี้ ⇒ `403 CONSENT_REQUIRED` + `CONSENT_NOT_RECORDED` หน้าเว็บต้องบันทึก Consent ที่ `POST /users/me/consents` (`{type:'RESUME_SHARE', target_company_id}`) **ก่อน** เรียก `POST /applications`
+- **ประกาศไม่เปิดรับ:** `409 STATE_CONFLICT` + `JOB_NOT_PUBLISHED` / `JOB_CLOSED` / `DEADLINE_PASSED`; วัน `application_deadline` ยังสมัครได้ (นับตามวันเวลากรุงเทพ); ไม่มีหรืออ่านค่า deadline ไม่ออก ⇒ ถือว่าปิด; **ไม่ตรวจ `quota_available` ตอนสมัคร** (จองโควตาตอน HR ตอบรับ — README 5.2.2)
+- **บริษัท/Job:** ไม่มี snapshot ของบริษัท ⇒ ถือว่าไม่ `VERIFIED` (`403 COMPANY_NOT_VERIFIED`, fail-closed); Job ล่ม ⇒ `502 UPSTREAM_UNAVAILABLE`
+- **ไม่พบทรัพยากร:** ไม่มีประกาศ/เรซูเม่ ⇒ `404 NOT_FOUND` + `field` (`job_id` | `resume_id`); ใบสมัครของนักศึกษาคนอื่น ⇒ `404` (ไม่บอกว่ามีอยู่)
+- **`major_mismatch`:** เทียบสาขานักศึกษากับ `target_majors` แบบตัดช่องว่างและไม่สนตัวพิมพ์; ประกาศไม่ระบุสาขา ⇒ `false` (เตือนเท่านั้น ไม่บล็อกการสมัคร)
+- **ความยาวสูงสุด:** `cover_letter` / `statement` / `detail` ของรายงานปัญหา 5000 ตัวอักษร, `reason` 2000 ตัวอักษร
+- **`request-termination`:** ไม่มี `reason` ⇒ `400 REASON_REQUIRED`; **`dispute-fail`:** โต้แย้งได้ 1 ครั้งต่อผลประเมิน 1 รอบ และคำโต้แย้งเก็บแยกจาก `status_history`/E08 (อาจมีข้อมูลส่วนตัว)
+- **`problem-reports`:** เฉพาะ `IN_PROGRESS` (อื่น ⇒ `409 STATE_CONFLICT` + `NOT_IN_PROGRESS`), `due_at = created_at + 48 ชั่วโมง`, ไม่เปลี่ยนสถานะใบสมัคร และ HR/บริษัทมองไม่เห็น (ไม่มี endpoint ฝั่ง HR)
+- `applications.resume_consent_id` ยังเป็น `null` (`consents/check` คืนแค่ `{has_consent}`) — ถ้าจะผูก ต้องให้ Identity เพิ่ม `consent_id` ในผลของ `POST /internal/v1/consents/check` (เลื่อนไว้)
+
 ### 7.3 ใบสมัคร — HR
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
@@ -261,6 +273,13 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/hr/applications/{id}/certificate` | H | ออก E-Certificate (`PASS` + ฝึกจริง ≥ 30 วัน → `422 CERT_MIN_ACTUAL_DAYS`) |
 | POST | `/hr/certificates/{id}/actions/revoke` | H | เฉพาะใบที่บริษัทตนออก `{reason}` |
 | POST | `/hr/reviews/{id}/reply` | H | 1 ครั้ง/รีวิว (`409 ALREADY_REPLIED`) |
+
+**กติกาฝั่ง HR (PM ตัดสิน 2026-11-18 — Lifecycle 1.5):**
+- **สิทธิ์:** HR เปิดใบสมัครของบริษัทอื่น ⇒ `403 NOT_OWNER_OF_RESOURCE` (UAT-29 ข้อ 2 — ต่างจากฝั่งนักศึกษาที่ได้ `404`)
+- **`GET /hr/applications/{id}`:** ไม่มี Consent หรือ Identity ล่ม ⇒ ยังได้ `200` แต่ไม่มี `profile` (ไม่คืน `502` ทั้งหน้า); หน้าเว็บแสดงข้อความกลางว่ายังไม่มีข้อมูลโปรไฟล์ เพราะแยกสาเหตุไม่ได้; ยังไม่มีผลประเมินในรายละเอียด (ฟิลด์ `evaluation?` จะเพิ่มตอนทำ `evaluate` เพื่อให้ HR เห็นผลของตนก่อนประเมินซ้ำ)
+- **`start`:** `actual_start_date` เป็นวันในอนาคตไม่ได้ (วันนี้ตามเวลากรุงเทพใช้ได้) และ `end_date` ต้องอยู่หลัง `start_date` และ `actual_start_date` ผิด ⇒ `400 VALIDATION_FAILED` + `details[].issue`; ระยะ `end_date − actual_start_date` < 30 วัน **ไม่ใช่ error** ผ่านพร้อม `warning: 'NO_CERTIFICATE_ELIGIBLE'` (README 5.2.2, UAT-35)
+- **`terminate`:** `actual_end_date` เป็นวันในอนาคตไม่ได้ และห้ามก่อนวันเริ่มงานจริง; ไม่ส่ง ⇒ วันนี้ตามเวลากรุงเทพ
+- **E08:** ไม่ส่ง `hr_user_ids` — Notification ดึงสมาชิกบริษัทจาก Identity เอง (event-contract §6.1)
 
 ### 7.4 อาจารย์
 | Method | Path | Role | คำอธิบาย |
@@ -331,7 +350,8 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | lifecycle | GET | `/internal/v1/users/{user_id}/deletion-eligibility` | identity | `200 {eligible: boolean, blocking_application_count: number}` — `eligible=false` เมื่อผู้ใช้มีใบสมัครสถานะ `ADVISOR_PENDING`/`ADVISOR_APPROVED`/`IN_PROGRESS`/`FAIL_DISPUTED`/`REEVALUATION_REQUESTED`; ไม่มีใบสมัครหรือไม่รู้จักผู้ใช้ ⇒ `eligible=true`; Identity ปฏิเสธการลบเมื่อเรียกไม่สำเร็จ (fail-closed); Service Token: audience `lifecycle`, secret `LIFECYCLE_SERVICE_SECRET_IDENTITY` (PM ตัดสิน 2026-11-17) |
 | identity | GET | `/internal/v1/users/{user_id}/contact` | notification | `{email, full_name}` (ใช้ตอนส่งเท่านั้น; ห้าม cache ถาวร) |
 | identity | GET | `/internal/v1/users/contacts?ids=` | notification | แบบ Batch (≤ 100) |
-| identity | GET | `/internal/v1/students/{user_id}` | lifecycle | `{major, year_level, university_id, email_verified, advisor_id, advisor_link_status}` ตอนสมัครงาน |
+| identity | GET | `/internal/v1/students/names?ids=` | lifecycle | แบบ Batch (≤ 100) → `[{user_id, full_name}]` ชื่อนักศึกษาสำหรับหน้ารายการของ HR/อาจารย์ — ไม่มีอีเมล, ข้ามบัญชีที่ลบแล้วและ id ที่ไม่ใช่นักศึกษา (SA ตัดสิน 2026-11-18) |
+| identity | GET | `/internal/v1/students/{user_id}` | lifecycle | `{full_name, major, year_level, university_id, email_verified, advisor_id, advisor_link_status}` ตอนสมัครงาน และชื่อแสดงผลให้ HR (มี Consent)/อาจารย์ — Lifecycle ดึงสดทุกครั้ง **ห้ามเก็บ `full_name` ลง DB/cache/Event/log** (SA ตัดสิน 2026-11-18) |
 | identity | GET | `/internal/v1/companies/{company_id}/members` | notification, lifecycle | ผู้รับแจ้งเตือนฝั่ง HR |
 | identity | POST | `/internal/v1/consents/check` | lifecycle | `{student_user_id, company_id}` → `{has_consent}` |
 | identity | GET | `/internal/v1/admins` | notification | รายชื่อ `user_id` ของ Admin |
