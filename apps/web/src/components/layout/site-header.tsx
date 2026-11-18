@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/auth/session';
 import { NotificationBell } from '@/components/notifications/notification-bell';
+import { BrandLogo } from '@/components/ui/brand-logo';
 import { PUBLIC_NAV, ROLE_NAV } from './site-nav';
 import type { NavItem } from './site-nav';
 
@@ -27,9 +28,8 @@ export function SiteHeader() {
     <header className="border-b border-border bg-surface">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-6">
         <div className="flex items-center gap-6">
-          <Link href="/" className="flex items-center gap-2 text-lg font-bold tracking-wide text-primary">
-            <span aria-hidden className="inline-block h-3 w-3 rotate-45 rounded-sm bg-primary" />
-            INTERNPATH
+          <Link href="/" aria-label="InternPath หน้าแรก" className="text-lg font-bold tracking-wide text-primary">
+            <BrandLogo />
           </Link>
           <nav aria-label="เมนูหลัก" className="hidden gap-5 text-sm sm:flex">
             {items.map((item) => <NavLink key={item.href} item={item} />)}
