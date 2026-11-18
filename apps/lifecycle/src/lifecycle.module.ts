@@ -4,12 +4,14 @@ import { LifecycleConfigModule } from './config/lifecycle-config.module';
 import { StorageModule } from './common/storage/storage.module';
 import { InternalModule } from './internal/internal.module';
 import { AdvisorModule } from './modules/advisor/advisor.module';
+import { ReviewConsumersModule } from './events/consumers/review-moderation-result.consumer';
 import { CertificatesModule } from './modules/certificates/certificates.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { HrApplicationsModule } from './modules/hr-applications/hr-applications.module';
 import { ProblemReportsModule } from './modules/problem-reports/problem-reports.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
+import { ReviewsModule } from './modules/reviews/reviews.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import { StateMachineModule } from './state-machine/state-machine.module';
@@ -47,6 +49,8 @@ import type { Tx } from './prisma/types';
     HrApplicationsModule,
     ProblemReportsModule,
     AdvisorModule,
+    ReviewsModule,
+    ReviewConsumersModule,
     CertificatesModule,
   ],
   providers: [JwtAuthGuard, RolesGuard],
