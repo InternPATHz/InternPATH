@@ -228,7 +228,9 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 7.1 โปรไฟล์และเรซูเม่ (นักศึกษา)
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET/PUT | `/me/profile` | S | โปรไฟล์ — `PUT` แทนที่ฟิลด์ที่แก้ได้ทั้งชุด (ไม่ส่ง = ล้างค่า): `headline` ≤ 200, `bio` ≤ 2000, `skills` ≤ 30 รายการ (รายการละ 1–50 ตัวอักษร ตัดซ้ำไม่สนตัวพิมพ์), `portfolio_url` http/https ≤ 500; ห้ามส่ง `major`/`year_level` (สำเนาจาก Identity ตอน `GET`/`PUT` — PM ตัดสิน 2026-11-18) |
+| GET/PUT | `/me/profile` | S | โปรไฟล์ — `PUT` แทนที่ฟิลด์ที่แก้ได้ทั้งชุด (ไม่ส่ง = ล้างค่า): `headline` ≤ 200, `bio` ≤ 2000, `skills` ≤ 30 รายการ (รายการละ 1–50 ตัวอักษร ตัดซ้ำไม่สนตัวพิมพ์), `portfolio_url` http/https ≤ 500; ห้ามส่ง `major`/`year_level` (สำเนาจาก Identity ตอน `GET`/`PUT` — PM ตัดสิน 2026-11-18) • `GET`/`PUT` คืน `photo_url?` (Signed URL ~10 นาที; ไม่มีรูป ⇒ ไม่มีฟิลด์) — `PUT` ไม่รับ `photo_url` (รูปเปลี่ยนผ่าน endpoint ด้านล่างเท่านั้น) |
+| PUT | `/me/profile/photo` | S | multipart `file` (jpg/png/webp ≤ 2 MB, ตรวจ MIME จริง) → **Private bucket**; แทนที่รูปเดิมและลบไฟล์เก่า; `200` `{photo_url}` (PM ตัดสิน 2026-11-18) • ชนิด/ขนาดผิด ⇒ `400 FILE_TYPE_NOT_ALLOWED`/`FILE_TOO_LARGE` |
+| DELETE | `/me/profile/photo` | S | ลบไฟล์ใน Storage และล้าง `photo_key`; ไม่มีรูป ⇒ `204` (idempotent) |
 | POST | `/me/resumes` | S | multipart PDF ≤ 5 MB (ตรวจ MIME จริง); **มีเรซูเม่ที่ยังไม่ลบได้ไม่เกิน 5 ไฟล์ต่อนักศึกษา** — เกินแล้ว `400 VALIDATION_FAILED` + `details: [{field:'file', issue:'RESUME_LIMIT_REACHED'}]` (ตรวจก่อนอัปโหลดและตรวจซ้ำใต้ล็อก; ไม่ทิ้งไฟล์ค้างใน Storage) (PM ตัดสิน 2026-11-18) |
 | GET | `/me/resumes` | S | พร้อม Signed URL (~10 นาที) |
 | DELETE | `/me/resumes/{id}` | S | ลบไฟล์ใน Storage แล้ว soft-delete; **ลบได้แม้ผูกกับใบสมัครที่ยังดำเนินอยู่** (สิทธิ์ลบของเจ้าของข้อมูล — README 5.11) ⇒ HR/อาจารย์ที่เปิดเรซูเม่ของใบสมัครนั้นได้ `404 NOT_FOUND` + `details[].issue = RESUME_DELETED_BY_STUDENT`; เรซูเม่ไฟล์แรกเป็นไฟล์หลักอัตโนมัติ ลบไฟล์หลักแล้วไฟล์ที่อัปโหลดล่าสุดขึ้นแทน (PM ตัดสิน 2026-11-18) |
@@ -278,7 +280,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 
 **กติกาฝั่ง HR (PM ตัดสิน 2026-11-18 — Lifecycle 1.5):**
 - **สิทธิ์:** HR เปิดใบสมัครของบริษัทอื่น ⇒ `403 NOT_OWNER_OF_RESOURCE` (UAT-29 ข้อ 2 — ต่างจากฝั่งนักศึกษาที่ได้ `404`)
-- **`GET /hr/applications/{id}`:** ไม่มี Consent หรือ Identity ล่ม ⇒ ยังได้ `200` แต่ไม่มี `profile` (ไม่คืน `502` ทั้งหน้า); หน้าเว็บแสดงข้อความกลางว่ายังไม่มีข้อมูลโปรไฟล์ เพราะแยกสาเหตุไม่ได้; ยังไม่มีผลประเมินในรายละเอียด (ฟิลด์ `evaluation?` จะเพิ่มตอนทำ `evaluate` เพื่อให้ HR เห็นผลของตนก่อนประเมินซ้ำ)
+- **`GET /hr/applications/{id}`:** ไม่มี Consent หรือ Identity ล่ม ⇒ ยังได้ `200` แต่ไม่มี `profile` (ไม่คืน `502` ทั้งหน้า); `profile.photo_url?` (Signed URL ~10 นาที) **เห็นเฉพาะเมื่อมี Consent เท่านั้น เหมือนฟิลด์อื่นของ `profile`** — รายการ `GET /hr/applications` หน้าสาธารณะ รีวิว และใบรับรอง **ต้องไม่มีรูปเด็ดขาด** (รีวิวไม่ระบุชื่อต้องย้อนหาตัวตนไม่ได้); หน้าเว็บแสดงข้อความกลางว่ายังไม่มีข้อมูลโปรไฟล์ เพราะแยกสาเหตุไม่ได้; ยังไม่มีผลประเมินในรายละเอียด (ฟิลด์ `evaluation?` จะเพิ่มตอนทำ `evaluate` เพื่อให้ HR เห็นผลของตนก่อนประเมินซ้ำ)
 - **`start`:** `actual_start_date` เป็นวันในอนาคตไม่ได้ (วันนี้ตามเวลากรุงเทพใช้ได้) และ `end_date` ต้องอยู่หลัง `start_date` และ `actual_start_date` ผิด ⇒ `400 VALIDATION_FAILED` + `details[].issue`; ระยะ `end_date − actual_start_date` < 30 วัน **ไม่ใช่ error** ผ่านพร้อม `warning: 'NO_CERTIFICATE_ELIGIBLE'` (README 5.2.2, UAT-35)
 - **`terminate`:** `actual_end_date` เป็นวันในอนาคตไม่ได้ และห้ามก่อนวันเริ่มงานจริง; ไม่ส่ง ⇒ วันนี้ตามเวลากรุงเทพ
 - **E08:** ไม่ส่ง `hr_user_ids` — Notification ดึงสมาชิกบริษัทจาก Identity เอง (event-contract §6.1)

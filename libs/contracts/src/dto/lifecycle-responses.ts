@@ -17,8 +17,15 @@ export interface StudentProfile {
   skills: string[];
   bio?: string;
   portfolio_url?: string;
+  /** Signed URL ~10 นาที (Private bucket) — ไม่มีรูป ⇒ ไม่มีฟิลด์; HR เห็นเฉพาะเมื่อมี Consent */
+  photo_url?: string;
   major: string;
   year_level: number;
+}
+
+/** PUT /me/profile/photo */
+export interface ProfilePhotoResponse {
+  photo_url: string;
 }
 
 /** GET /me/resumes */

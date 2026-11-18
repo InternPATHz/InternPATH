@@ -1,4 +1,4 @@
-import { EventConsumer } from '@internpath/common';
+import { EventConsumer, InvalidMessageError } from '@internpath/common';
 import type { EventEnvelope, UserDeletionRequestedPayload } from '@internpath/contracts';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { isUUID } from 'class-validator';
@@ -44,7 +44,7 @@ export class UserDeletionRequestedConsumer implements OnModuleInit {
       (p.company_id !== undefined && !isUUID(p.company_id)) ||
       !isEventTimestamp(p.requested_at)
     ) {
-      throw new Error('Invalid UserDeletionRequested payload');
+      throw new InvalidMessageError('Invalid UserDeletionRequested payload');
     }
 
     const { user_id: userId, anonymous_actor_id: anonymousActorId } = p;
