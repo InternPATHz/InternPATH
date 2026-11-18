@@ -15,6 +15,8 @@ import { ProblemReportsModule } from './modules/problem-reports/problem-reports.
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
+import { ReservationCheckModule } from './internal/reservation-check.controller';
+import { SlaSchedulerModule } from './jobs/sla-scheduler.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import { StateMachineModule } from './state-machine/state-machine.module';
@@ -46,6 +48,8 @@ import type { Tx } from './prisma/types';
       },
     }),
     StateMachineModule,
+    SlaSchedulerModule,
+    ReservationCheckModule,
     ProfilesModule,
     ResumesModule,
     ApplicationsModule,
