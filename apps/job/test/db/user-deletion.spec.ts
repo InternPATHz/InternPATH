@@ -277,7 +277,7 @@ describe('Job E15 transaction-local anonymization (PostgreSQL)', function () {
     expect(await db.prisma.outboxEvent.count()).to.equal(0);
   });
 
-  it('retries invalid requests before configuring authorization or writing Job data', async () => {
+  it('dead-letters malformed E15 requests and accepts a corrected delivery with the same ID', async () => {
     const event = deletionRequested();
     const fixture = await seedDeletionFixture(db.prisma, event.payload.user_id);
     const before = await fixture.read();
@@ -285,6 +285,7 @@ describe('Job E15 transaction-local anonymization (PostgreSQL)', function () {
       { ...event, payload: null },
       { ...event, producer: 'verification' as const },
       ...[
+        { user_id: undefined },
         { user_id: 'invalid' },
         { anonymous_actor_id: undefined },
         { anonymous_actor_id: 'invalid' },
@@ -296,7 +297,12 @@ describe('Job E15 transaction-local anonymization (PostgreSQL)', function () {
         { requested_at: '2026-02-30T10:00:00Z' },
       ].map((fields) => ({ ...event, payload: { ...event.payload, ...fields } })),
     ]) {
-      expect(await deliver(malformed)).to.deep.equal({ kind: 'retry', nextCount: 1 });
+      expect(await deliver(malformed)).to.deep.equal({
+        kind: 'dead-letter',
+        reason: 'invalid_message',
+        eventId: event.event_id,
+        type: event.type,
+      });
       expect(await deletionMarker(db.prisma, event.event_id)).to.equal(0);
     }
     expect(await deliver({ ...event, version: 2 })).to.include({
@@ -305,6 +311,11 @@ describe('Job E15 transaction-local anonymization (PostgreSQL)', function () {
     });
     expect(await deletionMarker(db.prisma, event.event_id)).to.equal(0);
     expect(await fixture.read()).to.deep.equal(before);
+    expect(await db.prisma.outboxEvent.count()).to.equal(0);
+
+    expect(await deliver(event)).to.deep.equal({ kind: 'ack' });
+    expect(await deletionMarker(db.prisma, event.event_id)).to.equal(1);
+    expect(await fixture.read()).to.deep.equal(anonymizedState(before, event.payload));
     expect(await db.prisma.outboxEvent.count()).to.equal(0);
   });
 });
