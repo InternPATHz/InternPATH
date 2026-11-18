@@ -215,7 +215,7 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
       await http().get('/v1/hr/applications?job_id=x').set('Authorization', asHr()).expect(400);
     });
 
-    it('มี Consent ⇒ มี profile (จากโปรไฟล์ของ Lifecycle) + cover_letter + available_actions; ไม่มีรายงานปัญหา', async () => {
+    it('มี Consent ⇒ มี profile (จากโปรไฟล์ของ Lifecycle + ชื่อสดจาก Identity) + cover_letter + available_actions; ไม่มีรายงานปัญหา', async () => {
       await prisma.studentProfile.create({
         data: { userId: student, headline: 'Backend', skills: ['TypeScript'], major: 'วิศวกรรมคอมพิวเตอร์', yearLevel: 3 },
       });
@@ -231,7 +231,7 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
         skills: ['TypeScript'],
         major: 'วิศวกรรมคอมพิวเตอร์',
         year_level: 3,
-        full_name: '',
+        full_name: 'สมชาย ใจดี',
       });
       expect(res.body.available_actions).to.have.members(['accept', 'reject']);
       expect(res.body).to.not.have.property('accept_blocked_reason');
@@ -254,7 +254,25 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
     it('มี Consent แต่ยังไม่มีโปรไฟล์ใน Lifecycle ⇒ ใช้ major/year_level จาก Identity', async () => {
       const app1 = await seed('PENDING');
       const res = await http().get(`/v1/hr/applications/${app1.id}`).set('Authorization', asHr()).expect(200);
-      expect(res.body.profile).to.deep.equal({ skills: [], major: 'วิศวกรรมคอมพิวเตอร์', year_level: 3, full_name: '' });
+      expect(res.body.profile).to.deep.equal({ skills: [], major: 'วิศวกรรมคอมพิวเตอร์', year_level: 3, full_name: 'สมชาย ใจดี' });
+    });
+
+    it('Identity อ่านนักศึกษาไม่ได้ (เช่นบัญชีถูกระงับ ⇒ 404) ⇒ มีโปรไฟล์ใน Lifecycle ส่ง full_name ว่าง • ไม่มีโปรไฟล์ ⇒ ไม่มี profile', async () => {
+      const app1 = await seed('PENDING');
+      identity.students.delete(student);
+      const none = await http().get(`/v1/hr/applications/${app1.id}`).set('Authorization', asHr()).expect(200);
+      expect(none.body).to.not.have.property('profile');
+
+      await prisma.studentProfile.create({ data: { userId: student, skills: [], major: 'วิศวกรรมคอมพิวเตอร์', yearLevel: 3 } });
+      const local = await http().get(`/v1/hr/applications/${app1.id}`).set('Authorization', asHr()).expect(200);
+      expect(local.body.profile).to.deep.equal({ skills: [], major: 'วิศวกรรมคอมพิวเตอร์', year_level: 3, full_name: '' });
+    });
+
+    it('ไม่มี Consent ⇒ ไม่เรียกดูข้อมูลนักศึกษา และไม่มีชื่อใน response', async () => {
+      const app1 = await seed('PENDING');
+      identity.consents.clear();
+      const res = await http().get(`/v1/hr/applications/${app1.id}`).set('Authorization', asHr()).expect(200);
+      expect(JSON.stringify(res.body)).to.not.include('สมชาย');
     });
 
     it('นักศึกษายืนยันที่อื่นอยู่ ⇒ ไม่มี accept และมี accept_blocked_reason = ALREADY_CONFIRMED_ELSEWHERE', async () => {

@@ -229,7 +229,8 @@ export class HrApplicationsService {
    * โปรไฟล์นักศึกษาเมื่อมี Consent ให้บริษัทนี้เท่านั้น (README §5.11) — ไม่มี Consent/Identity ล่ม ⇒ ไม่ส่ง `profile`
    * (fail-closed เฉพาะข้อมูลส่วนบุคคล ไม่ทำให้ทั้งหน้าใช้ไม่ได้)
    * ใช้โปรไฟล์ของ Lifecycle (`student_profiles`); ยังไม่เคยสร้าง ⇒ ใช้ major/year_level จาก Identity
-   * `full_name`: Internal API ของ Identity ยังไม่ส่งชื่อให้ Lifecycle ⇒ สตริงว่าง (คำถามค้างใน TODO 1.5)
+   * `full_name` ดึงสดจาก Identity (`students/{id}`) ทุกครั้ง — **ห้ามเก็บลง DB/cache/log** (api-contract §9)
+   * Identity อ่านไม่ได้ (ล่ม/บัญชีถูกระงับ) แต่มีโปรไฟล์ใน Lifecycle ⇒ ส่งโปรไฟล์โดย `full_name` ว่าง
    */
   private async consentedProfile(app: Application, correlationId?: string): Promise<HrProfile | undefined> {
     try {
@@ -240,7 +241,14 @@ export class HrApplicationsService {
       return undefined;
     }
 
-    const local = await this.db.studentProfile.findUnique({ where: { userId: app.studentUserId } });
+    const [local, student] = await Promise.all([
+      this.db.studentProfile.findUnique({ where: { userId: app.studentUserId } }),
+      this.identity.getStudent(app.studentUserId, correlationId).catch(() => {
+        this.logger.warn('อ่านข้อมูลนักศึกษาจาก Identity ไม่สำเร็จ — ไม่มีชื่อนักศึกษา');
+        return null;
+      }),
+    ]);
+    const fullName = student?.full_name ?? '';
     if (local) {
       return {
         ...(local.headline ? { headline: local.headline } : {}),
@@ -249,16 +257,11 @@ export class HrApplicationsService {
         ...(local.portfolioUrl ? { portfolio_url: local.portfolioUrl } : {}),
         major: local.major,
         year_level: local.yearLevel,
-        full_name: '',
+        full_name: fullName,
       };
     }
-    try {
-      const student = await this.identity.getStudent(app.studentUserId, correlationId);
-      return { skills: [], major: student.major, year_level: student.year_level, full_name: '' };
-    } catch {
-      this.logger.warn('อ่านข้อมูลนักศึกษาจาก Identity ไม่สำเร็จ — ไม่แสดงโปรไฟล์นักศึกษา');
-      return undefined;
-    }
+    if (!student) return undefined;
+    return { skills: [], major: student.major, year_level: student.year_level, full_name: fullName };
   }
 }
 

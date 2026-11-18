@@ -160,6 +160,7 @@ export class FakeIdentity {
 
   setStudent(userId: string, data: Partial<InternalStudentResponse> = {}): void {
     this.students.set(userId, {
+      full_name: 'สมชาย ใจดี',
       major: 'วิศวกรรมคอมพิวเตอร์',
       year_level: 3,
       university_id: randomUUID(),
