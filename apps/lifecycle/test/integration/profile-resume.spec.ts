@@ -438,6 +438,16 @@ describe('Lifecycle 1.3 — โปรไฟล์และเรซูเม่ 
       expect(adv.body.error.code).to.equal('NOT_OWNER_OF_RESOURCE');
     });
 
+    it('HR บริษัทเดียวกันแต่ไม่มี Consent + เรซูเม่ถูกลบ ⇒ 403 CONSENT_REQUIRED (ไม่ใช่ 404 RESUME_DELETED_BY_STUDENT)', async () => {
+      const { resume, application } = seed();
+      resume.deletedAt = new Date();
+      const res = await http().get(`/v1/hr/applications/${application.id}/resume`).set('Authorization', asHr(companyX)).expect(403);
+      expect(res.body.error.code).to.equal('CONSENT_REQUIRED');
+      expect(JSON.stringify(res.body)).to.not.include('RESUME_DELETED_BY_STUDENT');
+      expect(identity.consentCalls).to.deep.equal([{ student: studentA, company: companyX }]);
+      expect(storage.signed).to.have.length(0);
+    });
+
     it('อาจารย์ที่ผูกกับใบสมัคร ⇒ 200 (ไม่ต้องใช้ Consent ของบริษัท)', async () => {
       const { resume, application } = seed();
       const res = await http().get(`/v1/advisor/applications/${application.id}/resume`).set('Authorization', asAdvisor(advisorA)).expect(200);

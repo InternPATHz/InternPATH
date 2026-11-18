@@ -138,16 +138,17 @@ export class ResumesService {
   /**
    * GET /hr/applications/{id}/resume — เฉพาะ HR ของบริษัทที่นักศึกษาสมัคร **และมี Consent** (README §5.11)
    * บริษัทอื่น ⇒ 403 NOT_OWNER_OF_RESOURCE (UAT-29) • ไม่มี Consent ⇒ 403 CONSENT_REQUIRED
+   * ลำดับ: เจ้าของ → Consent → ค้นเรซูเม่ — บริษัทที่ไม่มี Consent ต้องไม่รู้ว่านักศึกษาลบไฟล์ (รีวิว PM)
    */
   async forHr(user: JwtClaims, applicationId: string, correlationId?: string): Promise<ResumeUrlResponse> {
     const application = await this.findApplication(applicationId);
     assertCompanyOwnership(user, application.companyId);
 
-    const resume = await this.activeResume(application.resumeId, application.studentUserId);
     const consent = await this.identity.checkConsent(application.studentUserId, application.companyId, correlationId);
     if (!consent.has_consent) {
       throw new AppException('CONSENT_REQUIRED', 'นักศึกษายังไม่ได้ให้ความยินยอมส่งเรซูเม่ให้บริษัทนี้', 403);
     }
+    const resume = await this.activeResume(application.resumeId, application.studentUserId);
     return this.signedUrl(resume);
   }
 
