@@ -11,12 +11,15 @@ export class FakeJobClient {
   reserved = new Set<string>();
   calls: Array<{ op: 'reserve' | 'confirm' | 'release'; jobId: string; applicationId: string; reason?: string }> = [];
   unavailable = false;
+  /** ตั้งให้ `reserveQuota` ตอบ `409 QUOTA_FULL` (1.5 — HR ตอบรับเมื่อโควตาเต็ม) */
+  quotaFull = false;
 
   reset(): void {
     this.jobs.clear();
     this.reserved.clear();
     this.calls = [];
     this.unavailable = false;
+    this.quotaFull = false;
   }
 
   addJob(data: Partial<InternalJobResponse> = {}): InternalJobResponse {
@@ -44,6 +47,7 @@ export class FakeJobClient {
 
   async reserveQuota(jobId: string, applicationId: string): Promise<{ reserved: true }> {
     this.calls.push({ op: 'reserve', jobId, applicationId });
+    if (this.quotaFull) throw new AppException('QUOTA_FULL', 'โควตาเต็ม', 409);
     this.reserved.add(applicationId);
     return { reserved: true };
   }
