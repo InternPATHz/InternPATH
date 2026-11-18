@@ -114,7 +114,9 @@ describe('Identity Internal API (Postgres จริง)', function () {
     const token = serviceToken('lifecycle');
     const student = await request(app.getHttpServer()).get(`/internal/v1/students/${studentId}`)
       .set('Authorization', `Bearer ${token}`).expect(200);
-    expect(student.body).to.include({ major: 'CS', year_level: 3, university_id: universityId, advisor_link_status: 'NONE' });
+    expect(student.body).to.include({ full_name: 'Student', major: 'CS', year_level: 3, university_id: universityId,
+      advisor_link_status: 'NONE' });
+    expect(student.body).to.not.have.property('email');
     const members = await request(app.getHttpServer()).get(`/internal/v1/companies/${companyId}/members`)
       .set('Authorization', `Bearer ${token}`).expect(200);
     expect(members.body).to.deep.equal([{ user_id: hrId, member_role: 'OWNER' }]);
@@ -125,6 +127,28 @@ describe('Identity Internal API (Postgres จริง)', function () {
     const revoked = await request(app.getHttpServer()).post('/internal/v1/consents/check').set('Authorization', `Bearer ${token}`)
       .send({ student_user_id: studentId, company_id: companyId }).expect(200);
     expect(revoked.body).to.deep.equal({ has_consent: false });
+  });
+
+  it('returns student names in batch only to Lifecycle (no email, skips deleted and non-students)', async () => {
+    const suspendedId = (await db.user.create({ data: { email: 'suspended@test.ac.th', passwordHash: 'secret',
+      fullName: 'Suspended Student', role: 'STUDENT', status: 'SUSPENDED', universityId,
+      studentProfile: { create: { studentCode: 'S002', major: 'CS', yearLevel: 2 } } } })).id;
+    const unknownId = randomUUID();
+    const lifecycle = `Bearer ${serviceToken('lifecycle')}`;
+    const names = await request(app.getHttpServer())
+      .get(`/internal/v1/students/names?ids=${suspendedId},${studentId},${deletedId},${hrId},${unknownId},${studentId}`)
+      .set('Authorization', lifecycle).expect(200);
+    expect(names.body).to.deep.equal([
+      { user_id: suspendedId, full_name: 'Suspended Student' },
+      { user_id: studentId, full_name: 'Student' },
+    ]);
+
+    await request(app.getHttpServer()).get(`/internal/v1/students/names?ids=${studentId}`)
+      .set('Authorization', `Bearer ${serviceToken('notification')}`).expect(403);
+    await request(app.getHttpServer()).get('/internal/v1/students/names').set('Authorization', lifecycle).expect(400);
+    await request(app.getHttpServer()).get('/internal/v1/students/names?ids=bad').set('Authorization', lifecycle).expect(400);
+    await request(app.getHttpServer()).get(`/internal/v1/students/names?ids=${Array(101).fill(studentId).join(',')}`)
+      .set('Authorization', lifecycle).expect(400);
   });
 
   it('returns the denylist only to Gateway and enforces route allow-lists', async () => {

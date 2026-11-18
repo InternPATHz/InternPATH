@@ -1,8 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { AppException, isUuid } from '@internpath/common';
 import type { ConsentCheckRequest, ConsentCheckResponse, InternalAdminsResponse, InternalCompanyMembersResponse,
-  InternalDenylistResponse, InternalStudentResponse, UserContact } from '@internpath/contracts';
+  InternalDenylistResponse, InternalStudentNamesResponse, InternalStudentResponse, UserContact } from '@internpath/contracts';
 import { PrismaService } from '../prisma/prisma.service';
+
+/** `?ids=` แบบ Batch: UUID คั่นด้วยจุลภาค 1–100 รายการ (ตัดซ้ำ คงลำดับ) */
+function parseBatchIds(ids: unknown): string[] {
+  if (typeof ids !== 'string') throw new AppException('VALIDATION_FAILED', 'ต้องระบุ ids', 400);
+  const parsed = ids.split(',').map((id) => id.trim());
+  if (!parsed.length || parsed.length > 100 || parsed.some((id) => !isUuid(id))) {
+    throw new AppException('VALIDATION_FAILED', 'ids ต้องเป็น UUID ไม่เกิน 100 รายการ', 400);
+  }
+  return [...new Set(parsed)];
+}
 
 @Injectable()
 export class InternalService {
@@ -15,12 +25,7 @@ export class InternalService {
   }
 
   async contacts(ids: string): Promise<UserContact[]> {
-    if (typeof ids !== 'string') throw new AppException('VALIDATION_FAILED', 'ต้องระบุ ids', 400);
-    const parsed = ids.split(',').map((id) => id.trim());
-    if (!parsed.length || parsed.length > 100 || parsed.some((id) => !isUuid(id))) {
-      throw new AppException('VALIDATION_FAILED', 'ids ต้องเป็น UUID ไม่เกิน 100 รายการ', 400);
-    }
-    const unique = [...new Set(parsed)];
+    const unique = parseBatchIds(ids);
     const users = await this.db.user.findMany({ where: { id: { in: unique }, status: { not: 'DELETED' } },
       select: { id: true, email: true, fullName: true } });
     const byId = new Map(users.map((user) => [user.id, user]));
@@ -35,10 +40,22 @@ export class InternalService {
     if (!user || user.role !== 'STUDENT' || user.status !== 'ACTIVE' || !user.studentProfile || !user.universityId) {
       throw new AppException('NOT_FOUND', 'ไม่พบนักศึกษา', 404);
     }
-    return { major: user.studentProfile.major, year_level: user.studentProfile.yearLevel,
+    return { full_name: user.fullName, major: user.studentProfile.major, year_level: user.studentProfile.yearLevel,
       university_id: user.universityId, email_verified: !!user.emailVerifiedAt,
       ...(user.studentProfile.advisorId ? { advisor_id: user.studentProfile.advisorId } : {}),
       advisor_link_status: user.studentProfile.advisorLinkStatus };
+  }
+
+  /** ชื่อนักศึกษาแบบ Batch ให้ Lifecycle (หน้ารายการของอาจารย์/HR) — ไม่มีอีเมล, ข้ามบัญชีที่ลบแล้วและ id ที่ไม่ใช่นักศึกษา */
+  async studentNames(ids: string): Promise<InternalStudentNamesResponse> {
+    const unique = parseBatchIds(ids);
+    const users = await this.db.user.findMany({ where: { id: { in: unique }, role: 'STUDENT', status: { not: 'DELETED' } },
+      select: { id: true, fullName: true } });
+    const byId = new Map(users.map((user) => [user.id, user.fullName]));
+    return unique.flatMap((id) => {
+      const fullName = byId.get(id);
+      return fullName === undefined ? [] : [{ user_id: id, full_name: fullName }];
+    });
   }
 
   async members(companyId: string): Promise<InternalCompanyMembersResponse> {
