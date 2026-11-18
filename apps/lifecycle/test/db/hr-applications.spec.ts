@@ -4,6 +4,7 @@ import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { OutboxWriter, configureApp } from '@internpath/common';
 import { expect } from 'chai';
+import sinon from 'sinon';
 import request from 'supertest';
 import type { ApplicationStatus } from '../../generated/client';
 import { S3StorageService } from '../../src/common/storage/s3-storage.service';
@@ -354,6 +355,36 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
 
   // ------------------------------------------------------------------
   describe('accept', () => {
+    it('accept → Transaction ล้มหลัง reserve ⇒ release ชดเชย สถานะไม่เปลี่ยน • accept ใหม่ด้วยใบเดิมจองได้อีก (PM ตัดสิน 19 พ.ย.: RELEASED จองใหม่ได้)', async () => {
+      const pending = await seed('PENDING');
+      const outbox = app.get(OutboxWriter);
+      // ล้มที่ Outbox E08 ซึ่งเขียนใน Transaction หลัง reserve ไปแล้ว ⇒ rollback ทั้งหมด
+      const add = sinon.stub(outbox, 'add').callThrough();
+      add.onFirstCall().rejects(new Error('outbox down'));
+      try {
+        const failed = await action(pending.id, 'accept', validPeriod());
+        expect(failed.status).to.equal(500);
+      } finally {
+        add.restore();
+      }
+      expect(await reload(pending.id)).to.include({ status: 'PENDING', quotaReserved: false });
+      expect(job.calls.map((c) => [c.op, c.applicationId, c.reason])).to.deep.equal([
+        ['reserve', pending.id, undefined],
+        ['release', pending.id, 'TRANSITION_FAILED'],
+      ]);
+      expect(job.reserved.has(pending.id)).to.equal(false);
+      expect(await prisma.statusHistory.count({ where: { entityId: pending.id } })).to.equal(0);
+
+      // กดตอบรับใหม่ด้วยใบสมัครเดิม ⇒ Job จองใหม่ด้วย application_id เดิม
+      const retried = await action(pending.id, 'accept', validPeriod()).expect(200);
+      expect(retried.body.status).to.equal('HR_ACCEPTED');
+      expect(await reload(pending.id)).to.include({ status: 'HR_ACCEPTED', quotaReserved: true });
+      expect(job.calls.map((c) => c.op)).to.deep.equal(['reserve', 'release', 'reserve']);
+      expect(job.reserved.has(pending.id)).to.equal(true);
+      expect((await prisma.statusHistory.findMany({ where: { entityId: pending.id } })).map((h) => h.toStatus)).to.deep.equal(['HR_ACCEPTED']);
+      expect((await lastEvent(pending.id)).payload).to.include({ from_status: 'PENDING', to_status: 'HR_ACCEPTED' });
+    });
+
     it('UAT-08 ข้อ 1: ช่วงฝึก < 30 วัน ⇒ 422 INVALID_PERIOD_MIN_30_DAYS และไม่จองโควตา', async () => {
       const pending = await seed('PENDING');
       const res = await action(pending.id, 'accept', {

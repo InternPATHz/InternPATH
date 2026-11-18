@@ -343,7 +343,8 @@ describe('Lifecycle 1.4 — ใบสมัครฝั่งนักศึก�
 
       // ยังไม่มี snapshot ⇒ สร้างด้วย entity_version 0 ให้ E03 ถัดไปเขียนทับได้เสมอ
       const noSnapshot = job.addJob({ company_id: companyId, job_title: 'ฝึกงาน QA' });
-      await apply(noSnapshot.job_id).expect(201);
+      // ใบสมัครแรกของประกาศได้ชื่อใน response เลย (PM ขอ 19 พ.ย. จากการทดสอบ Job <-> Lifecycle จริง)
+      expect((await apply(noSnapshot.job_id).expect(201)).body.job_title).to.equal('ฝึกงาน QA');
       const created = await prisma.jobSnapshot.findUniqueOrThrow({ where: { jobId: noSnapshot.job_id } });
       expect(created).to.include({ title: 'ฝึกงาน QA', entityVersion: 0, companyId });
 
