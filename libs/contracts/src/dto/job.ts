@@ -61,10 +61,13 @@ export interface HrJobsQuery {
 export interface HrJobExtras {
   contact_notes?: string;
   suspended_from_status?: JobStatus;
-  reasons?: Array<{ code: string; detail: string; matched_text?: string }>;
 }
 
-/** GET /hr/jobs/{id} = Job Object (หรือ `JobDraftObject` เมื่อ `DRAFT`) + มุมมอง HR/Admin + เหตุผลการตีกลับ (`reasons[]` จาก `JobVerified`) */
+/**
+ * GET /hr/jobs/{id} = Job Object (หรือ `JobDraftObject` เมื่อ `DRAFT`) + มุมมอง HR/Admin
+ * ไม่มีเหตุผลการตีกลับ: Verification เป็นเจ้าของผลตรวจ — หน้าเว็บเรียก `GET /verification/jobs/{job_id}/result`
+ * (`reasons[]`, `matched_keywords`, `admin_reason`, `can_appeal`) แทน (PM ตัดสิน 2026-11-18)
+ */
 export type HrJobDetail = HrJobObject & HrJobExtras;
 
 /** ฟิลด์ที่ HR แก้ได้ของประกาศ (api-contract §5.1) — ฟิลด์ที่ต้องครบก่อน `submit` ดู data-schema §4 */
