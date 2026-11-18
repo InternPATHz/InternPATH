@@ -246,7 +246,7 @@ describe('Job migrations (disposable PostgreSQL database)', function () {
       )
     ).rows;
 
-  it('applies both migrations to an empty database and creates the approved tables', async () => {
+  it('applies the Job migrations to an empty database and creates the approved tables', async () => {
     const tables = (
       await pg.query(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'
@@ -262,6 +262,7 @@ describe('Job migrations (disposable PostgreSQL database)', function () {
     expect(migrations.map((m) => m.migration_name)).to.deep.equal([
       '20261115214500_init_job',
       '20261118120000_add_job_report_rounds',
+      '20261118220000_add_job_search_trigram',
     ]);
     for (const migration of migrations) expect(migration.finished_at).to.be.instanceOf(Date);
   });
@@ -369,7 +370,7 @@ describe('Job migrations (disposable PostgreSQL database)', function () {
     expect(Object.fromEntries(rows.map((r) => [r.name, r.values]))).to.deep.equal(ENUMS);
   });
 
-  it('preserves indexes including pending outbox partial index, without search extensions', async () => {
+  it('preserves existing indexes and adds the approved Job title trigram index', async () => {
     const indexes = (
       await pg.query("SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'public'")
     ).rows;
@@ -378,6 +379,7 @@ describe('Job migrations (disposable PostgreSQL database)', function () {
       '(status, featured DESC, published_at DESC)',
     );
     expect(index('jobs_target_majors_idx')).to.include('USING gin (target_majors)');
+    expect(index('jobs_job_title_trgm_idx')).to.include('USING gin (job_title gin_trgm_ops)');
     expect(index('status_history_entity_entity_id_occurred_at_idx')).to.include(
       '(entity, entity_id, occurred_at)',
     );
@@ -390,10 +392,10 @@ describe('Job migrations (disposable PostgreSQL database)', function () {
     expect(index('processed_events_pkey')).to.include('UNIQUE').and.include('(event_id, consumer)');
     expect(index('quota_reservations_pkey')).to.include('UNIQUE').and.include('(application_id)');
     expect(index('report_rounds_job_id_reached_at_idx')).to.include('(job_id, reached_at)');
-    expect(indexes.some((r) => /trgm|tsvector/.test(r.indexdef))).to.equal(false);
+    expect(indexes.some((r) => /tsvector/.test(r.indexdef))).to.equal(false);
     expect(
       (await pg.query("SELECT 1 FROM pg_extension WHERE extname = 'pg_trgm'")).rowCount,
-    ).to.equal(0);
+    ).to.equal(1);
   });
 
   it('has only the approved local Job foreign keys', async () => {

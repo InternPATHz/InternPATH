@@ -119,6 +119,7 @@ model Job {
   reportRounds          ReportRound[]
 
   @@index([status, featured(sort: Desc), publishedAt(sort: Desc)])
+  @@index([jobTitle(ops: raw("gin_trgm_ops"))], type: Gin, map: "jobs_job_title_trgm_idx")
   @@index([targetMajors], type: Gin)
   @@map("jobs")
 }

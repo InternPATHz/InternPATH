@@ -1,6 +1,7 @@
 import { MessagingModule } from '@internpath/common';
 import { Module } from '@nestjs/common';
 import { ConsumersModule } from './events/consumers/consumers.module';
+import { PublicJobsModule } from './modules/public-jobs/public-jobs.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import type { Tx } from './prisma/types';
@@ -20,6 +21,7 @@ import type { Tx } from './prisma/types';
       },
     }),
     ConsumersModule,
+    PublicJobsModule,
   ],
 })
 export class JobModule {}
