@@ -137,6 +137,11 @@ export function ApplicationDetail() {
         {app.major_mismatch && <Fact label="สาขา">ไม่ตรงกับที่ประกาศระบุ</Fact>}
       </dl>
 
+      {(app.status === 'EVALUATED_PASS' || app.status === 'COMPLETED') && (
+        <p className="mt-4 text-sm">
+          ถ้าบริษัทออก E-Certificate ให้แล้ว ดูและดาวน์โหลดได้ที่ <Link href="/student/certificates" className="font-medium text-primary hover:underline">ใบรับรองของฉัน</Link>
+        </p>
+      )}
       {app.terminate_reason && (
         <p className="mt-4 text-sm text-ink-soft">
           ยุติโดย {app.terminated_by ? ACTOR_LABEL[{ COMPANY: 'COMPANY_HR', STUDENT: 'STUDENT', ADVISOR: 'ADVISOR', ADMIN: 'PLATFORM_ADMIN' }[app.terminated_by]] : '-'}: {app.terminate_reason}

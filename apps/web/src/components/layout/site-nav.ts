@@ -15,6 +15,7 @@ export const PUBLIC_NAV: NavItem[] = [
 export const ROLE_NAV: Record<Role, NavItem[]> = {
   STUDENT: [
     { label: 'ใบสมัครของฉัน', href: '/student/applications', ready: true },
+    { label: 'ใบรับรองของฉัน', href: '/student/certificates', ready: true },
     { label: 'โปรไฟล์และเรซูเม่', href: '/student/profile', ready: true },
     { label: 'อาจารย์ที่ปรึกษา', href: '/student/advisor', ready: true },
   ],
