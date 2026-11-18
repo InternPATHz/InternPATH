@@ -1,7 +1,8 @@
 const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL || '/api/v1').replace(/\/$/, '');
 
 export class ApiError extends Error {
-  constructor(public readonly code: string, message: string, public readonly status: number) {
+  /** `issues` = `details[].issue` ของ error (เช่น `JOB_CLOSED`, `RESUME_LIMIT_REACHED`) ใช้แยกเหตุการณ์ใต้ `code` เดียวกัน */
+  constructor(public readonly code: string, message: string, public readonly status: number, public readonly issues: string[] = []) {
     super(message);
     this.name = 'ApiError';
   }
@@ -16,10 +17,11 @@ export async function apiRequest<T>(path: string, body?: unknown, accessToken?: 
     response = await fetch(`${API_BASE}${path}`, {
       method: method ?? (body === undefined ? 'GET' : 'POST'),
       headers: {
-        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        // FormData (อัปโหลดไฟล์): ปล่อยให้เบราว์เซอร์ตั้ง Content-Type พร้อม boundary เอง
+        ...(body === undefined || body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
         ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
       },
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
       cache: 'no-store',
       signal: AbortSignal.timeout(12_000),
     });
@@ -28,12 +30,13 @@ export async function apiRequest<T>(path: string, body?: unknown, accessToken?: 
   }
 
   if (!response.ok) {
-    const result = await response.json().catch(() => null) as { error?: { code?: string; message?: string } } | null;
+    const result = await response.json().catch(() => null) as { error?: { code?: string; message?: string; details?: Array<{ issue?: string }> } } | null;
     const code = result?.error?.code || 'REQUEST_FAILED';
     const message = response.status >= 500
       ? 'ระบบหลังบ้านออฟไลน์ กรุณาลองใหม่ภายหลัง'
       : result?.error?.message || 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่';
-    throw new ApiError(code, message, response.status);
+    const issues = (result?.error?.details ?? []).flatMap((detail) => (typeof detail.issue === 'string' ? [detail.issue] : []));
+    throw new ApiError(code, message, response.status, issues);
   }
   const text = await response.text();
   if (!text) return undefined as T;
