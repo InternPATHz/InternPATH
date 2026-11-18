@@ -15,6 +15,16 @@ export class CompanyMembersController {
   @Post('invitations')
   invite(@CurrentUser() actor: JwtClaims, @Body() body: InviteMemberDto) { return this.service.invite(actor.sub, body.email); }
 
+  @Get('invitations')
+  invitations(@CurrentUser() actor: JwtClaims) { return this.service.invitations(actor.sub); }
+
+  @Delete('invitations/:id') @HttpCode(204)
+  cancelInvitation(@CurrentUser() actor: JwtClaims, @Param('id', ParseUUIDPipe) invitationId: string,
+    @Headers('x-correlation-id') cid: string) { return this.service.cancelInvitation(actor.sub, invitationId, cid); }
+
+  @Get('owner-transfer')
+  pendingTransfer(@CurrentUser() actor: JwtClaims) { return this.service.pendingTransfer(actor.sub); }
+
   @Delete('members/:user_id') @HttpCode(204)
   remove(@CurrentUser() actor: JwtClaims, @Param('user_id', ParseUUIDPipe) userId: string,
     @Headers('x-correlation-id') cid: string) { return this.service.remove(actor.sub, userId, cid); }

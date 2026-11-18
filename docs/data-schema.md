@@ -146,7 +146,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 
 **`company_members`**: `id`, `company_id`, `user_id` (unique), `member_role CompanyMemberRole`, `invited_by`, `joined_at` — partial unique: **1 OWNER ต่อบริษัท** (`UNIQUE(company_id) WHERE member_role='OWNER'`)
 
-**`company_invitations`**: `id`, `company_id`, `email`, `token_hash`, `expires_at`, `accepted_at null`, `invited_by`
+**`company_invitations`**: `id`, `company_id`, `email`, `token_hash`, `expires_at`, `accepted_at null`, `invited_by` — Owner ยกเลิกคำเชิญ (`DELETE /companies/me/invitations/{id}`) = ตั้ง `expires_at` เป็นเวลาที่ยกเลิก (ลิงก์ใช้ไม่ได้ทันที เก็บแถวไว้ + บันทึก audit `COMPANY_INVITATION_CANCEL`; SA ตัดสิน 2026-11-19)
 
 **`owner_transfers`**: `id`, `company_id`, `from_user_id`, `to_user_id`, `status (PENDING|ACCEPTED|CANCELLED|EXPIRED)`, `requested_at`, `responded_at`
 

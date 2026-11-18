@@ -128,6 +128,61 @@ describe('Identity company members and Owner workflow (Postgres จริง)', 
       .set(headers(ownerId, 'COMPANY_HR')).expect(400);
   });
 
+  it('lists pending invitations to the Owner only (no token) and cancels them so the link stops working', async () => {
+    const server = app.getHttpServer();
+    const invite = async (email: string) => {
+      await request(server).post('/v1/companies/me/invitations').set(headers(ownerId, 'COMPANY_HR')).send({ email }).expect(201);
+      return { token: invitedToken, row: await db.companyInvitation.findFirstOrThrow({ where: { email } }) };
+    };
+    const first = await invite('first@company.test');
+    const second = await invite('second@company.test');
+    await db.companyInvitation.create({ data: { companyId, email: 'old@company.test', tokenHash: 'expired-hash',
+      expiresAt: new Date(Date.now() - 1000), invitedBy: ownerId } });
+    const otherCompany = await db.company.create({ data: { name: 'Other', registrationNo: 'CM-OTHER',
+      emailDomain: 'other.test', status: 'VERIFIED' } });
+    const foreign = await db.companyInvitation.create({ data: { companyId: otherCompany.id, email: 'x@other.test',
+      tokenHash: 'foreign-hash', expiresAt: new Date(Date.now() + 60_000), invitedBy: ownerId } });
+    const accepted = await db.companyInvitation.findFirstOrThrow({ where: { email: 'new@company.test' } });
+
+    await request(server).get('/v1/companies/me/invitations').set(headers(memberId, 'COMPANY_HR')).expect(403);
+    const listed = await request(server).get('/v1/companies/me/invitations').set(headers(ownerId, 'COMPANY_HR')).expect(200);
+    expect(listed.body).to.deep.equal({ data: [second.row, first.row].map((row) => ({ id: row.id, email: row.email,
+      invited_at: row.createdAt.toISOString(), expires_at: row.expiresAt.toISOString() })) });
+
+    await request(server).delete(`/v1/companies/me/invitations/${first.row.id}`).set(headers(memberId, 'COMPANY_HR')).expect(403);
+    for (const id of [foreign.id, accepted.id, randomUUID()]) {
+      await request(server).delete(`/v1/companies/me/invitations/${id}`).set(headers(ownerId, 'COMPANY_HR')).expect(404);
+    }
+    await request(server).delete('/v1/companies/me/invitations/not-a-uuid').set(headers(ownerId, 'COMPANY_HR')).expect(400);
+    await request(server).delete(`/v1/companies/me/invitations/${first.row.id}`).set(headers(ownerId, 'COMPANY_HR')).expect(204);
+    await request(server).delete(`/v1/companies/me/invitations/${first.row.id}`).set(headers(ownerId, 'COMPANY_HR')).expect(404);
+    await request(server).post('/v1/auth/invitations/accept')
+      .send({ token: first.token, password: 'long-password-123', full_name: 'First' }).expect(400);
+    const after = await request(server).get('/v1/companies/me/invitations').set(headers(ownerId, 'COMPANY_HR')).expect(200);
+    expect(after.body.data.map((item: { id: string }) => item.id)).to.deep.equal([second.row.id]);
+    expect(await db.adminAuditLog.count({ where: { action: 'COMPANY_INVITATION_CANCEL', targetId: companyId } })).to.equal(1);
+    // ยกเลิกแล้วเชิญอีเมลเดิมใหม่ได้ทันที
+    await invite('first@company.test');
+  });
+
+  it('shows the pending Owner transfer to both sides only, else 404', async () => {
+    const server = app.getHttpServer();
+    const bystander = (await db.user.findUniqueOrThrow({ where: { email: 'new@company.test' } })).id;
+    await request(server).get('/v1/companies/me/owner-transfer').set(headers(ownerId, 'COMPANY_HR')).expect(404);
+    await request(server).post('/v1/companies/me/owner-transfer')
+      .set(headers(ownerId, 'COMPANY_HR')).send({ to_user_id: memberId }).expect(201);
+    const transfer = await db.ownerTransfer.findFirstOrThrow({ where: { companyId, status: 'PENDING' } });
+    const outgoing = await request(server).get('/v1/companies/me/owner-transfer').set(headers(ownerId, 'COMPANY_HR')).expect(200);
+    expect(outgoing.body).to.deep.equal({ direction: 'OUTGOING', other_user: { user_id: memberId, full_name: 'Member' },
+      requested_at: transfer.requestedAt.toISOString() });
+    const incoming = await request(server).get('/v1/companies/me/owner-transfer').set(headers(memberId, 'COMPANY_HR')).expect(200);
+    expect(incoming.body).to.deep.equal({ direction: 'INCOMING', other_user: { user_id: ownerId, full_name: 'Owner' },
+      requested_at: transfer.requestedAt.toISOString() });
+    await request(server).get('/v1/companies/me/owner-transfer').set(headers(bystander, 'COMPANY_HR')).expect(404);
+    await request(server).post('/v1/companies/me/owner-transfer/actions/cancel').set(headers(ownerId, 'COMPANY_HR')).expect(204);
+    await request(server).get('/v1/companies/me/owner-transfer').set(headers(memberId, 'COMPANY_HR')).expect(404);
+  });
+
   it('requires the receiving Member to accept an Owner transfer, with event and audit', async () => {
     await request(app.getHttpServer()).post('/v1/companies/me/owner-transfer')
       .set(headers(ownerId, 'COMPANY_HR')).send({ to_user_id: memberId }).expect(201);
