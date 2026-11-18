@@ -45,6 +45,8 @@
 | 409 | `STATE_CONFLICT`, `QUOTA_FULL`, `ALREADY_APPLIED`, `APPEAL_ALREADY_USED`, `ALREADY_REPORTED`, `ALREADY_REVIEWED`, `ALREADY_REPLIED` | ขัดกับสถานะปัจจุบัน |
 | 422 | `JOB_NOT_REPORTABLE`, `REVIEW_NOT_REPORTABLE`, `UNSUPPORTED_ITEM_TYPE`, `INVALID_PERIOD_MIN_30_DAYS`, `EVALUATION_NOT_OPEN`, `CERT_MIN_ACTUAL_DAYS`, `DISPUTE_WINDOW_CLOSED`, `DELETION_BLOCKED`, `RATE_LIMIT_SUBMISSIONS_PER_DAY`, `QUOTA_BELOW_COMMITTED` | กฎธุรกิจไม่ผ่าน |
 | 429 | `RATE_LIMITED` | Rate limit (มี `Retry-After`) |
+
+**รหัส error ใหม่:** ใช้เฉพาะ `code` ในตารางนี้ รายละเอียดเฉพาะเหตุการณ์ใส่ใน `details[].issue` (เช่น `STATE_CONFLICT` + `JOB_FROZEN`, `EVALUATION_NOT_OPEN` + `BEFORE_END_DATE`, `NOT_FOUND` + `RESUME_DELETED_BY_STUDENT`) — ถ้าจำเป็นต้องมี `code` ใหม่ ให้เพิ่มในตารางนี้ก่อน (PM ตัดสิน 2026-11-18)
 | 502/503/504 | `UPSTREAM_UNAVAILABLE` | Service ปลายทางล่ม |
 
 ## 3. การ Route ที่ Gateway
@@ -224,11 +226,11 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 7.1 โปรไฟล์และเรซูเม่ (นักศึกษา)
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET/PUT | `/me/profile` | S | โปรไฟล์ |
+| GET/PUT | `/me/profile` | S | โปรไฟล์ — `PUT` แทนที่ฟิลด์ที่แก้ได้ทั้งชุด (ไม่ส่ง = ล้างค่า): `headline` ≤ 200, `bio` ≤ 2000, `skills` ≤ 30 รายการ (รายการละ 1–50 ตัวอักษร ตัดซ้ำไม่สนตัวพิมพ์), `portfolio_url` http/https ≤ 500; ห้ามส่ง `major`/`year_level` (สำเนาจาก Identity ตอน `GET`/`PUT` — PM ตัดสิน 2026-11-18) |
 | POST | `/me/resumes` | S | multipart PDF ≤ 5 MB (ตรวจ MIME จริง) |
 | GET | `/me/resumes` | S | พร้อม Signed URL (~10 นาที) |
-| DELETE | `/me/resumes/{id}` | S | |
-| GET | `/hr/applications/{id}/resume` | H | Signed URL — เฉพาะบริษัทที่นักศึกษาสมัครและมี Consent |
+| DELETE | `/me/resumes/{id}` | S | ลบไฟล์ใน Storage แล้ว soft-delete; **ลบได้แม้ผูกกับใบสมัครที่ยังดำเนินอยู่** (สิทธิ์ลบของเจ้าของข้อมูล — README 5.11) ⇒ HR/อาจารย์ที่เปิดเรซูเม่ของใบสมัครนั้นได้ `404 NOT_FOUND` + `details[].issue = RESUME_DELETED_BY_STUDENT`; เรซูเม่ไฟล์แรกเป็นไฟล์หลักอัตโนมัติ ลบไฟล์หลักแล้วไฟล์ที่อัปโหลดล่าสุดขึ้นแทน (PM ตัดสิน 2026-11-18) |
+| GET | `/hr/applications/{id}/resume` | H | Signed URL — เฉพาะบริษัทที่นักศึกษาสมัครและมี Consent; เห็นได้ทุกสถานะของใบสมัคร (ยังไม่จำกัดตามสถานะ — ทบทวนภายหลัง) |
 | GET | `/advisor/applications/{id}/resume` | A | เฉพาะนักศึกษาในความดูแล |
 
 ### 7.2 ใบสมัคร — นักศึกษา

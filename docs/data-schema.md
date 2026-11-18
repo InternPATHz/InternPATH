@@ -469,13 +469,13 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 | `IN_PROGRESS` | `NO_EVALUATION` | ADMIN | ครบ 14 วัน (`SLA_EVALUATION_DAYS`) นับจาก `end_date` & ระบบแจ้งอาจารย์/Admin แล้ว | ไม่มี Certificate |
 | `TERMINATED` | `NO_EVALUATION` | ADMIN | ฝึกจริง ≥ 30 วันก่อนยุติ (เข้าสู่การประเมินได้) & ครบ 14 วัน (`SLA_EVALUATION_DAYS`) นับจาก `actual_end_date` & ระบบแจ้งอาจารย์/Admin แล้ว *(PM ตัดสิน 2026-11-18)* | ไม่มี Certificate |
 | `REEVALUATION_REQUESTED` | `NO_EVALUATION` | ADMIN | ครบ 14 วัน (`SLA_EVALUATION_DAYS`) นับจาก `status_changed_at` (วันที่อาจารย์สั่งประเมินใหม่) & ระบบแจ้งอาจารย์/Admin แล้ว *(PM ตัดสิน 2026-11-18 — กันใบสมัครค้างและบล็อกการลบบัญชีตลอดไป)* | ไม่มี Certificate |
-| `EVALUATED_FAIL` | `FAIL_DISPUTED` | STUDENT | ภายใน 7 วัน | — |
+| `EVALUATED_FAIL` | `FAIL_DISPUTED` | STUDENT | ภายใน 7 วัน; โต้แย้งได้ **1 ครั้งต่อผลประเมิน 1 รอบ** (PM ตัดสิน 2026-11-18) | — |
 | `FAIL_DISPUTED` | `REEVALUATION_REQUESTED` | ADVISOR | `reevaluation_used = false` | `reevaluation_used = true` |
 | `FAIL_DISPUTED` | `EVALUATED_FAIL` | ADVISOR | ยืนยันผลเดิม | — |
 | `REEVALUATION_REQUESTED` | `EVALUATED_PASS` / `EVALUATED_FAIL` | HR | — | `evaluations.round = 2` |
 | `EVALUATED_PASS` | `COMPLETED` | ADVISOR | บันทึก `academic_result` | อาจารย์เปลี่ยน PASS เป็น FAIL ได้ไม่ระบุใน README — ให้ถือว่า **บันทึกได้ทั้ง 3 ค่า** |
 | `EVALUATED_FAIL` | `COMPLETED` | ADVISOR | หน้าต่างโต้แย้ง 7 วันสิ้นสุดโดยไม่มีการโต้แย้ง หรือการโต้แย้งจบแล้ว; `academic_result ∈ {ACADEMIC_FAIL, REPEAT_REQUIRED}` เท่านั้น | — |
-| `TERMINATED` / `NO_EVALUATION` | (บันทึกผล) | ADVISOR | บันทึก `academic_result` โดยไม่เปลี่ยนสถานะ | — |
+| `TERMINATED` / `NO_EVALUATION` | (บันทึกผล) | ADVISOR | บันทึก `academic_result` โดยไม่เปลี่ยนสถานะ — ได้ทั้ง 3 ค่า และ **บันทึกได้ครั้งเดียว** (PM ตัดสิน 2026-11-18) | — |
 
 \* `TERMINATED` ปกติเป็นปลายทาง ยกเว้นกรณีฝึกจริง ≥ 30 วันก่อนยุติ ซึ่งยังเข้าสู่การประเมินได้ (README 5.2.2) และไปต่อ `NO_EVALUATION` ได้ถ้า HR ไม่ประเมิน
 
