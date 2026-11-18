@@ -26,6 +26,7 @@ const job = (data: Partial<InternalJobResponse> = {}): InternalJobResponse => ({
 });
 
 const student = (data: Partial<InternalStudentResponse> = {}): InternalStudentResponse => ({
+  full_name: 'นักศึกษา ทดสอบ',
   major: 'วิศวกรรมคอมพิวเตอร์',
   year_level: 3,
   university_id: randomUUID(),

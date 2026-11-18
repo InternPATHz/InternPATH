@@ -147,6 +147,8 @@ export interface UserContact {
 
 /** GET /internal/v1/students/{user_id} */
 export interface InternalStudentResponse {
+  /** ชื่อแสดงผล (HR/อาจารย์ใน Lifecycle) — ผู้รับห้ามเก็บลง DB/cache/Event/log */
+  full_name: string;
   major: string;
   year_level: number;
   university_id: string;
@@ -154,6 +156,12 @@ export interface InternalStudentResponse {
   advisor_id?: string;
   advisor_link_status: AdvisorLinkStatus;
 }
+
+/**
+ * GET /internal/v1/students/names?ids= (≤ 100, ผู้เรียก lifecycle) — ชื่อนักศึกษาสำหรับหน้ารายการ
+ * ไม่มีอีเมล; id ที่ไม่ใช่นักศึกษาหรือบัญชีถูกลบจะไม่อยู่ในผลลัพธ์
+ */
+export type InternalStudentNamesResponse = Array<{ user_id: string; full_name: string }>;
 
 /** GET /internal/v1/companies/{company_id}/members */
 export type InternalCompanyMembersResponse = Array<{ user_id: string; member_role: CompanyMemberRole }>;
