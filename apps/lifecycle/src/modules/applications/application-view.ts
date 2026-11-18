@@ -111,13 +111,15 @@ export function toAdvisorItem(app: Application, names: SnapshotNames, studentNam
   };
 }
 
-/** รายการ GET /hr/applications — ไม่มีโปรไฟล์/ข้อความ (ดูได้ในรายละเอียดหลังตรวจ Consent) */
 /** รายการ GET /me/applications และ POST /applications — มี `academic_result` เมื่ออาจารย์บันทึกแล้ว (ป้าย COMPLETED ผ่าน/ไม่ผ่าน) */
 export function toStudentItem(app: Application, names: SnapshotNames): StudentApplicationItem {
   return { ...toApplicationBase(app, names), ...optional('academic_result', app.academicResult ?? undefined) };
 }
 
-/** `studentName` ดึงสดจาก Identity (`StudentNamesService`) — ว่าง (ล่ม/ไม่พบ) ⇒ ไม่มีฟิลด์ `student_name` */
+/**
+ * รายการ GET /hr/applications — ไม่มีโปรไฟล์/ข้อความ (ดูได้ในรายละเอียดหลังตรวจ Consent)
+ * `studentName` ดึงสดจาก Identity (`StudentNamesService`) — ว่าง (ล่ม/ไม่พบ) ⇒ ไม่มีฟิลด์ `student_name`
+ */
 export function toHrItem(app: Application, names: SnapshotNames, studentName?: string): HrApplicationItem {
   return {
     ...toApplicationBase(app, names),

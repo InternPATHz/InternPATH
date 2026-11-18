@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AppException, OutboxWriter, asUuid, type JwtClaims } from '@internpath/common';
-import type { MyReviewItem, Paginated, PublicReviewItem } from '@internpath/contracts';
+import type { MyReviewItem, Paginated, PublicReviewItem, ReplyReviewResponse } from '@internpath/contracts';
 import { Injectable } from '@nestjs/common';
 import type { Review, ReviewReply } from '../../../generated/client';
 import { assertCompanyOwnership } from '../../common/auth/ownership';
@@ -12,13 +12,6 @@ import { applicationNotFound, evaluationNotOpen } from '../../state-machine/erro
 import { StatusHistoryWriter } from '../../state-machine/status-history.writer';
 import { REVIEWABLE_STATUSES, outcomeLabel } from './review-rules';
 import type { CreateReviewDto } from './reviews.dto';
-
-/** คำตอบของ `POST /hr/reviews/{id}/reply` — contract ไม่ได้กำหนด (ตัดสินเอง: รูปเดียวกับ `reply` ใน `PublicReviewItem` + `review_id`) */
-export interface ReviewReplyResponse {
-  review_id: string;
-  body: string;
-  created_at: string;
-}
 
 const reviewNotFound = (): AppException => new AppException('NOT_FOUND', 'ไม่พบรีวิว', 404);
 
@@ -124,7 +117,7 @@ export class ReviewsService {
    * `POST /hr/reviews/{id}/reply` — ตอบได้ 1 ครั้ง/รีวิว (`409 ALREADY_REPLIED`) เฉพาะรีวิวของบริษัทตน (`403`)
    * ตอบได้เฉพาะรีวิวที่ `PUBLISHED` — สถานะอื่น HR มองไม่เห็นอยู่แล้ว ⇒ 404 (ไม่บอกว่ามีรีวิวรอตรวจ)
    */
-  async reply(user: JwtClaims, reviewId: string, body: string, now = new Date()): Promise<ReviewReplyResponse> {
+  async reply(user: JwtClaims, reviewId: string, body: string, now = new Date()): Promise<ReplyReviewResponse> {
     const review = await this.db.review.findUnique({ where: { id: reviewId } });
     if (!review) throw reviewNotFound();
     assertCompanyOwnership(user, review.companyId);

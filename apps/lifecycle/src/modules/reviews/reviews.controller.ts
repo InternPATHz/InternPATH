@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Header, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Roles, RolesGuard } from '@internpath/common';
-import type { MyReviewItem, Paginated, PublicReviewItem } from '@internpath/contracts';
+import type { MyReviewItem, Paginated, PublicReviewItem, ReplyReviewResponse } from '@internpath/contracts';
 import { PageQueryDto } from '../resumes/resumes.dto';
 import { CreateReviewDto, ReplyReviewDto } from './reviews.dto';
-import { type ReviewReplyResponse, ReviewsService } from './reviews.service';
+import { ReviewsService } from './reviews.service';
 
 /** api-contract §7.6 — นักศึกษาเขียนรีวิวของการฝึก (path ใต้ `/applications` แต่แยก controller ตามหัวข้อ 1.8) */
 @Controller('applications')
@@ -50,7 +50,7 @@ export class HrReviewsController {
     @CurrentUser() user: JwtClaims,
     @Param('id', ParseUUIDPipe) id: string,
     @Body() body: ReplyReviewDto,
-  ): Promise<ReviewReplyResponse> {
+  ): Promise<ReplyReviewResponse> {
     return this.service.reply(user, id, body.body);
   }
 }

@@ -88,7 +88,6 @@ export class ReviewModerationService {
     return 'applied';
   }
 
-  /** ปรับตัวนับของบริษัทแบบ atomic แล้วส่ง E11 ด้วยค่ารวมหลังปรับ (absolute ไม่ใช่ delta — event-contract E11) */
   /**
    * หักสถิติเมื่อถอดรีวิวที่เผยแพร่แล้ว — `updateMany` + guard ไม่ให้ติดลบ (PM รีวิว #57: `update` ของแถวที่ไม่มีจะ error แล้ว retry/DLQ)
    * ไม่มีแถว/ค่าไม่พอหัก (ข้อมูลไม่สอดคล้อง) ⇒ log แล้วสร้าง/คงแถวค่าเดิมแต่เพิ่ม `entity_version` เพื่อส่ง E11 ค่าปัจจุบัน ไม่ throw
@@ -107,6 +106,7 @@ export class ReviewModerationService {
     });
   }
 
+  /** ปรับตัวนับของบริษัทแบบ atomic แล้วส่ง E11 ด้วยค่ารวมหลังปรับ (absolute ไม่ใช่ delta — event-contract E11) */
   private async publishStats(tx: Tx, review: Review, direction: 1 | -1, correlationId: string, at: Date): Promise<void> {
     const stats =
       direction === 1

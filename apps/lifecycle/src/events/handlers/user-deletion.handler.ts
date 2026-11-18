@@ -60,14 +60,13 @@ export interface UserDeletionOutcome {
  *
  * ทำทั้งหมดใน `tx` ของ Event (idempotent ผ่าน `processed_events` และรับซ้ำก็ไม่มีอะไรให้ทำแล้ว):
  * 1. ใบ `PENDING`/`HR_ACCEPTED` ⇒ `CANCELLED` (`cancel-by-deletion`, SYSTEM) + คืนโควตา
- * 2. ลบไฟล์เรซูเม่ใน Storage แล้วลบแถว `resumes`, `student_profiles`, `student_advisor_links` ของผู้ใช้ และล้าง `cover_letter`
+ * 2. ลบไฟล์เรซูเม่และรูปโปรไฟล์ (`student_profiles.photo_key`) ใน Storage แล้วลบแถว `resumes`, `student_profiles`, `student_advisor_links` ของผู้ใช้ และล้าง `cover_letter`
  * 3. รีวิว `SUBMITTED`/`HELD` ⇒ `REMOVED` + ล้าง `title`/`body`; รีวิว `PUBLISHED` เก็บไว้แบบ `anonymous` (ไม่แตะสถิติ)
  * 4. ใบรับรองเก็บไว้ ชื่อ ⇒ "ผู้ใช้ที่ลบบัญชีแล้ว"
  * 5. คอลัมน์ user id (`ANONYMIZED_COLUMNS`) ⇒ `anonymous_actor_id`
  * 6. `status_history.actor_id` / `admin_audit_log.admin_id` ⇒ Authorized Anonymization (`set_config` เฉพาะ transaction นี้)
  * payload ผิดรูป ⇒ `InvalidMessageError` (dead-letter) • Storage ล้ม ⇒ throw (retry ทั้ง Event — ลบไฟล์ซ้ำได้)
  * ใบที่ยังบล็อกการลบ (`DELETION_BLOCKING_STATUSES`) ไม่ควรมี (Identity ตรวจ `deletion-eligibility` ก่อน) — ถ้ามีจะ log และทำให้ไม่ระบุตัวตนตามปกติ
- * **ยังไม่มี `photo_key`** (รูปโปรไฟล์ — PM เพิ่มในเอกสาร 18 พ.ย.) ⇒ เมื่อเพิ่มคอลัมน์ ต้องลบไฟล์รูปในข้อ 2 ด้วย
  */
 @Injectable()
 export class UserDeletionHandler {
@@ -129,6 +128,9 @@ export class UserDeletionHandler {
       if (!resume.deletedAt) await this.storage.delete(resume.objectKey);
     }
     const resumesDeleted = (await tx.resume.deleteMany({ where: { studentUserId: userId } })).count;
+    // รูปโปรไฟล์ (B4 — PM 18 พ.ย.) ลบไฟล์ก่อนลบแถว `student_profiles` เหมือนเรซูเม่
+    const profile = await tx.studentProfile.findUnique({ where: { userId }, select: { photoKey: true } });
+    if (profile?.photoKey) await this.storage.delete(profile.photoKey);
     await tx.studentProfile.deleteMany({ where: { userId } });
     await tx.studentAdvisorLink.deleteMany({ where: { studentUserId: userId } });
     await tx.$executeRaw`

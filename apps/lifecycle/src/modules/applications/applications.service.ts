@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { AppException, OutboxWriter, asUuid } from '@internpath/common';
+import { AppException, OutboxWriter, asUuid, isUuid } from '@internpath/common';
 import type {
   ApplicationEligibilityResponse,
   ApplicationStatus,
+  ConsentCheckResponse,
   InternalJobResponse,
   Paginated,
   StudentApplicationDetail,
@@ -17,6 +18,7 @@ import {
 import { IdentityInternalClient } from '../../internal/identity-client.service';
 import { JobInternalClient } from '../../internal/job-client.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { Tx } from '../../prisma/types';
 import { ApplicationStateMachine } from '../../state-machine/application-state-machine.service';
 import { alreadyApplied, applicationNotFound, mapApplicationUniqueViolation } from '../../state-machine/errors';
 import { ReapplyPolicy } from '../../state-machine/reapply-policy';
@@ -106,6 +108,7 @@ export class ApplicationsService {
     const cid = asUuid(correlationId);
     const created = await this.db.$transaction(async (tx) => {
       await this.reapply.assertAndConsume(tx, studentUserId, now);
+      await fillJobSnapshotTitle(tx, job);
       let app: Application;
       try {
         app = await tx.application.create({
@@ -115,8 +118,8 @@ export class ApplicationsService {
             studentUserId,
             advisorUserId: student.advisor_id ?? null,
             resumeId: resume.id,
-            // `consents/check` คืนแค่ `{has_consent}` ไม่มี id ⇒ ยังผูก `resume_consent_id` ไม่ได้ (คำถามค้างใน TODO 1.4)
-            resumeConsentId: null,
+            // `consent_id?` ของ `consents/check` (PM ตัดสิน 2026-11-18) — ไม่มี/ไม่ใช่ uuid ⇒ `null` เหมือนเดิม
+            resumeConsentId: consentIdOf(consent),
             coverLetter: body.cover_letter ? body.cover_letter : null,
             majorMismatch: computeMajorMismatch(student.major, job.target_majors),
             status: 'PENDING',
@@ -259,4 +262,28 @@ export class ApplicationsService {
       throw error;
     }
   }
+}
+
+/** `consent_id` ที่ Identity คืนเมื่อมี Consent — ค่าผิดรูปไม่ทำให้สมัครล้ม (คอลัมน์เป็น uuid) แค่ไม่ผูก */
+function consentIdOf(consent: ConsentCheckResponse): string | null {
+  return typeof consent.consent_id === 'string' && isUuid(consent.consent_id) ? consent.consent_id : null;
+}
+
+/**
+ * เติม `job_snapshots.title` จาก `job_title` ของ Job (api-contract §10 — E03 ไม่มีชื่อประกาศ, PM ตัดสิน 2026-11-18)
+ * - เติมเฉพาะเมื่อชื่อยังว่าง (snapshot ที่ E03 สร้าง) — ไม่เขียนทับชื่อเดิม
+ * - ยังไม่มี snapshot ⇒ สร้างแถว `entity_version = 0` (placeholder แบบเดียวกับ Consumer E03) ให้ E03 ถัดไปเขียนทับสถานะได้เสมอ
+ * - Job ยังไม่ส่ง `job_title` (ว่าง/ไม่มี) ⇒ ไม่ทำอะไร
+ * - อ่านแบบไม่ล็อกก่อน: มีชื่อแล้ว (กรณีส่วนใหญ่) ⇒ ไม่เขียน — `ON CONFLICT DO UPDATE` ล็อกแถวแม้ `WHERE` ไม่ผ่าน
+ *   จะทำให้การสมัครประกาศเดียวกันและ Consumer E03 ต้องรอกันทุกครั้ง
+ */
+async function fillJobSnapshotTitle(tx: Tx, job: InternalJobResponse): Promise<void> {
+  const title = typeof job.job_title === 'string' ? job.job_title.trim() : '';
+  if (!title) return;
+  const current = await tx.jobSnapshot.findUnique({ where: { jobId: job.job_id }, select: { title: true } });
+  if (current && current.title !== '') return;
+  await tx.$executeRaw`
+    INSERT INTO job_snapshots (job_id, company_id, status, title, entity_version, updated_at)
+    VALUES (${job.job_id}::uuid, ${job.company_id}::uuid, ${job.status}::job_status, ${title}, 0, now())
+    ON CONFLICT (job_id) DO UPDATE SET title = EXCLUDED.title, updated_at = now() WHERE job_snapshots.title = ''`;
 }

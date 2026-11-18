@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { JwtClaims } from '@internpath/common';
-import type { AdvisorApplicationItem, AdvisorStudentOverview, Paginated } from '@internpath/contracts';
+import type {
+  AdvisorApplicationItem,
+  AdvisorDisputeItem,
+  AdvisorStudentOverview,
+  EvaluationView,
+  Paginated,
+} from '@internpath/contracts';
 import { Injectable } from '@nestjs/common';
 import type { Application, Prisma } from '../../../generated/client';
 import { assertAdvisorOwnership } from '../../common/auth/ownership';
@@ -20,15 +26,6 @@ import type { AcademicResultDto, AdvisorApplicationsQueryDto } from './advisor.d
 /** action ของอาจารย์ที่รับแค่เหตุผล (บังคับ — Guard) */
 export type AdvisorReasonAction = 'reject';
 export type AdvisorDisputeAction = 'request-reevaluation' | 'uphold-fail';
-
-/**
- * คิวโต้แย้ง `GET /advisor/disputes` — **contract ยังไม่มีชนิดนี้** (มีแค่ "คิว `FAIL_DISPUTED`")
- * อาจารย์ต้องเห็นคำโต้แย้งและผลประเมินที่ถูกโต้แย้งจึงตัดสินได้ ⇒ ขยายจาก `AdvisorApplicationItem` (ให้ PM เพิ่มใน contracts)
- */
-export interface AdvisorDisputeItem extends AdvisorApplicationItem {
-  dispute: { id: string; statement: string; created_at: string };
-  evaluation?: { round: number; result: 'PASS' | 'FAIL'; reason?: string; evaluated_at: string };
-}
 
 const NO_PENDING_COMPANY_DECISION = 'NO_PENDING_COMPANY_DECISION';
 
@@ -93,7 +90,7 @@ export class AdvisorService {
           ...(evaluation
             ? {
                 evaluation: {
-                  round: evaluation.round,
+                  round: evaluation.round as EvaluationView['round'],
                   result: evaluation.result,
                   ...(evaluation.reason ? { reason: evaluation.reason } : {}),
                   evaluated_at: evaluation.evaluatedAt.toISOString(),
