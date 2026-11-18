@@ -5,6 +5,7 @@ import type { FormEvent } from 'react';
 import type { StudentProfile } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
+import { Avatar } from '@/components/ui/avatar';
 import { ApiError } from '@/lib/api';
 
 // ขีดจำกัดตาม api-contract §7.1 — ตรวจฝั่งหน้าจอเพื่อบอกผู้ใช้เร็ว ค่าจริงตรวจที่ Lifecycle
@@ -40,9 +41,19 @@ function validate(headline: string, bio: string, skills: string[], url: string):
 
 const inputClass = 'mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft';
 
+/** โปรไฟล์ที่ยังไม่เคยกรอกอะไร (มีแต่สาขา/ชั้นปีจากบัญชี) — เปิดโหมดแก้ไขให้เลย */
+const isBlank = (profile: StudentProfile) =>
+  !profile.headline && !profile.bio && !profile.portfolio_url && profile.skills.length === 0;
+
+/**
+ * หน้าโปรไฟล์นักศึกษา: โหมดดู (ค่าเริ่มต้น — หน้าตาเหมือนที่ HR เห็นเมื่อได้รับ Consent) สลับเป็นโหมดแก้ไขในที่เดิม
+ * ไม่ใช้ Modal: ฟอร์มยาว (แนะนำตัวได้ 2000 ตัวอักษร) และบนมือถือคีย์บอร์ดจะบังฟิลด์
+ */
 export function ProfileForm() {
-  const { request } = useAuth();
+  const { request, user } = useAuth();
   const [loaded, setLoaded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [saved, setSaved] = useState<StudentProfile | null>(null);
   const [major, setMajor] = useState<{ major: string; year_level: number } | null>(null);
   const [headline, setHeadline] = useState('');
   const [bio, setBio] = useState('');
@@ -52,6 +63,7 @@ export function ProfileForm() {
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
 
   function fill(profile: StudentProfile) {
+    setSaved(profile);
     setMajor({ major: profile.major, year_level: profile.year_level });
     setHeadline(profile.headline ?? '');
     setBio(profile.bio ?? '');
@@ -62,7 +74,7 @@ export function ProfileForm() {
   useEffect(() => {
     let cancelled = false;
     request<StudentProfile>('/me/profile').then(
-      (profile) => { if (!cancelled) { fill(profile); setLoaded(true); } },
+      (profile) => { if (!cancelled) { fill(profile); setEditing(isBlank(profile)); setLoaded(true); } },
       (cause) => {
         if (cancelled) return;
         setMessage({ tone: 'error', text: cause instanceof ApiError ? cause.message : 'โหลดโปรไฟล์ไม่สำเร็จ กรุณาลองใหม่' });
@@ -86,6 +98,7 @@ export function ProfileForm() {
         body: { headline: headline.trim(), bio: bio.trim(), skills, portfolio_url: portfolio.trim() },
       });
       fill(saved);
+      setEditing(false);
       setMessage({ tone: 'success', text: 'บันทึกโปรไฟล์แล้ว' });
     } catch (cause) {
       setMessage({ tone: 'error', text: cause instanceof ApiError ? cause.message : 'บันทึกไม่สำเร็จ กรุณาลองใหม่' });
@@ -93,6 +106,41 @@ export function ProfileForm() {
   }
 
   if (!loaded) return <p className="text-sm text-ink-soft">กำลังโหลด…</p>;
+
+  function cancelEdit() {
+    if (saved) fill(saved); // ทิ้งค่าที่แก้ค้าง กลับเป็นค่าที่บันทึกไว้
+    setMessage(null);
+    setEditing(false);
+  }
+
+  if (!editing && saved) {
+    return (
+      <section aria-label="โปรไฟล์ของฉัน" className="space-y-5">
+        <div className="flex flex-wrap items-center gap-4">
+          <Avatar name={user?.full_name} src={saved.photo_url} size="lg" />
+          <div className="min-w-0">
+            <h2 className="text-2xl font-bold">{user?.full_name || 'นักศึกษา'}</h2>
+            <p className="text-sm text-ink-soft">{saved.major} · ชั้นปี {saved.year_level}</p>
+          </div>
+          <button type="button" onClick={() => { setMessage(null); setEditing(true); }}
+            className="ml-auto rounded-lg border border-border px-5 py-2 text-sm font-semibold hover:bg-surface-muted">
+            แก้ไขโปรไฟล์
+          </button>
+        </div>
+        {message && <Notice tone={message.tone}>{message.text}</Notice>}
+        {saved.headline && <p className="text-base font-medium">{saved.headline}</p>}
+        {saved.bio && <p className="whitespace-pre-line text-sm text-ink-soft">{saved.bio}</p>}
+        {saved.skills.length > 0 && (
+          <ul aria-label="ทักษะ" className="flex flex-wrap gap-2">
+            {saved.skills.map((skill) => <li key={skill} className="rounded-full bg-surface-muted px-2.5 py-0.5 text-xs font-medium text-ink-soft">{skill}</li>)}
+          </ul>
+        )}
+        {saved.portfolio_url && (
+          <p className="text-sm"><a href={saved.portfolio_url} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">ดูผลงาน</a></p>
+        )}
+      </section>
+    );
+  }
 
   return (
     <form onSubmit={submit} className="space-y-5" noValidate>
@@ -123,9 +171,14 @@ export function ProfileForm() {
         <input type="url" value={portfolio} onChange={(event) => setPortfolio(event.target.value)} className={inputClass} placeholder="https://" />
       </label>
       {message && <Notice tone={message.tone}>{message.text}</Notice>}
-      <button type="submit" disabled={busy} className="rounded-lg bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
-        {busy ? 'กำลังบันทึก…' : 'บันทึกโปรไฟล์'}
-      </button>
+      <div className="flex flex-wrap gap-3">
+        <button type="submit" disabled={busy} className="rounded-lg bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
+          {busy ? 'กำลังบันทึก…' : 'บันทึกโปรไฟล์'}
+        </button>
+        {saved && !isBlank(saved) && (
+          <button type="button" onClick={cancelEdit} disabled={busy} className="rounded-lg border border-border px-6 py-2.5 font-semibold hover:bg-surface-muted disabled:opacity-60">ยกเลิก</button>
+        )}
+      </div>
     </form>
   );
 }
