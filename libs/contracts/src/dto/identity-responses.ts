@@ -174,6 +174,8 @@ export interface ConsentCheckRequest {
 
 export interface ConsentCheckResponse {
   has_consent: boolean;
+  /** Consent ที่ใช้อยู่ — ส่งเมื่อ `has_consent = true` (ผูก `applications.resume_consent_id`) */
+  consent_id?: string;
 }
 
 /** GET /internal/v1/admins */

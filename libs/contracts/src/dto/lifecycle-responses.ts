@@ -252,6 +252,8 @@ export interface InternalJobResponse {
   status: JobStatus;
   quota: number;
   quota_available: number;
+  /** ชื่อประกาศ — ใช้เติม `job_snapshots.title` (E03 ไม่มีชื่อ) */
+  job_title: string;
   target_majors: string[];
   application_deadline: string;
   entity_version: number;

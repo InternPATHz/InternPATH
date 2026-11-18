@@ -483,7 +483,7 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 
 `NO_EVALUATION` ต้องมี Admin ยืนยันเสมอ (`POST /admin/lifecycle/applications/{id}/actions/confirm-no-evaluation`) และนับ "ครบ 14 วัน" แบบ `≥` (วันที่ 14 ยืนยันได้) ใช้ค่า `SLA_EVALUATION_DAYS` เดียวกันทั้งสามเส้นทาง
 
-**บริษัทถูกระงับขณะ `IN_PROGRESS`:** Lifecycle รับ `CompanyStatusChanged(SUSPENDED)` → ตั้ง `company_suspended_decision = PENDING` + แจ้งอาจารย์/นักศึกษา (ไม่เปลี่ยนสถานะ) → อาจารย์เลือก `continue` (`CONTINUE`) หรือ `terminate` (`TERMINATED`, `terminated_by = ADVISOR`)
+**บริษัทถูกระงับขณะ `IN_PROGRESS`:** Lifecycle รับ `CompanyStatusChanged(SUSPENDED)` → ตั้ง `company_suspended_decision = PENDING` + แจ้งอาจารย์/นักศึกษาด้วย E14 `ReminderDue` ชนิด `COMPANY_SUSPENDED_DECISION` (ไม่เปลี่ยนสถานะ จึงไม่ใช้ E08) → อาจารย์เลือก `continue` (`CONTINUE`) หรือ `terminate` (`TERMINATED`, `terminated_by = ADVISOR`)
 
 **Release quota** = เรียก `POST /internal/jobs/{id}/quota/release` ด้วย `application_id` (idempotent)
 

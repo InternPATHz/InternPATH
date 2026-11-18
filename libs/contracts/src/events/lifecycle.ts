@@ -91,7 +91,9 @@ export type ReminderType =
   | 'HR_ISSUE_CERT_D3'
   | 'ISSUE_CERT_ESCALATE_D14'
   | 'ADVISOR_DISPUTE_D3'
-  | 'DISPUTE_ESCALATE_D7';
+  | 'DISPUTE_ESCALATE_D7'
+  /** แจ้งอาจารย์/นักศึกษาว่าบริษัทถูกระงับขณะฝึก ต้องตัดสิน continue/terminate (ไม่ใช่การเตือนตามเวลา) */
+  | 'COMPANY_SUSPENDED_DECISION';
 
 /** E14 `ReminderDue` (lifecycle → notification) */
 export interface ReminderDuePayload {
