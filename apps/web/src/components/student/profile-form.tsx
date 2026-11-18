@@ -100,7 +100,13 @@ export function ProfileForm() {
       // PUT แทนที่ทั้งชุด: ช่องที่ว่าง = ล้างค่า; ห้ามส่ง major/year_level (สำเนาจาก Identity)
       const saved = await request<StudentProfile>('/me/profile', {
         method: 'PUT',
-        body: { headline: headline.trim(), bio: bio.trim(), skills, portfolio_url: portfolio.trim() },
+        // ช่องว่างไม่ส่ง (ไม่ส่ง = ล้างค่า) — ส่งสตริงว่างจะถูกปฏิเสธเป็น 400 (เช่น portfolio_url ว่างไม่ใช่ URL)
+        body: {
+          ...(headline.trim() ? { headline: headline.trim() } : {}),
+          ...(bio.trim() ? { bio: bio.trim() } : {}),
+          skills,
+          ...(portfolio.trim() ? { portfolio_url: portfolio.trim() } : {}),
+        },
       });
       fill(saved);
       setEditing(false);
