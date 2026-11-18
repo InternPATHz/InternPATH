@@ -3,8 +3,9 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import type { WorkMode } from '@internpath/contracts';
+import type { SearchJobItem, WorkMode } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
+import { ApplyPanel } from '@/components/jobs/apply-panel';
 import { formatDeadline } from '@/components/jobs/job-result-card';
 import { getJob } from '@/lib/job-search';
 import type { JobDetailResult } from '@/lib/job-search';
@@ -35,13 +36,13 @@ function TextSection({ title, text }: { title: string; text: string }) {
   );
 }
 
-/** ปุ่ม/ข้อความสมัครตามสถานะผู้ใช้ — ระบบสมัครงานเป็นของ Lifecycle ยังไม่เปิด จึงยังไม่มีการส่งใบสมัครจริง */
-function ApplyBox({ closed, jobId }: { closed: boolean; jobId: string }) {
+/** ปุ่ม/ข้อความสมัครตามสถานะผู้ใช้ — การสมัครจริงอยู่ใน ApplyPanel (POST /applications ของ Lifecycle) */
+function ApplyBox({ closed, job }: { closed: boolean; job: SearchJobItem }) {
   const { ready, user } = useAuth();
   if (closed) return <p className="text-sm text-ink-soft">ประกาศนี้ปิดรับสมัครแล้ว</p>;
   if (!ready) return <p className="text-sm text-ink-soft">กำลังตรวจสอบสถานะผู้ใช้…</p>;
   if (!user) {
-    const next = encodeURIComponent(`/jobs/item?id=${jobId}`);
+    const next = encodeURIComponent(`/jobs/item?id=${job.id}`);
     return (
       <div className="flex flex-col gap-2">
         <Link href={`/login?next=${next}`} className="inline-block rounded-lg bg-primary px-6 py-2.5 text-center font-semibold text-white hover:bg-primary-hover">
@@ -52,13 +53,7 @@ function ApplyBox({ closed, jobId }: { closed: boolean; jobId: string }) {
     );
   }
   if (user.role !== 'STUDENT') return <p className="text-sm text-ink-soft">เฉพาะบัญชีนักศึกษาที่สมัครงานได้</p>;
-  return (
-    <div className="flex flex-col gap-2">
-      {/* TODO: เชื่อม POST /applications (Lifecycle) เมื่อระบบสมัครงานพร้อม */}
-      <button type="button" disabled className="rounded-lg bg-primary px-6 py-2.5 font-semibold text-white opacity-50">สมัครงานนี้</button>
-      <p className="text-xs text-ink-soft">ระบบสมัครงานยังไม่เปิดใช้งาน</p>
-    </div>
-  );
+  return <ApplyPanel job={job} />;
 }
 
 export function JobDetail() {
@@ -141,7 +136,7 @@ export function JobDetail() {
 
         <aside className="h-fit rounded-xl border border-border bg-surface p-5 shadow-sm md:sticky md:top-6">
           <p className="text-sm text-ink-soft">เปิดรับอีก {job.quota_available} จาก {job.quota} ตำแหน่ง</p>
-          <div className="mt-4"><ApplyBox closed={closed} jobId={job.id} /></div>
+          <div className="mt-4"><ApplyBox closed={closed} job={job} /></div>
         </aside>
       </div>
     </main>

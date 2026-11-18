@@ -13,10 +13,13 @@ export const PUBLIC_NAV: NavItem[] = [
 ];
 
 export const ROLE_NAV: Record<Role, NavItem[]> = {
-  STUDENT: [{ label: 'ใบสมัครของฉัน', href: '/student/applications', ready: false }],
+  STUDENT: [
+    { label: 'ใบสมัครของฉัน', href: '/student/applications', ready: true },
+    { label: 'โปรไฟล์และเรซูเม่', href: '/student/profile', ready: true },
+  ],
   COMPANY_HR: [
     { label: 'ประกาศของฉัน', href: '/hr/jobs', ready: false },
-    { label: 'ผู้สมัคร', href: '/hr/applicants', ready: false },
+    { label: 'ผู้สมัคร', href: '/hr/applicants', ready: true },
   ],
   ADVISOR: [{ label: 'คำขออนุมัติ', href: '/advisor/requests', ready: false }],
   PLATFORM_ADMIN: [{ label: 'หลังบ้าน', href: '/admin/queue', ready: true }],
