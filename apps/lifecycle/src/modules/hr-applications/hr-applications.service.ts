@@ -44,10 +44,11 @@ export class HrApplicationsService {
 
   constructor(
     private readonly db: PrismaService,
+    // วางถัดจาก db (ไม่ต่อท้าย) — ให้ merge กับ branch อื่นที่เพิ่ม dependency ท้ายรายการได้โดยไม่ชน
+    private readonly storage: S3StorageService,
     private readonly identity: IdentityInternalClient,
     private readonly stateMachine: ApplicationStateMachine,
     private readonly config: LifecycleConfigService,
-    private readonly storage: S3StorageService,
   ) {}
 
   // ---------- GET ----------
