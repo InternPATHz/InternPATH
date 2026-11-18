@@ -60,6 +60,7 @@ function AccountContent() {
           {busy ? 'กำลังออกจากระบบ…' : 'ออกจากระบบ'}
         </button>
         <Link href="/" className="text-sm text-primary hover:underline">กลับหน้าแรก</Link>
+        <Link href="/account/delete" className="text-sm text-danger-text hover:underline">ลบบัญชี</Link>
       </div>
     </div>}
   </AuthShell>;

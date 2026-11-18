@@ -339,10 +339,10 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/notifications` | Any | `?unread=true` (ของตนเอง) |
-| GET | `/notifications/unread-count` | Any | สำหรับ Notification Bell |
-| POST | `/notifications/{id}/actions/read` | Any | |
-| POST | `/notifications/actions/read-all` | Any | |
+| GET | `/notifications` | Any | `?unread=true` (ของตนเอง) + Pagination มาตรฐาน — `{data:[{id, type, title, body, link?, read, created_at}], meta}` ใหม่สุดก่อน (`NotificationItem`); `link` เป็นเส้นทางภายในเว็บ; `read` = อ่านแล้วหรือไม่ (จาก `read_at` ใน DB — ไม่คืนเวลา); ห้ามคืน `user_id`/`source_event_id`/`data` (PM ตัดสิน 2026-11-18) |
+| GET | `/notifications/unread-count` | Any | สำหรับ Notification Bell → `{count}` (`UnreadCountResponse`) |
+| POST | `/notifications/{id}/actions/read` | Any | `204` (idempotent); ของผู้อื่น/ไม่พบ ⇒ `404` |
+| POST | `/notifications/actions/read-all` | Any | `204` |
 
 *(ไม่มี Endpoint ที่ Service อื่นเรียกเพื่อส่งแจ้งเตือน — ใช้ Event เท่านั้น)*
 
