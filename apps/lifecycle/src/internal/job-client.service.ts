@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException, signServiceToken } from '@internpath/common';
 import type {
-  JobObject,
+  InternalJobResponse,
   QuotaApplicationRequest,
   QuotaReleaseRequest,
   QuotaReserveResponse,
@@ -72,9 +72,10 @@ export class JobInternalClient {
     });
   }
 
-  async getJob(jobId: string, correlationId?: string): Promise<JobObject> {
+  /** GET /internal/v1/jobs/{job_id} (api-contract §9) — ใช้ยืนยันสถานะ/โควตา/deadline ตอนสมัคร */
+  async getJob(jobId: string, correlationId?: string): Promise<InternalJobResponse> {
     const url = `${this.baseUrl}/internal/v1/jobs/${jobId}`;
-    return fetchInternal<JobObject>(url, {
+    return fetchInternal<InternalJobResponse>(url, {
       method: 'GET',
       serviceToken: this.getServiceToken(),
       correlationId,
