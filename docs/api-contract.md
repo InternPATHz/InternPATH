@@ -111,7 +111,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/companies/me/documents` | HO | multipart `file` (PDF ≤ 5 MB), `doc_type` |
 | GET | `/companies/me/documents` | H | รายการ + Signed URL |
 | POST | `/companies/me/resubmit` | HO | ส่งเอกสารเพิ่มเมื่อ `NEED_MORE_INFO` → `PENDING` |
-| GET | `/companies/me/members` | H | |
+| GET | `/companies/me/members` | H | Pagination มาตรฐาน `{ data, meta }`; เรียง Owner ก่อน แล้วตามวันที่เข้าร่วม; คืน `user_id, full_name, email, member_role, joined_at` |
 | POST | `/companies/me/invitations` | HO | `{email}` (โดเมนองค์กรเท่านั้น) |
 | POST | `/auth/invitations/accept` | Public | `{token, password, full_name}` |
 | DELETE | `/companies/me/members/{user_id}` | HO | |

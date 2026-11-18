@@ -116,7 +116,16 @@ describe('Identity company members and Owner workflow (Postgres จริง)', 
     expect(await verifyPassword(created.passwordHash, 'long-password-123')).to.equal(true);
     const members = await request(app.getHttpServer()).get('/v1/companies/me/members')
       .set(headers(ownerId, 'COMPANY_HR')).expect(200);
-    expect(members.body.map((item: { user_id: string }) => item.user_id)).to.include(created.id);
+    expect(members.body.data.map((item: { user_id: string }) => item.user_id)).to.include(created.id);
+    expect(members.body.data[0]).to.include({ member_role: 'OWNER' });
+    expect(members.body.meta).to.deep.equal({ page: 1, page_size: 20, total: members.body.data.length });
+    const paged = await request(app.getHttpServer()).get('/v1/companies/me/members?page=2&page_size=1')
+      .set(headers(ownerId, 'COMPANY_HR')).expect(200);
+    expect(paged.body.data).to.have.length(1);
+    expect(paged.body.data[0].user_id).to.equal(members.body.data[1].user_id);
+    expect(paged.body.meta).to.deep.equal({ page: 2, page_size: 1, total: members.body.meta.total });
+    await request(app.getHttpServer()).get('/v1/companies/me/members?page_size=101')
+      .set(headers(ownerId, 'COMPANY_HR')).expect(400);
   });
 
   it('requires the receiving Member to accept an Owner transfer, with event and audit', async () => {

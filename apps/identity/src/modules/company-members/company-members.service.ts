@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException, OutboxWriter, asUuid } from '@internpath/common';
-import type { CompanyMemberItem, CompanyStatusChangedPayload, UserSuspendedPayload } from '@internpath/contracts';
+import type { CompanyMemberItem, CompanyStatusChangedPayload, Paginated, UserSuspendedPayload } from '@internpath/contracts';
 import { Company, Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AcceptInvitationDto } from './company-members.dto';
+import { AcceptInvitationDto, MembersQueryDto } from './company-members.dto';
 import { InvitationMailer } from './invitation-mailer';
 import { hashPassword } from '../auth/password-hash';
 
@@ -69,13 +69,21 @@ export class CompanyMembersService {
     }
   }
 
-  async members(userId: string): Promise<CompanyMemberItem[]> {
+  async members(userId: string, query: MembersQueryDto): Promise<Paginated<CompanyMemberItem>> {
     return this.transaction(async (tx) => {
       const actor = await this.member(tx, userId);
-      const rows = await tx.companyMember.findMany({ where: { companyId: actor.companyId }, include: { user: true },
-        orderBy: [{ memberRole: 'asc' }, { joinedAt: 'asc' }] });
-      return rows.map((row) => ({ user_id: row.userId, full_name: row.user.fullName, email: row.user.email,
-        member_role: row.memberRole, joined_at: row.joinedAt.toISOString() }));
+      const where = { companyId: actor.companyId };
+      const [total, rows] = await Promise.all([
+        tx.companyMember.count({ where }),
+        tx.companyMember.findMany({ where, include: { user: true },
+          orderBy: [{ memberRole: 'asc' }, { joinedAt: 'asc' }, { userId: 'asc' }],
+          skip: (query.page - 1) * query.page_size, take: query.page_size }),
+      ]);
+      return {
+        data: rows.map((row) => ({ user_id: row.userId, full_name: row.user.fullName, email: row.user.email,
+          member_role: row.memberRole, joined_at: row.joinedAt.toISOString() })),
+        meta: { page: query.page, page_size: query.page_size, total },
+      };
     });
   }
 
