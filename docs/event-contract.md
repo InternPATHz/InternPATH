@@ -169,6 +169,8 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
   queue_item_id?: string            // บังคับเมื่อ decision = REMOVE | RESTORE: รายการคิวรายงานที่ตัดสิน (= queue_item_id ของ E04 ที่ระงับประกาศ)
 }
 ```
+**`REMOVE`/`RESTORE` ไม่ตรวจ `submission_id` (PM ตัดสิน 2026-11-18):** คำตัดสินเรื่องรายงานไม่ใช่ผลตรวจเนื้อหา — Job ใช้เฉพาะ `queue_item_id` (รอบรายงาน) และ **ไม่เทียบ `submission_id` กับ `current_submission_id`** (ถ้าเทียบ รายการรายงานที่เปิดไว้บน submission A แล้วประกาศถูกส่งตรวจใหม่เป็น B จะทำให้คำตัดสินถูกข้ามและประกาศค้าง `SUSPENDED`) ส่วนคำตัดสินที่เป็นผลตรวจเนื้อหา (`APPROVE`, `PENDING_REVIEW`, `AUTO_REJECT`, `APPEAL_ACCEPTED`, `ADMIN_APPROVE`, `ADMIN_REJECT`) ยังต้องผ่าน Current-Submission Guard ตาม data-schema §8.2 • `submission_id` ใน payload ของ `REMOVE`/`RESTORE` ยังเป็นฟิลด์บังคับ (Verification ส่ง submission ล่าสุด ณ ตอนยกระดับรายงาน) แต่ Job ไม่ใช้ตัดสิน
+
 **กันเหตุการณ์ข้ามรอบ (REMOVE/RESTORE):** Job เก็บ `queue_item_id` ของ E04 ที่ระงับประกาศอยู่ แล้วรับ `REMOVE`/`RESTORE` เฉพาะที่ `queue_item_id` ตรงกัน — ไม่ตรงหรือประกาศไม่ได้ถูกระงับอยู่ให้ข้ามพร้อม log ไม่ throw/retry (ผลตัดสินของรอบเก่าที่มาช้าจึงไม่กระทบการระงับรอบใหม่); ค่านี้ส่งเฉพาะ `REMOVE`/`RESTORE`
 การระงับชั่วคราว (`SUSPENDED`) เกิดจาก E04 `ReportThresholdReached` ไม่ใช่ `JobVerified`
 Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไว้>` ตามตาราง Map ใน [data-schema.md](data-schema.md) §8.2
@@ -212,7 +214,13 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
 1. **E04 ซ้ำ:** `queue_item_id` เคยรับแล้ว (รอบ `ACTIVE` หรือ `CLOSED`) ⇒ ข้าม แม้ส่งซ้ำด้วย `event_id` ใหม่และแม้ไม่มีรอบ `ACTIVE` แล้ว (เช่นหลัง `RESTORE`)
 2. **E04 มาช้าข้ามรอบ:** `reached_at` เก่ากว่ารอบล่าสุดที่เคยรับของประกาศเดียวกัน ⇒ ข้าม
 3. **E04 ใหม่ที่ผ่านข้อ 1–2:** ประกาศอยู่ `PUBLISHED`/`CLOSED` ⇒ ระงับและเปิดรอบ `ACTIVE`; สถานะอื่นให้ข้ามพร้อม log
-4. **E02 `REMOVE`/`RESTORE`:** ปิดรอบ (`ACTIVE → CLOSED`) เฉพาะเมื่อ `queue_item_id` ตรงกับรอบ `ACTIVE` ของประกาศนั้น — ไม่ตรง ไม่มีรอบ `ACTIVE` หรือประกาศไม่ได้ถูกระงับอยู่ ⇒ ข้าม
+4. **E02 `REMOVE`/`RESTORE`:** ปิดรอบ (`ACTIVE → CLOSED`) เฉพาะเมื่อ `queue_item_id` ตรงกับรอบ `ACTIVE` ของประกาศนั้น ไม่เทียบ `submission_id` (ดู E02) — `queue_item_id` เคยรู้จักแล้วแต่ไม่ใช่รอบ `ACTIVE` หรือประกาศไม่ได้ถูกระงับอยู่ ⇒ ข้าม; `queue_item_id` ที่ **ไม่เคยรู้จักเลย** ⇒ ข้อ 5
+5. **คำตัดสินมาก่อน E04 (PM ตัดสิน 2026-11-18):** E04 อาจเข้า Retry Queue แล้ว E02 `REMOVE`/`RESTORE` มาถึงก่อน — ห้ามทิ้งคำตัดสิน ให้ Job บันทึกแถวรอบสถานะ `DECIDED` (เก็บ `decision`, `decided_at`; `UNIQUE (job_id, queue_item_id)`) โดยไม่แตะประกาศ แล้วเมื่อ E04 ของ `queue_item_id` นั้นมาถึง (ข้อ 1 ไม่นับ `DECIDED` เป็น "เคยรับ" และข้อ 2 ยังใช้ตามเดิม) ให้ประมวลผลตามคำตัดสินใน Transaction เดียว:
+   - `RESTORE` ⇒ **ไม่ระงับ** ปิดรอบเป็น `CLOSED` ประกาศไม่เปลี่ยน ไม่ส่ง E03
+   - `REMOVE` ⇒ ประกาศ `PUBLISHED`/`CLOSED` ⇒ `REMOVED` ส่ง E03 ลำดับเดียวกับเส้นทางปกติ: `FREEZE` (`reason_code=REPORT_THRESHOLD`) ตามด้วย E03 ของ `REMOVE` (Lifecycle/Notification เห็นลำดับเหมือนเดิม)
+   - ประกาศอยู่สถานะอื่น ⇒ ข้ามพร้อม log (เหมือนข้อ 3); รอบที่ถูกประมวลผลแล้วเป็น `CLOSED`
+   - แถว `DECIDED` ที่ไม่มี E04 มาจับคู่เกิน 30 วัน ⇒ ล้างพร้อม log ระดับ `warn`
+6. **E04 ที่ payload ไม่ถูกต้อง (PM ตัดสิน 2026-11-18 — ข้อยกเว้นเดียวของ "ไม่ throw ไม่ retry" ข้างต้น):** `job_id`/`company_id`/`queue_item_id` ไม่ใช่ UUID, `report_count` ไม่ใช่จำนวนเต็ม ≥ 1 หรือ `reached_at` ไม่ใช่ ISO-8601 ที่ถูกต้อง (เช่น `null`, สตริงว่าง) ⇒ **ไม่ระงับประกาศ** ส่ง Dead-letter ไม่ retry พร้อม log ระดับ `error` (เป็นข้อผิดพลาดของผู้ส่ง ต้องไม่เงียบ) ห้ามแปลงค่าที่ผิดเป็นวันที่ใดๆ
 > **หมายเหตุ:** การแจ้ง "อาจารย์ที่ปรึกษาของนักศึกษาที่มีใบสมัครกับประกาศนั้น" ทำโดย Lifecycle เมื่อรับ `JobStatusChanged` (to=`SUSPENDED`) เพราะ Lifecycle รู้ใบสมัคร Notification ที่รับ E04 แจ้งเฉพาะ Admin
 
 ### E05 `CompanyStatusChanged`  (identity → job, lifecycle, verification, notification)

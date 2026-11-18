@@ -195,7 +195,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | quota_confirmed | int default 0 | |
 | application_deadline | date | **ฟิลด์โครงสร้าง** |
 | status | JobStatus | |
-| suspended_from_status | JobStatus null | สถานะก่อนถูกระงับ (`PUBLISHED` หรือ `CLOSED`) ตั้งตอน `→ SUSPENDED`, ใช้ตอน `RESTORE` (§8.2) |
+| suspended_from_status | JobStatus null | สถานะก่อนถูกระงับ (`PUBLISHED` หรือ `CLOSED`) ตั้งตอน `→ SUSPENDED`, ใช้ตอน `RESTORE` (§8.2) **เคลียร์เป็น `NULL` เมื่อ `RESTORE`/`REMOVE` จบรอบ** (PM ตัดสิน 2026-11-18) — ประวัติเก็บใน `report_rounds.suspended_from_status` |
 | featured | bool default false | มีผลเมื่อ `PUBLISHED` และบริษัท `featured_enabled` |
 | current_submission_id | uuid null | |
 | verifying_since | timestamptz null | ไว้ทำ Fail-safe 5 นาที |
@@ -212,6 +212,8 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 **ฟิลด์ที่ต้องตรวจซ้ำเมื่อแก้หลัง `PUBLISHED` (PM ตัดสิน 2026-11-15):** หลักการ — ถ้าฟิลด์นั้นเป็นข้อมูลที่ Verification ใช้ตัดสิน (อยู่ใน payload ของ `JobSubmitted`) ต้องตรวจซ้ำ: `job_title`, `description`, `responsibilities`, `qualifications`, `allowance_*`, `location`, `contact_notes`, `work_mode`, `hours_per_week` ⇒ `PUBLISHED → VERIFYING` (กัน Post-Approval Bypass เช่นแก้ชั่วโมงเป็น 60 หลังอนุมัติ) — ฟิลด์ที่ **ไม่ตรวจซ้ำ** (ยังเป็น `PUBLISHED`) มีเฉพาะ `quota`, `application_deadline`, `target_majors`, `internship_period_*`, `category`, `featured`
 
 **ค้นหาข้อความ (PM ตัดสิน 2026-11-15):** แยกเป็น migration ภายหลัง (ไม่ต้องอยู่ใน migration แรก) ใช้ **trigram (`pg_trgm`)** ไม่ใช้ `tsvector` เพราะภาษาไทยไม่มีช่องว่างคั่นคำ — GIN index บน `job_title` เป็นหลัก (เพิ่ม `description`/`location` ถ้าจำเป็นหลังวัดผล) ใช้กับ `?q=` ของ `/search/jobs`
+
+**`report_rounds`** (Job — รอบรายงาน, PM ตัดสิน 2026-11-16/18): `id`, `job_id`, `queue_item_id` (ตัวระบุรอบ = `queue_item_id` ของ E04), `status (ACTIVE|CLOSED|DECIDED)`, `reached_at null` (E04; `null` เมื่อเป็น `DECIDED` ที่ E04 ยังไม่มา), `decision null (REMOVE|RESTORE)`, `decided_at null`, `suspended_from_status null` (`PUBLISHED`|`CLOSED` ที่ตั้งตอนระงับ — ประวัติหลังเคลียร์ `jobs.suspended_from_status`), `created_at`, `closed_at null` — `UNIQUE (job_id, queue_item_id)` กติกาการใช้ดู event-contract E04
 
 **`job_submissions`**: `id (=submission_id)`, `job_id`, `kind (NEW|EDIT|RESUBMIT)`, `changed_fields text[]`, `submitted_by` (Anonymize เป็น `anonymous_actor_id` เมื่อลบบัญชี — §2.3), `submitted_at`, `result_decision null`, `resolved_at null` — ใช้นับ Rate Limit **5 ครั้ง/วัน/บริษัท** (นับตามวัน `Asia/Bangkok`)
 
@@ -509,10 +511,13 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 | `SUSPENDED` | `PUBLISHED` | `JobVerified.RESTORE` เมื่อ `suspended_from_status = PUBLISHED` (และยังไม่เลย deadline) | `JobStatusChanged` (`UNFREEZE`, `reason_code=ADMIN_DISMISSED`) |
 | `SUSPENDED` | `CLOSED` | `JobVerified.RESTORE` เมื่อ `suspended_from_status = CLOSED` **หรือ** เลย `application_deadline` ระหว่างระงับ | `JobStatusChanged` (`UNFREEZE`, `reason_code=ADMIN_DISMISSED`) |
 | `SUSPENDED` | `REMOVED` | `JobVerified.REMOVE` | `JobStatusChanged` |
+| `PUBLISHED` / `CLOSED` | `REMOVED` | `ReportThresholdReached` (E04) ที่มาช้ากว่า `JobVerified.REMOVE` ของ `queue_item_id` เดียวกัน (คำตัดสินที่เก็บไว้ — event-contract E04 ข้อ 5; ไม่ตั้ง `suspended_from_status`) *(PM ตัดสิน 2026-11-18)* | `JobStatusChanged` สองรายการตามลำดับ: `FREEZE` (`REPORT_THRESHOLD`) แล้ว `REMOVE` |
 | `PUBLISHED` | `CLOSED` | HR ปิดรับ หรือถึง deadline | `JobStatusChanged` |
 | `CLOSED` | `PUBLISHED` | HR เปิดใหม่ (ถ้า deadline/โควตายังอยู่) *(ทีมยืนยันแล้ว; README ไม่ได้ระบุ)* | `JobStatusChanged` |
 
 **ทุกการเปลี่ยนสถานะส่ง `JobStatusChanged` เสมอ** (รวมทุกแถวที่เข้า `VERIFYING` ซึ่งส่งคู่กับ `JobSubmitted` ใน transaction/outbox เดียวกัน โดยส่ง `JobStatusChanged` ก่อน) พร้อม `company_id` และ `entity_version` ที่เพิ่มขึ้นทุกครั้ง — ผู้รับ: Lifecycle (Freeze/Unfreeze ใบสมัครตาม `application_effect`), Verification (`job_snapshots`, นับการปฏิเสธ), Notification (PM ตัดสิน 2026-11-15)
+
+**ข้อยกเว้น (PM ตัดสิน 2026-11-18):** `REMOVE`/`RESTORE` **ไม่ใช้** เงื่อนไข `current_submission_id` — ใช้รอบรายงาน (`queue_item_id` ↔ `report_rounds`) แทน (event-contract E02/E04) เพราะรายการรายงานอาจผูกกับ submission ที่ถูกแทนที่ไปแล้ว คำตัดสินอื่นของ `JobVerified` ยังใช้กติกาด้านล่างตามเดิม
 
 การเปลี่ยนสถานะที่เกิดจาก Event (`JobVerified`) ต้องผ่านทั้งสองเงื่อนไขก่อนรับ: `updateMany where status = <สถานะที่คาดไว้ของการตัดสินนั้น> AND current_submission_id = <submission_id ของ Event>`; ถ้า 0 แถว ⇒ Event เก่า/ซ้ำ ให้ข้ามอย่างเงียบ (log ระดับ `warn`) — ฝั่ง Verification ก็ทิ้งผลของ submission ที่ถูกแทนที่เช่นกัน (E01 รอบเก่าที่มาช้าถูกเก็บไว้เฉยๆ ไม่ส่ง `JobVerified`)
 
