@@ -15,6 +15,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1168.0",
     "@aws-sdk/s3-request-presigner": "^3.1168.0",
+    "@fontsource/sarabun": "^5.3.0",
     "@internpath/common": "workspace:^",
     "@internpath/contracts": "workspace:^",
     "@nestjs/common": "^12.5.0",

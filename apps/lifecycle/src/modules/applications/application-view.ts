@@ -4,12 +4,14 @@ import type {
   ApplicationStatus,
   AdvisorApplicationItem,
   ApplicationTimelineEntry,
+  CertificateItem,
+  EvaluationView,
   HrApplicationDetail,
   HrApplicationItem,
   StudentApplicationDetail,
   StudentProfile,
 } from '@internpath/contracts';
-import type { Application, StatusHistory } from '../../../generated/client';
+import type { Application, Certificate, Evaluation, StatusHistory } from '../../../generated/client';
 import type { Tx } from '../../prisma/types';
 
 /**
@@ -114,6 +116,34 @@ export function toHrItem(app: Application, names: SnapshotNames): HrApplicationI
 }
 
 /**
+ * ผลประเมินล่าสุดของบริษัท (`EvaluationView` ใน contracts — PR #53) — HR ต้องเห็นตอน `REEVALUATION_REQUESTED`
+ * `round` มีแค่ 1/2 (CHECK `evaluations_round_check`)
+ */
+export function toEvaluationView(row: Evaluation): EvaluationView {
+  return {
+    round: row.round as EvaluationView['round'],
+    result: row.result,
+    ...optional('reason', row.reason ?? undefined),
+    ...optional('score_note', row.scoreNote ?? undefined),
+    evaluated_at: row.evaluatedAt.toISOString(),
+  };
+}
+
+/** `CertificateItem` (api-contract §7.5) — ใช้ทั้ง `GET /me/certificates`, ผลของ action ใบรับรอง และ `certificate?` ใน HR detail */
+export function toCertificateItem(cert: Certificate): CertificateItem {
+  return {
+    id: cert.id,
+    certificate_code: cert.certificateCode,
+    company_name: cert.companyNameSnapshot,
+    job_title: cert.jobTitleSnapshot,
+    period: { start: formatDate(cert.periodStart) as string, end: formatDate(cert.periodEnd) as string },
+    actual_days: cert.actualDays,
+    status: cert.status,
+    issued_at: cert.issuedAt.toISOString(),
+  };
+}
+
+/**
  * GET /hr/applications/{id} — `profile` ใส่เฉพาะเมื่อ Consent (ผู้เรียกตัดสิน) • ไม่มีรายงานปัญหา (README §5.11)
  * `accept_blocked_reason` มีเมื่อ `accept` กดไม่ได้ (เช่นนักศึกษายืนยันที่อื่นแล้ว)
  */
@@ -122,6 +152,7 @@ export function toHrDetail(
   names: SnapshotNames,
   profile: (StudentProfile & { full_name: string }) | undefined,
   actions: { available_actions: ApplicationAction[]; accept_blocked_reason?: string },
+  extra: { evaluation?: Evaluation | null; certificate?: Certificate | null } = {},
 ): HrApplicationDetail {
   return {
     ...toHrItem(app, names),
@@ -129,6 +160,9 @@ export function toHrDetail(
     ...optional('profile', profile),
     available_actions: actions.available_actions,
     ...optional('accept_blocked_reason', actions.accept_blocked_reason),
+    ...optional('evaluation', extra.evaluation ? toEvaluationView(extra.evaluation) : undefined),
+    // ใบที่เพิกถอนแล้วยังคืนพร้อม `status: 'REVOKED'` (contracts `HrApplicationDetail.certificate`)
+    ...optional('certificate', extra.certificate ? toCertificateItem(extra.certificate) : undefined),
   };
 }
 
