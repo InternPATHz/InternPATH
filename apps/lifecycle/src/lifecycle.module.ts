@@ -4,6 +4,8 @@ import { LifecycleConfigModule } from './config/lifecycle-config.module';
 import { ServiceSecretsCheck } from './config/service-secrets.check';
 import { StorageModule } from './common/storage/storage.module';
 import { InternalModule } from './internal/internal.module';
+import { DeletionEligibilityModule } from './internal/deletion-eligibility.controller';
+import { LifecycleConsumersModule } from './events/consumers/lifecycle-consumers.module';
 import { AdvisorModule } from './modules/advisor/advisor.module';
 import { ReviewConsumersModule } from './events/consumers/review-moderation-result.consumer';
 import { CertificatesModule } from './modules/certificates/certificates.module';
@@ -53,6 +55,8 @@ import type { Tx } from './prisma/types';
     ReviewsModule,
     ReviewConsumersModule,
     CertificatesModule,
+    LifecycleConsumersModule,
+    DeletionEligibilityModule,
   ],
   providers: [JwtAuthGuard, RolesGuard, ServiceSecretsCheck],
   exports: [
