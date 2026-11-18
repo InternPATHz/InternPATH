@@ -172,6 +172,25 @@ describe('POST /jobs/{job_id}/reports (Postgres จริง)', function () {
     expect(item.submissionId).to.equal(null);
   });
 
+  it('รายการ REPORT_UNCOUNTED เปิดไว้บน submission A แล้วประกาศถูกส่งตรวจใหม่เป็น B ก่อนครบ 3 ⇒ ตอนยกระดับรายการอ้าง B (ไม่ค้าง A)', async () => {
+    const { jobId, companyId } = await seedJob();
+    const a = randomUUID();
+    const b = randomUUID();
+    await seedEvaluation(jobId, companyId, a, new Date('2026-11-10T00:00:00Z'));
+    const bad = student();
+    await t.prisma.reporterStat.create({ data: { userId: bad.sub, consecutiveDismissed: 3 } });
+    await post(jobId, bad.auth);
+    const before = await t.prisma.queueItem.findFirstOrThrow({ where: { targetId: jobId, type: 'JOB_REPORT' } });
+    expect(before).to.include({ origin: 'REPORT_UNCOUNTED', submissionId: a });
+
+    await seedEvaluation(jobId, companyId, b, new Date('2026-11-12T00:00:00Z'));
+    for (let i = 0; i < 3; i++) await post(jobId, student().auth);
+
+    const items = await t.prisma.queueItem.findMany({ where: { targetId: jobId, type: 'JOB_REPORT' } });
+    expect(items).to.have.length(1);
+    expect(items[0]).to.include({ id: before.id, origin: 'REPORT_THRESHOLD', submissionId: b });
+  });
+
   it('ผู้รายงานที่ถูกยกคำร้องติด 3 ครั้ง ⇒ counted=false ไม่เพิ่มตัวนับ เข้าคิว REPORT_UNCOUNTED ไม่ซ้อน ไม่มี E04 และ response เหมือนกรณีนับ', async () => {
     const { jobId } = await seedJob();
     const bad = student();

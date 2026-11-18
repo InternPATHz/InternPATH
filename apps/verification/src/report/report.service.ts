@@ -107,7 +107,10 @@ export class ReportService {
     if (won !== 1) return false;
 
     const open = await this.queue.findOpenByType(tx, a.jobId, 'JOB_REPORT');
-    const submissionId = open?.submissionId ?? (await this.latestSubmissionId(tx, a.jobId));
+    // ผูกรายการกับ submission ล่าสุด ณ ตอนยกระดับ — ไม่คง submission เดิมของรายการ REPORT_UNCOUNTED ที่เปิดไว้ก่อนส่งตรวจใหม่
+    // (Job ไม่ใช้ submission_id ตัดสิน REMOVE/RESTORE แล้ว แต่ข้อมูลที่ส่งออกต้องไม่ล้าสมัย — event-contract E02)
+    const latest = await this.latestSubmissionId(tx, a.jobId);
+    const submissionId = latest ?? open?.submissionId ?? null;
     const item = open
       ? await tx.queueItem.update({ where: { id: open.id }, data: { origin: 'REPORT_THRESHOLD', submissionId } })
       : await this.queue.createReportItem(tx, {
