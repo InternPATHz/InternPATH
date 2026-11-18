@@ -70,15 +70,15 @@ services:
     image: axllent/mailpit:latest
     profiles: ["infra", "all"]
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
 
   # ---------- services (profile = ชื่อ Service) ----------
   gateway:
     <<: *service
     profiles: ["gateway", "all"]
     build: { context: ., dockerfile: apps/gateway/Dockerfile }
-    ports: ["3000:3000"]
+    ports: ["127.0.0.1:3000:3000"]
     environment:
       <<: *service-env
       PORT: "3000"
@@ -92,7 +92,7 @@ services:
     <<: *service
     profiles: ["identity", "all"]
     build: { context: ., dockerfile: apps/identity/Dockerfile }
-    ports: ["3001:3001"]
+    ports: ["127.0.0.1:3001:3001"]
     environment:
       <<: *service-env
       PORT: "3001"
@@ -103,7 +103,7 @@ services:
     <<: *service
     profiles: ["job", "all"]
     build: { context: ., dockerfile: apps/job/Dockerfile }
-    ports: ["3002:3002"]
+    ports: ["127.0.0.1:3002:3002"]
     environment:
       <<: *service-env
       PORT: "3002"
@@ -114,7 +114,7 @@ services:
     <<: *service
     profiles: ["verification", "all"]
     build: { context: ., dockerfile: apps/verification/Dockerfile }
-    ports: ["3003:3003"]
+    ports: ["127.0.0.1:3003:3003"]
     environment:
       <<: *service-env
       PORT: "3003"
@@ -125,7 +125,7 @@ services:
     <<: *service
     profiles: ["lifecycle", "all"]
     build: { context: ., dockerfile: apps/lifecycle/Dockerfile }
-    ports: ["3004:3004"]
+    ports: ["127.0.0.1:3004:3004"]
     environment:
       <<: *service-env
       PORT: "3004"
@@ -136,7 +136,7 @@ services:
     <<: *service
     profiles: ["notification", "all"]
     build: { context: ., dockerfile: apps/notification/Dockerfile }
-    ports: ["3005:3005"]
+    ports: ["127.0.0.1:3005:3005"]
     environment:
       <<: *service-env
       PORT: "3005"
