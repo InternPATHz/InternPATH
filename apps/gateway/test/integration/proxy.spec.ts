@@ -39,7 +39,9 @@ describe('Gateway proxy and security', function () {
       const chunks: Buffer[] = [];
       req.on('data', (chunk: Buffer) => chunks.push(chunk));
       req.on('end', () => {
+        res.statusCode = req.url?.includes('/missing') ? 404 : 200;
         res.setHeader('Content-Type', 'application/json');
+        if (req.url?.includes('/upstream-cache')) res.setHeader('Cache-Control', 'private, max-age=3600');
         res.end(JSON.stringify({ path: req.url, method: req.method, headers: req.headers,
           body: Buffer.concat(chunks).toString('utf8') }));
       });
@@ -223,6 +225,23 @@ describe('Gateway proxy and security', function () {
       await edge(request(app.getHttpServer()).post('/api/v1/companies/company-1/reviews')).expect(401);
       await edge(request(app.getHttpServer()).post('/api/v1/jobs/job-1/reports'))
         .set('Authorization', `Bearer ${token()}`).send({ reason: 'scam' }).expect(200);
+    });
+
+    it('marks successful public reads cacheable for 60s and nothing else', async () => {
+      for (const [index, path] of publicReads.entries()) {
+        const result = await edge(request(app.getHttpServer()).get(`/api/v1${path}`))
+          .set('X-Client-IP', `198.51.100.${230 + index}`).expect(200);
+        expect(result.headers['cache-control'], path).to.equal('public, max-age=60');
+      }
+      const overridden = await edge(request(app.getHttpServer()).get('/api/v1/directory/companies/upstream-cache'))
+        .set('X-Client-IP', '198.51.100.236').expect(200);
+      expect(overridden.headers['cache-control']).to.equal('public, max-age=60');
+      const missing = await edge(request(app.getHttpServer()).get('/api/v1/directory/companies/missing'))
+        .set('X-Client-IP', '198.51.100.237').expect(404);
+      expect(missing.headers['cache-control']).to.equal('no-store');
+      const privateRead = await edge(request(app.getHttpServer()).get('/api/v1/users/me'))
+        .set('Authorization', `Bearer ${token()}`).expect(200);
+      expect(privateRead.headers['cache-control']).to.equal(undefined);
     });
 
     it('returns 429 after 60 requests per IP per route, with separate buckets per route', async () => {
