@@ -84,8 +84,23 @@ export interface HrApplicationItem extends ApplicationBase {
   student_user_id: string;
 }
 
+/** ผลประเมินของบริษัท (`evaluations` — data-schema §7) */
+export interface EvaluationView {
+  /** 1 = ประเมินครั้งแรก, 2 = ประเมินซ้ำหลังอาจารย์รับคำโต้แย้ง */
+  round: 1 | 2;
+  result: 'PASS' | 'FAIL';
+  /** บังคับเมื่อ `FAIL` */
+  reason?: string;
+  score_note?: string;
+  evaluated_at: string;
+}
+
 /** GET /hr/applications/{id} — เห็นโปรไฟล์ได้เฉพาะที่ได้รับ Consent */
 export interface HrApplicationDetail extends HrApplicationItem {
+  /** ผลประเมินล่าสุด (ไม่มีเมื่อยังไม่ประเมิน) */
+  evaluation?: EvaluationView;
+  /** ใบรับรองของใบสมัครนี้ (ไม่มีเมื่อยังไม่ออก; ใบที่เพิกถอนแล้วยังคืนพร้อม `status: 'REVOKED'`) */
+  certificate?: CertificateItem;
   cover_letter?: string;
   profile?: StudentProfile & { full_name: string };
   available_actions: ApplicationAction[];
@@ -149,11 +164,6 @@ export interface CertificateItem {
 export interface CertificateDownloadResponse {
   url: string;
   expires_at: string;
-}
-
-/** GET /public/certificates/{code}/verify-hash */
-export interface CertificateHashResponse {
-  sha256: string;
 }
 
 // ---- 7.6 รีวิว ----

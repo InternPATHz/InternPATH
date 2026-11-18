@@ -26,8 +26,14 @@ jobs:
       # รันเฉพาะแพ็กเกจที่เปลี่ยน (และที่พึ่งพามัน) เทียบกับ main
       - name: Lint
         run: pnpm --filter "...[origin/main]" --if-present lint
+      # เทสต์ PDF จริงของ Lifecycle (E-Certificate) ไม่ถูกลงทะเบียนถ้าไม่มี Chromium และ RUN_PDF_TESTS=true
+      # ติดตั้งแล้วค่อยรัน เพื่อไม่ให้ CI เขียวทั้งที่ไม่ได้ทดสอบ PDF
+      - name: Install Chromium (Lifecycle PDF tests)
+        run: pnpm --filter @internpath/lifecycle exec playwright install --with-deps chromium
       - name: Test
         run: pnpm --filter "...[origin/main]" --if-present test
+        env:
+          RUN_PDF_TESTS: 'true'
       - name: Build
         run: pnpm --filter "...[origin/main]" --if-present build
 
