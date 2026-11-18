@@ -71,7 +71,7 @@ export type GuardName =
   | 'reevaluationNotUsed'
   /** ค่า `academic_result` ที่บันทึกได้ตามผลของบริษัท */
   | 'academicResultAllowed'
-  /** เกิน `end_date` มาแล้ว 14 วัน (Admin ยืนยัน `NO_EVALUATION`) */
+  /** ครบ `SLA_EVALUATION_DAYS` (14 วัน, นับแบบ >=) จากวันฐานตามสถานะ — Admin ยืนยัน `NO_EVALUATION` (ดู `noEvaluationBaseDate`) */
   | 'evaluationOverdue';
 
 /** Side effect ใน Transaction เดียวกันกับใบสมัครอื่นของนักศึกษาคนเดียวกัน */
@@ -168,6 +168,10 @@ export const TRANSITIONS: readonly TransitionRule[] = Object.freeze([
   // ---- TERMINATED ---- (ทางเลือก: ฝึกจริง ≥ 30 วันก่อนยุติ — README 5.2.2)
   rule('TERMINATED', 'EVALUATED_PASS', 'evaluate', [HR], { guards: ['terminatedAfterMinDays'] }),
   rule('TERMINATED', 'EVALUATED_FAIL', 'evaluate', [HR], { guards: ['terminatedAfterMinDays', 'reasonRequired'] }),
+  // HR ไม่ประเมินใบที่ฝึกจริง ≥ 30 วันก่อนยุติ ⇒ Admin ยืนยัน (PM ตัดสินในรีวิว PR #36)
+  rule('TERMINATED', 'NO_EVALUATION', 'confirm-no-evaluation', [ADMIN], {
+    guards: ['terminatedAfterMinDays', 'evaluationOverdue'],
+  }),
 
   // ---- ประเมิน / โต้แย้ง ----
   rule('EVALUATED_FAIL', 'FAIL_DISPUTED', 'dispute-fail', [STUDENT], { guards: ['disputeWindowOpen'] }),
@@ -177,6 +181,8 @@ export const TRANSITIONS: readonly TransitionRule[] = Object.freeze([
   rule('FAIL_DISPUTED', 'EVALUATED_FAIL', 'uphold-fail', [ADVISOR]),
   rule('REEVALUATION_REQUESTED', 'EVALUATED_PASS', 'evaluate', [HR]),
   rule('REEVALUATION_REQUESTED', 'EVALUATED_FAIL', 'evaluate', [HR], { guards: ['reasonRequired'] }),
+  // HR ไม่ประเมินซ้ำ ⇒ Admin ยืนยัน ไม่ให้ค้าง (สถานะนี้บล็อกการลบบัญชี — PM ตัดสินในรีวิว PR #36)
+  rule('REEVALUATION_REQUESTED', 'NO_EVALUATION', 'confirm-no-evaluation', [ADMIN], { guards: ['evaluationOverdue'] }),
 
   // ---- ผลวิชา ----
   rule('EVALUATED_PASS', 'COMPLETED', 'academic-result', [ADVISOR], { guards: ['academicResultAllowed'] }),
@@ -229,6 +235,13 @@ export const DELETION_BLOCKING_STATUSES: readonly ApplicationStatus[] = Object.f
   'ADVISOR_APPROVED',
   'IN_PROGRESS',
   'FAIL_DISPUTED',
+  'REEVALUATION_REQUESTED',
+]);
+
+/** สถานะที่ Admin ยืนยัน `NO_EVALUATION` ได้ — ใช้ร่วมกับ `GET /admin/lifecycle/no-evaluation-candidates` (หัวข้อ 1.9) */
+export const NO_EVALUATION_SOURCE_STATUSES: readonly ApplicationStatus[] = Object.freeze([
+  'IN_PROGRESS',
+  'TERMINATED',
   'REEVALUATION_REQUESTED',
 ]);
 

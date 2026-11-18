@@ -97,6 +97,40 @@ describe('State Machine — ApplicationStateMachine (โควตา + Transacti
     expect(db.state.tables.outboxEvent).to.deep.equal([]);
   });
 
+  it('HR กดตอบรับซ้ำพร้อมกัน: ผู้แพ้ได้ STATE_CONFLICT แต่ต้องไม่ release โควตาที่ผู้ชนะถืออยู่ (รีวิว PR #36)', async () => {
+    const app = makeApplication({ status: 'PENDING' });
+    db.state.tables.application.push(app);
+    job.reserveQuota.callsFake(async () => {
+      // อีกคำสั่ง accept ของใบเดียวกัน reserve (idempotent ด้วย application_id) และ commit ก่อนเรา
+      Object.assign(db.state.tables.application[0], { status: 'HR_ACCEPTED', quotaReserved: true });
+      return { reserved: true };
+    });
+    await rejects(machine.execute(app.id, { trigger: 'accept', actor: hr, input: acceptInput, correlationId: 'c' }, NOW), 'STATE_CONFLICT');
+    expect(job.reserveQuota.calledOnce).to.equal(true);
+    expect(job.releaseQuota.called).to.equal(false);
+    expect(db.state.tables.application[0]).to.include({ status: 'HR_ACCEPTED', quotaReserved: true });
+  });
+
+  it('อ่านสถานะโควตาก่อนชดเชยไม่สำเร็จ ⇒ ไม่ release (ปล่อยให้ Reconciliation แก้แทนการรับเกินโควตา)', async () => {
+    const app = makeApplication({ status: 'PENDING' });
+    db.state.tables.application.push(app);
+    const realFindUnique = db.application.findUnique;
+    let calls = 0;
+    db.application.findUnique = async (args: any) => {
+      calls++;
+      // ครั้งที่ 1 = execute อ่านใบสมัคร, ครั้งที่ 2 = ใน Transaction, ครั้งที่ 3 = ตรวจก่อนชดเชย
+      if (calls === 3) throw new Error('db down');
+      return realFindUnique(args);
+    };
+    job.reserveQuota.callsFake(async () => {
+      db.state.tables.application[0].status = 'WITHDRAWN';
+      return { reserved: true };
+    });
+    await rejects(machine.execute(app.id, { trigger: 'accept', actor: hr, input: acceptInput, correlationId: 'c' }, NOW), 'STATE_CONFLICT');
+    expect(calls).to.equal(3);
+    expect(job.releaseQuota.called).to.equal(false);
+  });
+
   it('confirm-offer: release โควตาของใบที่ถูกปฏิเสธแทนหลัง commit', async () => {
     const studentUserId = randomUUID();
     const chosen = makeApplication({ status: 'HR_ACCEPTED', studentUserId });

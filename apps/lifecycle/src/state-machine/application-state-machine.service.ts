@@ -79,12 +79,32 @@ export class ApplicationStateMachine {
         return this.transitions.apply(tx, fresh, command, now, config);
       });
     } catch (error) {
-      if (rule.quota === 'RESERVE') await this.quota.compensate(before.jobId, before.id, command.correlationId);
+      if (rule.quota === 'RESERVE' && !(await this.isQuotaHeld(applicationId))) {
+        await this.quota.compensate(before.jobId, before.id, command.correlationId);
+      }
       throw error;
     }
 
     const quotaFailures = await this.quota.settle(collectQuotaEffects(outcome), command.correlationId);
     return { ...outcome, quotaFailures };
+  }
+
+  /**
+   * ก่อน release ชดเชย: Job จองแบบ idempotent ด้วย `application_id` ⇒ ถ้าอีกคำสั่ง (เช่น HR กดตอบรับซ้ำพร้อมกัน)
+   * ชนะและถือโควตาไว้แล้ว (`quota_reserved = true`) การ release จะปลดโควตาของผู้ชนะ จึงต้องข้าม (PM รีวิว PR #36)
+   * ผู้แพ้ได้ `STATE_CONFLICT` หลังผู้ชนะ commit แล้วเสมอ (updateMany รอ row lock) ค่าที่อ่านจึงเป็นค่าล่าสุด
+   * อ่านไม่สำเร็จ ⇒ ถือว่ามีคนถืออยู่ (ไม่ release) — จองค้างแก้ได้ด้วย Reconciliation แต่ release ผิดทำให้รับเกินโควตา
+   */
+  private async isQuotaHeld(applicationId: string): Promise<boolean> {
+    try {
+      const current = await this.prisma.application.findUnique({
+        where: { id: applicationId },
+        select: { quotaReserved: true },
+      });
+      return current?.quotaReserved === true;
+    } catch {
+      return true;
+    }
   }
 
   /** ปุ่มที่ role นี้กดได้สำหรับใบสมัครนี้ (ใช้ใน GET รายละเอียดของแต่ละ role) */

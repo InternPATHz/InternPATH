@@ -4,6 +4,7 @@ import {
   CONFIRMED_STATUSES,
   DELETION_BLOCKING_STATUSES,
   INACTIVE_STATUSES,
+  NO_EVALUATION_SOURCE_STATUSES,
   TRANSITIONS,
   findTransition,
   isTransitionAllowed,
@@ -63,6 +64,9 @@ const DOC_TABLE: Array<[ApplicationStatus, ApplicationStatus, ActorRole[]]> = [
   ['TERMINATED', 'EVALUATED_PASS', ['COMPANY_HR']],
   ['TERMINATED', 'EVALUATED_FAIL', ['COMPANY_HR']],
   ['IN_PROGRESS', 'NO_EVALUATION', ['PLATFORM_ADMIN']],
+  // เพิ่มตาม PM ตัดสินในรีวิว PR #36
+  ['TERMINATED', 'NO_EVALUATION', ['PLATFORM_ADMIN']],
+  ['REEVALUATION_REQUESTED', 'NO_EVALUATION', ['PLATFORM_ADMIN']],
   ['EVALUATED_FAIL', 'FAIL_DISPUTED', ['STUDENT']],
   ['FAIL_DISPUTED', 'REEVALUATION_REQUESTED', ['ADVISOR']],
   ['FAIL_DISPUTED', 'EVALUATED_FAIL', ['ADVISOR']],
@@ -107,12 +111,24 @@ describe('State Machine — Transition Table (data-schema §8.1)', () => {
     expect([...new Set(multi)]).to.deep.equal(['evaluate']);
   });
 
-  it('สถานะปลายทางไม่มีทางออก ยกเว้น TERMINATED ที่ประเมินต่อได้', () => {
+  it('สถานะปลายทางไม่มีทางออก ยกเว้น TERMINATED ที่ประเมินต่อได้หรือ Admin ยืนยัน NO_EVALUATION', () => {
     for (const status of INACTIVE_STATUSES) {
       const out = transitionsFrom(status).map((r) => r.to);
-      if (status === 'TERMINATED') expect(out).to.have.members(['EVALUATED_PASS', 'EVALUATED_FAIL']);
+      if (status === 'TERMINATED') expect(out).to.have.members(['EVALUATED_PASS', 'EVALUATED_FAIL', 'NO_EVALUATION']);
       else expect(out, status).to.deep.equal([]);
     }
+  });
+
+  it('NO_EVALUATION: Admin ยืนยันได้จาก 3 สถานะ, TERMINATED ต้องฝึกจริง ≥ 30 วัน', () => {
+    expect([...NO_EVALUATION_SOURCE_STATUSES]).to.have.members(
+      TRANSITIONS.filter((r) => r.to === 'NO_EVALUATION').map((r) => r.from),
+    );
+    expect([...NO_EVALUATION_SOURCE_STATUSES]).to.have.members(['IN_PROGRESS', 'TERMINATED', 'REEVALUATION_REQUESTED']);
+    for (const r of TRANSITIONS.filter((x) => x.to === 'NO_EVALUATION')) {
+      expect(r.trigger).to.equal('confirm-no-evaluation');
+      expect(r.guards).to.include('evaluationOverdue');
+    }
+    expect(findTransition('TERMINATED', 'confirm-no-evaluation', 'PLATFORM_ADMIN')?.guards).to.include('terminatedAfterMinDays');
   });
 
   it('เส้นทางหลัก §5.2: สมัคร → ตอบรับ → ยืนยัน → อนุมัติ → เริ่มงาน → ประเมิน → จบ', () => {

@@ -23,6 +23,8 @@ export interface GuardApplication {
   actualStartDate: Date | null;
   actualEndDate: Date | null;
   reevaluationUsed: boolean;
+  /** ฐานนับของ `REEVALUATION_REQUESTED → NO_EVALUATION` (วันที่อาจารย์สั่งประเมินใหม่) */
+  statusChangedAt: Date;
 }
 
 export interface GuardConfig {
@@ -30,7 +32,7 @@ export interface GuardConfig {
   minActualDays: number;
   /** `DISPUTE_WINDOW_DAYS` */
   disputeWindowDays: number;
-  /** `SLA_EVALUATION_DAYS` — เกิน `end_date` กี่วันจึงยืนยัน `NO_EVALUATION` ได้ */
+  /** `SLA_EVALUATION_DAYS` — ครบกี่วันจากวันฐาน (`noEvaluationBaseDate`) จึงยืนยัน `NO_EVALUATION` ได้ */
   noEvaluationAfterDays: number;
 }
 
@@ -169,14 +171,34 @@ export const GUARDS: Readonly<Record<GuardName, GuardDefinition>> = Object.freez
   evaluationOverdue: {
     needsInput: false,
     check: (ctx) => {
-      const { endDate } = ctx.application;
-      if (!endDate) return stateConflict('END_DATE_NOT_SET');
-      return daysBetween(endDate, bangkokToday(ctx.now)) >= ctx.config.noEvaluationAfterDays
+      const base = noEvaluationBaseDate(ctx.application);
+      if (!base) return stateConflict('NO_EVALUATION_BASE_DATE_MISSING');
+      return daysBetween(base, bangkokToday(ctx.now)) >= ctx.config.noEvaluationAfterDays
         ? null
         : stateConflict('EVALUATION_NOT_OVERDUE');
     },
   },
 });
+
+/**
+ * วันฐานนับ 14 วันก่อน Admin ยืนยัน `NO_EVALUATION` (PM ตัดสินในรีวิว PR #36 — data-schema §8.1):
+ * `IN_PROGRESS` = `end_date`, `TERMINATED` = `actual_end_date`, `REEVALUATION_REQUESTED` = วันของ `status_changed_at` (เวลาไทย)
+ * ใช้ทั้ง Guard และ query `no-evaluation-candidates` (1.9) ให้นับตรงกัน
+ */
+export function noEvaluationBaseDate(
+  app: Pick<GuardApplication, 'status' | 'endDate' | 'actualEndDate' | 'statusChangedAt'>,
+): Date | null {
+  switch (app.status) {
+    case 'IN_PROGRESS':
+      return app.endDate;
+    case 'TERMINATED':
+      return app.actualEndDate;
+    case 'REEVALUATION_REQUESTED':
+      return bangkokToday(app.statusChangedAt);
+    default:
+      return null;
+  }
+}
 
 /** รัน Guard ตามลำดับในตาราง — คืน error ตัวแรกที่ไม่ผ่าน หรือ `null` เมื่อผ่านทั้งหมด */
 export function checkGuards(

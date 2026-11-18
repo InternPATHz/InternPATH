@@ -4,6 +4,7 @@ import { mapApplicationUniqueViolation } from '../../../src/state-machine/errors
 import {
   allowedAcademicResults,
   checkGuards,
+  noEvaluationBaseDate,
   startWarning,
   type GuardApplication,
   type GuardContext,
@@ -21,6 +22,7 @@ function app(overrides: Partial<GuardApplication> = {}): GuardApplication {
     actualStartDate: toDateOnly('2026-06-01'),
     actualEndDate: null,
     reevaluationUsed: false,
+    statusChangedAt: new Date('2026-06-01T00:00:00Z'),
     ...overrides,
   };
 }
@@ -138,6 +140,30 @@ describe('State Machine — Guard', () => {
   it('evaluationOverdue: Admin ยืนยัน NO_EVALUATION ได้เมื่อเลย end_date 14 วัน', () => {
     expect(checkGuards(['evaluationOverdue'], ctx({ now: new Date('2026-09-13T03:00:00Z') }))?.code).to.equal('STATE_CONFLICT');
     expect(checkGuards(['evaluationOverdue'], ctx({ now: new Date('2026-09-14T03:00:00Z') }))).to.equal(null);
+  });
+
+  it('evaluationOverdue: วันฐานตามสถานะ (PM รีวิว PR #36) — TERMINATED ใช้ actual_end_date, REEVALUATION_REQUESTED ใช้วันที่สั่งประเมินใหม่ (เวลาไทย)', () => {
+    const terminated = app({ status: 'TERMINATED', actualEndDate: toDateOnly('2026-07-10') });
+    expect(noEvaluationBaseDate(terminated)?.toISOString()).to.equal('2026-07-10T00:00:00.000Z');
+    expect(checkGuards(['evaluationOverdue'], ctx({ application: terminated, now: new Date('2026-07-23T03:00:00Z') }))?.code).to.equal(
+      'STATE_CONFLICT',
+    );
+    // วันที่ 14 ยืนยันได้ (>=)
+    expect(checkGuards(['evaluationOverdue'], ctx({ application: terminated, now: new Date('2026-07-24T03:00:00Z') }))).to.equal(null);
+
+    // สั่งประเมินใหม่ 1 ต.ค. 00:30 เวลาไทย (= 30 ก.ย. 17:30Z) ⇒ ฐานคือ 1 ต.ค.
+    const reeval = app({ status: 'REEVALUATION_REQUESTED', statusChangedAt: new Date('2026-09-30T17:30:00Z') });
+    expect(noEvaluationBaseDate(reeval)?.toISOString()).to.equal('2026-10-01T00:00:00.000Z');
+    expect(checkGuards(['evaluationOverdue'], ctx({ application: reeval, now: new Date('2026-10-14T03:00:00Z') }))?.code).to.equal(
+      'STATE_CONFLICT',
+    );
+    expect(checkGuards(['evaluationOverdue'], ctx({ application: reeval, now: new Date('2026-10-15T03:00:00Z') }))).to.equal(null);
+
+    // ไม่มีวันฐาน ⇒ ยืนยันไม่ได้
+    expect(
+      checkGuards(['evaluationOverdue'], ctx({ application: app({ status: 'TERMINATED', actualEndDate: null }) }))?.details?.[0]?.issue,
+    ).to.equal('NO_EVALUATION_BASE_DATE_MISSING');
+    expect(noEvaluationBaseDate(app({ status: 'EVALUATED_PASS' }))).to.equal(null);
   });
 
   it('probe ข้าม Guard ที่ต้องใช้ input แต่ execute ตรวจครบ', () => {

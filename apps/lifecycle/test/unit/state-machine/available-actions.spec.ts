@@ -15,6 +15,7 @@ function ctx(app: Partial<GuardApplication>, extra: Partial<AvailableActionsCont
       actualStartDate: null,
       actualEndDate: null,
       reevaluationUsed: false,
+      statusChangedAt: new Date('2026-06-01T00:00:00Z'),
       ...app,
     },
     now: new Date('2026-07-01T03:00:00Z'),
@@ -109,6 +110,29 @@ describe('State Machine — available_actions[]', () => {
       computeAvailableActions('PLATFORM_ADMIN', ctx({ status: 'IN_PROGRESS' }, { now: new Date('2026-09-15T03:00:00Z') }))
         .available_actions,
     ).to.have.members(['terminate', 'confirm-no-evaluation']);
+  });
+
+  it('Admin: ยืนยัน NO_EVALUATION ของ TERMINATED (ฝึกจริง ≥ 30 วัน) และ REEVALUATION_REQUESTED ได้เมื่อครบ 14 วัน', () => {
+    const terminated = (start: string, end: string, now: string) =>
+      computeAvailableActions(
+        'PLATFORM_ADMIN',
+        ctx(
+          { status: 'TERMINATED', actualStartDate: toDateOnly(start), actualEndDate: toDateOnly(end) },
+          { now: new Date(now) },
+        ),
+      ).available_actions;
+    expect(terminated('2026-06-01', '2026-07-15', '2026-07-20T03:00:00Z')).to.deep.equal([]);
+    expect(terminated('2026-06-01', '2026-07-15', '2026-07-29T03:00:00Z')).to.deep.equal(['confirm-no-evaluation']);
+    // ฝึกจริงไม่ถึง 30 วัน ⇒ ไม่เข้าสู่การประเมิน จึงไม่มี NO_EVALUATION
+    expect(terminated('2026-06-01', '2026-06-20', '2026-08-01T03:00:00Z')).to.deep.equal([]);
+
+    const reeval = (now: string) =>
+      computeAvailableActions(
+        'PLATFORM_ADMIN',
+        ctx({ status: 'REEVALUATION_REQUESTED', statusChangedAt: new Date('2026-09-01T03:00:00Z') }, { now: new Date(now) }),
+      ).available_actions;
+    expect(reeval('2026-09-14T03:00:00Z')).to.deep.equal([]);
+    expect(reeval('2026-09-15T03:00:00Z')).to.deep.equal(['confirm-no-evaluation']);
   });
 
   it('สถานะปลายทาง ไม่มีปุ่มสำหรับทุก role', () => {
