@@ -1,15 +1,19 @@
 import { Module } from '@nestjs/common';
-import { AppException } from '@internpath/common';
-import { AccountDeletionService, DELETION_ELIGIBILITY, type DeletionEligibility } from './account-deletion.service';
+import { AccountDeletionController } from './account-deletion.controller';
+import { AccountDeletionService, DELETION_ELIGIBILITY } from './account-deletion.service';
+import { LifecycleDeletionEligibility } from './lifecycle-eligibility.client';
 
-const unavailableEligibility: DeletionEligibility = {
-  assertNoActiveApplications: async () => {
-    throw new AppException('UPSTREAM_UNAVAILABLE', 'ยังตรวจสถานะใบสมัครไม่ได้', 503);
-  },
-};
-
+/**
+ * ลบบัญชี (README §5.11) — ตรวจสิทธิ์กับ Lifecycle ผ่าน `LifecycleDeletionEligibility` (fail-closed เมื่อเรียกไม่ได้)
+ * แทน provider ชั่วคราวที่ปฏิเสธทุกคำขอ (developer-guide §7)
+ */
 @Module({
-  providers: [AccountDeletionService, { provide: DELETION_ELIGIBILITY, useValue: unavailableEligibility }],
+  controllers: [AccountDeletionController],
+  providers: [
+    AccountDeletionService,
+    LifecycleDeletionEligibility,
+    { provide: DELETION_ELIGIBILITY, useExisting: LifecycleDeletionEligibility },
+  ],
   exports: [AccountDeletionService],
 })
 export class AccountDeletionModule {}
