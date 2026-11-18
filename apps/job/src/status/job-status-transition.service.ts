@@ -26,7 +26,13 @@ export class JobStatusTransitionService {
 
   constructor(private readonly outbox: OutboxWriter) {}
 
-  async change(tx: Tx, before: Job, transition: Transition, now: Date): Promise<boolean> {
+  async change(
+    tx: Tx,
+    before: Job,
+    transition: Transition,
+    now: Date,
+    via?: Transition,
+  ): Promise<boolean> {
     if (before.status === transition.to) {
       this.log.warn('Ignored Job transition without a status change');
       return false;
@@ -42,8 +48,8 @@ export class JobStatusTransitionService {
       },
       data: {
         status: transition.to,
-        version: { increment: 1 },
-        entityVersion: { increment: 1 },
+        version: { increment: via ? 2 : 1 },
+        entityVersion: { increment: via ? 2 : 1 },
         ...((before.status === 'VERIFYING' || before.status === 'PENDING_REVIEW') &&
         transition.to === 'PUBLISHED'
           ? { publishedAt: now }
@@ -68,6 +74,27 @@ export class JobStatusTransitionService {
       return false;
     }
 
+    if (via) {
+      // Record the logical suspension first. The database write above stores only the final status.
+      await this.record(tx, before, via, now);
+      await this.record(
+        tx,
+        { ...before, status: via.to, entityVersion: before.entityVersion + 1 },
+        transition,
+        new Date(now.getTime() + 1),
+      );
+    } else {
+      await this.record(tx, before, transition, now);
+    }
+    return true;
+  }
+
+  private async record(
+    tx: Tx,
+    before: Pick<Job, 'id' | 'companyId' | 'status' | 'entityVersion'>,
+    transition: Transition,
+    now: Date,
+  ): Promise<void> {
     const correlationId = asUuid(transition.correlationId);
     await tx.statusHistory.create({
       data: {
@@ -101,6 +128,5 @@ export class JobStatusTransitionService {
       correlationId,
       payload,
     });
-    return true;
   }
 }
