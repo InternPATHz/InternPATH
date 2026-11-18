@@ -2,6 +2,7 @@ import type {
   ApplicationAction,
   ApplicationBase,
   ApplicationStatus,
+  AdvisorApplicationItem,
   ApplicationTimelineEntry,
   StudentApplicationDetail,
 } from '@internpath/contracts';
@@ -91,6 +92,16 @@ export function toStudentDetail(
     ...optional('academic_result', app.academicResult ?? undefined),
     timeline: toTimeline(history),
     available_actions: actions,
+  };
+}
+
+/** รายการ GET /advisor/applications (และผลของ action ฝั่งอาจารย์) — `student_name` จาก `StudentNamesService` */
+export function toAdvisorItem(app: Application, names: SnapshotNames, studentName: string): AdvisorApplicationItem {
+  return {
+    ...toApplicationBase(app, names),
+    student_user_id: app.studentUserId,
+    student_name: studentName,
+    flagged_for_advisor: app.flaggedForAdvisor,
   };
 }
 

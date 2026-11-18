@@ -5,6 +5,7 @@ import type {
   ConsentCheckRequest,
   ConsentCheckResponse,
   InternalCompanyMembersResponse,
+  InternalStudentNamesResponse,
   InternalStudentResponse,
 } from '@internpath/contracts';
 import { fetchInternal } from './internal-http.client';
@@ -38,6 +39,16 @@ export class IdentityInternalClient {
   async getStudent(userId: string, correlationId?: string): Promise<InternalStudentResponse> {
     const url = `${this.baseUrl}/internal/v1/students/${userId}`;
     return fetchInternal<InternalStudentResponse>(url, {
+      method: 'GET',
+      serviceToken: this.getServiceToken(),
+      correlationId,
+    });
+  }
+
+  /** ชื่อนักศึกษาแบบ Batch (≤ 100 ต่อครั้ง) — id ที่ไม่ใช่นักศึกษา/บัญชีถูกลบจะไม่อยู่ในผลลัพธ์ */
+  async getStudentNames(userIds: readonly string[], correlationId?: string): Promise<InternalStudentNamesResponse> {
+    const url = `${this.baseUrl}/internal/v1/students/names?ids=${userIds.map(encodeURIComponent).join(',')}`;
+    return fetchInternal<InternalStudentNamesResponse>(url, {
       method: 'GET',
       serviceToken: this.getServiceToken(),
       correlationId,
