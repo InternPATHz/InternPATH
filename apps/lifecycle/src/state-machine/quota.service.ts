@@ -1,3 +1,4 @@
+import { AppException } from '@internpath/common';
 import { Injectable, Logger } from '@nestjs/common';
 import { JobInternalClient } from '../internal/job-client.service';
 import type { PendingQuotaEffect, TransitionOutcome } from './application-transition.service';
@@ -24,6 +25,31 @@ export class QuotaService {
   /** release ชดเชยเมื่อ Transaction หลัง reserve ล้มเหลว — ไม่โยน error ทับ error เดิม */
   async compensate(jobId: string, applicationId: string, correlationId?: string): Promise<void> {
     await this.settle([{ effect: 'RELEASE', jobId, applicationId, reason: 'TRANSITION_FAILED' }], correlationId);
+  }
+
+  /**
+   * ซ่อมให้ Job ตรงกับที่ Lifecycle ถืออยู่ (QIR-01/QIR-03) — Lifecycle ชี้ขาด:
+   * reserve ซ้ำ (idempotent ขณะ `RESERVED`/`CONFIRMED`; หลัง `RELEASED` จองใหม่ — api-contract §9, #83) แล้ว confirm เมื่อ `confirmed`
+   * - `OK` = Job อยู่ในสถานะที่ต้องการแล้ว
+   * - `QUOTA_FULL` = จองใหม่ไม่ได้เพราะที่นั่งถูกจองไปแล้ว **ไม่ถือว่าซ่อมสำเร็จ** (ผู้เรียกลองใหม่รอบหน้า)
+   * - `FAILED` = Job ไม่ตอบ/ปฏิเสธ (ลองใหม่รอบหน้า)
+   * log เฉพาะ id และรหัส error
+   */
+  async repair(
+    jobId: string,
+    applicationId: string,
+    confirmed: boolean,
+    correlationId?: string,
+  ): Promise<'OK' | 'QUOTA_FULL' | 'FAILED'> {
+    try {
+      await this.job.reserveQuota(jobId, applicationId, correlationId);
+      if (confirmed) await this.job.confirmQuota(jobId, applicationId, correlationId);
+      return 'OK';
+    } catch (error) {
+      const code = error instanceof AppException ? error.code : 'UNKNOWN';
+      this.log.warn({ application_id: applicationId, job_id: jobId, code }, 'Quota repair did not complete');
+      return code === 'QUOTA_FULL' ? 'QUOTA_FULL' : 'FAILED';
+    }
   }
 
   /** เรียก confirm/release หลัง commit — คืนรายการที่ล้มเหลว (ให้ Reconciliation แก้ภายหลัง) */

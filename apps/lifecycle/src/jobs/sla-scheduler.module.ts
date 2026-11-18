@@ -2,6 +2,7 @@ import { Injectable, Logger, Module, type OnApplicationBootstrap } from '@nestjs
 import { ScheduleModule, SchedulerRegistry } from '@nestjs/schedule';
 import { LifecycleConfigService } from '../config/lifecycle-config.service';
 import { StateMachineModule } from '../state-machine/state-machine.module';
+import { QuotaRepairService } from './quota-repair.service';
 import { SlaSchedulerService } from './sla-scheduler.service';
 
 export const SLA_INTERVAL_NAME = 'lifecycle-sla-scheduler';
@@ -18,6 +19,7 @@ export class SlaSchedulerRunner implements OnApplicationBootstrap {
 
   constructor(
     private readonly scheduler: SlaSchedulerService,
+    private readonly quotaRepair: QuotaRepairService,
     private readonly config: LifecycleConfigService,
     private readonly registry: SchedulerRegistry,
   ) {}
@@ -33,9 +35,17 @@ export class SlaSchedulerRunner implements OnApplicationBootstrap {
     if (this.running) return;
     this.running = true;
     try {
-      await this.scheduler.runOnce();
-    } catch (error) {
-      this.logger.error(`SLA run failed: ${(error as Error).name}`);
+      try {
+        await this.scheduler.runOnce();
+      } catch (error) {
+        this.logger.error(`SLA run failed: ${(error as Error).name}`);
+      }
+      // ซ่อมโควตาฝั่ง Job (QIR-01/03) รอบเดียวกับ SLA — ล้มไม่กระทบ SLA และกลับมาลองใหม่รอบหน้า
+      try {
+        await this.quotaRepair.runOnce();
+      } catch (error) {
+        this.logger.error(`Quota repair run failed: ${(error as Error).name}`);
+      }
     } finally {
       this.running = false;
     }
@@ -44,7 +54,7 @@ export class SlaSchedulerRunner implements OnApplicationBootstrap {
 
 @Module({
   imports: [ScheduleModule.forRoot(), StateMachineModule],
-  providers: [SlaSchedulerService, SlaSchedulerRunner],
-  exports: [SlaSchedulerService],
+  providers: [SlaSchedulerService, QuotaRepairService, SlaSchedulerRunner],
+  exports: [SlaSchedulerService, QuotaRepairService],
 })
 export class SlaSchedulerModule {}

@@ -11,6 +11,7 @@ import {
 } from '../../src/jobs/sla-rules';
 import type { SchedulerRegistry } from '@nestjs/schedule';
 import type { LifecycleConfigService } from '../../src/config/lifecycle-config.service';
+import type { QuotaRepairService } from '../../src/jobs/quota-repair.service';
 import { SLA_INTERVAL_NAME, SlaSchedulerRunner } from '../../src/jobs/sla-scheduler.module';
 import type { SlaSchedulerService } from '../../src/jobs/sla-scheduler.service';
 import { addDays, bangkokToday } from '../../src/state-machine/dates';
@@ -185,10 +186,11 @@ describe('SLA rules (Unit) — README §5.3', () => {
 });
 
 describe('SlaSchedulerRunner (Unit)', () => {
-  const makeRunner = (runOnce: () => Promise<unknown>) => {
+  const makeRunner = (runOnce: () => Promise<unknown>, repairOnce: () => Promise<unknown> = async () => undefined) => {
     const registered: string[] = [];
     const runner = new SlaSchedulerRunner(
       { runOnce } as unknown as SlaSchedulerService,
+      { runOnce: repairOnce } as unknown as QuotaRepairService,
       { getNumber: async () => 15 } as unknown as LifecycleConfigService,
       { addInterval: (name: string, handle: NodeJS.Timeout) => { registered.push(name); clearInterval(handle); } } as unknown as SchedulerRegistry,
     );
@@ -215,5 +217,33 @@ describe('SlaSchedulerRunner (Unit)', () => {
       throw new Error('db down');
     });
     await failing.runner.tick(); // ไม่ throw
+  });
+
+  it('ซ่อมโควตาทุกรอบหลัง SLA • repair ล้มไม่กระทบ SLA และ SLA ล้มไม่ข้าม repair', async () => {
+    const order: string[] = [];
+    const ok = makeRunner(
+      async () => void order.push('sla'),
+      async () => void order.push('repair'),
+    );
+    await ok.runner.tick();
+    expect(order).to.deep.equal(['sla', 'repair']);
+
+    const repairFails = makeRunner(
+      async () => void order.push('sla2'),
+      async () => {
+        throw new Error('job down');
+      },
+    );
+    await repairFails.runner.tick(); // ไม่ throw
+    expect(order).to.deep.equal(['sla', 'repair', 'sla2']);
+
+    const slaFails = makeRunner(
+      async () => {
+        throw new Error('db down');
+      },
+      async () => void order.push('repair3'),
+    );
+    await slaFails.runner.tick();
+    expect(order).to.deep.equal(['sla', 'repair', 'sla2', 'repair3']);
   });
 });

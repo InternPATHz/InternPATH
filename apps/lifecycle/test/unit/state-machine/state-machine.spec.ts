@@ -47,6 +47,8 @@ describe('State Machine — ApplicationStateMachine (โควตา + Transacti
       new ApplicationTransitionService(new OutboxWriter(), new StatusHistoryWriter()),
       new QuotaService(job as any),
       config as any,
+      // lease ตัวจริงใช้ SQL ตรง (ทดสอบบน Postgres จริงใน test/db/quota-lease-repair.spec.ts) — ที่นี่ให้ได้ lease เสมอ
+      { acquire: async () => new Date(Date.now() + 45_000), release: async () => undefined } as any,
     );
   });
 
@@ -118,8 +120,8 @@ describe('State Machine — ApplicationStateMachine (โควตา + Transacti
     let calls = 0;
     db.application.findUnique = async (args: any) => {
       calls++;
-      // ครั้งที่ 1 = execute อ่านใบสมัคร, ครั้งที่ 2 = ใน Transaction, ครั้งที่ 3 = ตรวจก่อนชดเชย
-      if (calls === 3) throw new Error('db down');
+      // ครั้งที่ 1 = execute อ่านใบสมัคร, ครั้งที่ 2 = ยืนยันหลังได้ lease, ครั้งที่ 3 = ใน Transaction, ครั้งที่ 4 = ตรวจก่อนชดเชย
+      if (calls === 4) throw new Error('db down');
       return realFindUnique(args);
     };
     job.reserveQuota.callsFake(async () => {
@@ -127,7 +129,7 @@ describe('State Machine — ApplicationStateMachine (โควตา + Transacti
       return { reserved: true };
     });
     await rejects(machine.execute(app.id, { trigger: 'accept', actor: hr, input: acceptInput, correlationId: 'c' }, NOW), 'STATE_CONFLICT');
-    expect(calls).to.equal(3);
+    expect(calls).to.equal(4);
     expect(job.releaseQuota.called).to.equal(false);
   });
 
