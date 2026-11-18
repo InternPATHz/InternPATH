@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException, isUuid } from '@internpath/common';
-import type { ConsentCheckRequest, ConsentCheckResponse, InternalAdminsResponse, InternalCompanyMembersResponse,
+import type { ConsentCheckBatchRequest, ConsentCheckBatchResponse, ConsentCheckRequest, ConsentCheckResponse, InternalAdminsResponse, InternalCompanyMembersResponse,
   InternalDenylistResponse, InternalStudentNamesResponse, InternalStudentResponse, UserContact } from '@internpath/contracts';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -71,10 +71,26 @@ export class InternalService {
     return members.map((member) => ({ user_id: member.userId, member_role: member.memberRole }));
   }
 
+  /** Consent ที่ใช้อยู่ = RESUME_SHARE ล่าสุดที่ยังไม่ถูกเพิกถอน ของนักศึกษา ACTIVE */
   async consent(body: ConsentCheckRequest): Promise<ConsentCheckResponse> {
     const consent = await this.db.consent.findFirst({ where: { userId: body.student_user_id, type: 'RESUME_SHARE',
-      targetCompanyId: body.company_id, revokedAt: null, user: { role: 'STUDENT', status: 'ACTIVE' } }, select: { id: true } });
-    return { has_consent: !!consent };
+      targetCompanyId: body.company_id, revokedAt: null, user: { role: 'STUDENT', status: 'ACTIVE' } },
+      select: { id: true }, orderBy: [{ grantedAt: 'desc' }, { id: 'desc' }] });
+    return consent ? { has_consent: true, consent_id: consent.id } : { has_consent: false };
+  }
+
+  /** เงื่อนไขเดียวกับ `consent()` แต่ query เดียวสำหรับหลายนักศึกษา — คืนเฉพาะคนที่มี Consent ตามลำดับคำขอ */
+  async consentBatch(body: ConsentCheckBatchRequest): Promise<ConsentCheckBatchResponse> {
+    const unique = [...new Set(body.student_user_ids)];
+    const rows = await this.db.consent.findMany({ where: { userId: { in: unique }, type: 'RESUME_SHARE',
+      targetCompanyId: body.company_id, revokedAt: null, user: { role: 'STUDENT', status: 'ACTIVE' } },
+      select: { id: true, userId: true }, orderBy: [{ grantedAt: 'desc' }, { id: 'desc' }] });
+    const latest = new Map<string, string>();
+    for (const row of rows) if (!latest.has(row.userId)) latest.set(row.userId, row.id);
+    return unique.flatMap((id) => {
+      const consentId = latest.get(id);
+      return consentId ? [{ student_user_id: id, consent_id: consentId }] : [];
+    });
   }
 
   async admins(): Promise<InternalAdminsResponse> {

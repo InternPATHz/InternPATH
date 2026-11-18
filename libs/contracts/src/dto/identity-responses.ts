@@ -178,6 +178,18 @@ export interface ConsentCheckResponse {
   consent_id?: string;
 }
 
+/**
+ * POST /internal/v1/consents/check-batch (ผู้เรียก lifecycle) — ตรวจ Consent หลายนักศึกษากับบริษัทเดียว
+ * `student_user_ids` 1–100 รายการ (ตัดซ้ำ) เงื่อนไขเดียวกับ `consents/check`
+ */
+export interface ConsentCheckBatchRequest {
+  company_id: string;
+  student_user_ids: string[];
+}
+
+/** คืนเฉพาะนักศึกษาที่มี Consent (เรียงตามคำขอ) — id ที่ไม่อยู่ในผลลัพธ์ = ไม่มี Consent */
+export type ConsentCheckBatchResponse = Array<{ student_user_id: string; consent_id: string }>;
+
 /** GET /internal/v1/admins */
 export type InternalAdminsResponse = Array<{ user_id: string }>;
 
