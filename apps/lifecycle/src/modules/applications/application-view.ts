@@ -2,6 +2,7 @@ import type {
   ApplicationAction,
   ApplicationBase,
   ApplicationStatus,
+  AdvisorApplicationItem,
   ApplicationTimelineEntry,
   HrApplicationDetail,
   HrApplicationItem,
@@ -97,13 +98,23 @@ export function toStudentDetail(
   };
 }
 
+/** รายการ GET /advisor/applications (และผลของ action ฝั่งอาจารย์) — `student_name` จาก `StudentNamesService` */
+export function toAdvisorItem(app: Application, names: SnapshotNames, studentName: string): AdvisorApplicationItem {
+  return {
+    ...toApplicationBase(app, names),
+    student_user_id: app.studentUserId,
+    student_name: studentName,
+    flagged_for_advisor: app.flaggedForAdvisor,
+  };
+}
+
 /** รายการ GET /hr/applications — ไม่มีโปรไฟล์/ข้อความ (ดูได้ในรายละเอียดหลังตรวจ Consent) */
 export function toHrItem(app: Application, names: SnapshotNames): HrApplicationItem {
   return { ...toApplicationBase(app, names), student_user_id: app.studentUserId };
 }
 
 /**
- * GET /hr/applications/{id} — `profile` ใส่เฉพาะเมื่อมี Consent (ผู้เรียกตัดสิน) • ไม่มีรายงานปัญหา (README §5.11)
+ * GET /hr/applications/{id} — `profile` ใส่เฉพาะเมื่อ Consent (ผู้เรียกตัดสิน) • ไม่มีรายงานปัญหา (README §5.11)
  * `accept_blocked_reason` มีเมื่อ `accept` กดไม่ได้ (เช่นนักศึกษายืนยันที่อื่นแล้ว)
  */
 export function toHrDetail(

@@ -61,6 +61,26 @@ describe('Internal API Clients (Unit)', () => {
     expect(decoded.payload.jti).to.be.a('string');
   });
 
+  it('IdentityInternalClient.getStudentNames เรียก GET students/names?ids= แบบ Batch (api-contract §9)', async () => {
+    let capturedUrl = '';
+    let capturedMethod = '';
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      capturedUrl = url;
+      capturedMethod = init?.method ?? '';
+      return new Response(JSON.stringify([{ user_id: 'a', full_name: 'A' }]), { status: 200 });
+    }) as any;
+    const config = new ConfigService({
+      IDENTITY_URL: 'http://127.0.0.1:3001',
+      IDENTITY_SERVICE_SECRET_LIFECYCLE: 'test-identity-service-secret-lifecycle-32-chars-long',
+    });
+    const client = new IdentityInternalClient(config);
+
+    const result = await client.getStudentNames(['a', 'b'], 'corr-3');
+    expect(result).to.deep.equal([{ user_id: 'a', full_name: 'A' }]);
+    expect(capturedMethod).to.equal('GET');
+    expect(capturedUrl).to.equal('http://127.0.0.1:3001/internal/v1/students/names?ids=a,b');
+  });
+
   it('IdentityInternalClient ส่ง checkConsent ถูกต้อง', async () => {
     let capturedUrl = '';
     let capturedHeaders: Record<string, string> = {};

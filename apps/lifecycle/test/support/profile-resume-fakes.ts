@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AppException } from '@internpath/common';
-import type { ConsentCheckResponse, InternalStudentResponse } from '@internpath/contracts';
+import type { ConsentCheckResponse, InternalStudentNamesResponse, InternalStudentResponse } from '@internpath/contracts';
 
 /**
  * ตัวปลอมในหน่วยความจำสำหรับเทสต์ 1.3 (โปรไฟล์/เรซูเม่) — รองรับเฉพาะ query ที่ ProfilesService/ResumesService ใช้
@@ -181,6 +181,18 @@ export class FakeIdentity {
     if (this.unavailable) throw new AppException('UPSTREAM_UNAVAILABLE', 'identity down', 502);
     this.consentCalls.push({ student, company });
     return { has_consent: this.consents.has(`${student}:${company}`) };
+  }
+
+  /** `GET /internal/v1/students/names?ids=` — แต่ละครั้งที่เรียก (ตรวจการแบ่ง batch ≤ 100) */
+  nameCalls: string[][] = [];
+
+  async getStudentNames(ids: readonly string[]): Promise<InternalStudentNamesResponse> {
+    if (this.unavailable) throw new AppException('UPSTREAM_UNAVAILABLE', 'identity down', 502);
+    this.nameCalls.push([...ids]);
+    return ids.flatMap((id) => {
+      const student = this.students.get(id);
+      return student ? [{ user_id: id, full_name: student.full_name }] : [];
+    });
   }
 }
 

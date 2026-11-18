@@ -1,12 +1,15 @@
-import { OutboxWriter, asUuid } from '@internpath/common';
-import type { ProblemReportCreatedPayload, ProblemReportItem } from '@internpath/contracts';
+import { AppException, OutboxWriter, asUuid, type JwtClaims } from '@internpath/common';
+import type { Paginated, ProblemReportCreatedPayload, ProblemReportItem, ProblemReportStatus } from '@internpath/contracts';
 import { Injectable } from '@nestjs/common';
-import type { ProblemReport } from '../../../generated/client';
+import type { Prisma, ProblemReport } from '../../../generated/client';
+import { assertAdvisorOwnership } from '../../common/auth/ownership';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import type { Tx } from '../../prisma/types';
 import { applicationNotFound, stateConflict } from '../../state-machine/errors';
 import { advisorNotLinked } from '../applications/apply-rules';
 import type { CreateProblemReportDto } from '../applications/applications.dto';
+import type { ResolveProblemReportDto } from './problem-reports.dto';
 
 export const PROBLEM_REPORT_CREATED = 'ProblemReportCreated';
 
@@ -89,5 +92,82 @@ export class ProblemReportsService {
     });
 
     return toProblemReportItem(report, now);
+  }
+
+  // ---------- อาจารย์ / Admin (api-contract §7.4 — 1.6) ----------
+
+  /** GET /advisor/problem-reports — รายงานของใบสมัครที่ผูกกับอาจารย์คนนี้ (`applications.advisor_user_id` ย้ายตาม E07) */
+  async listForAdvisor(
+    advisorUserId: string,
+    status: ProblemReportStatus | undefined,
+    page = 1,
+    pageSize = 20,
+    now = new Date(),
+  ): Promise<Paginated<ProblemReportItem>> {
+    const where: Prisma.ProblemReportWhereInput = {
+      application: { advisorUserId },
+      ...(status ? { status } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.db.problemReport.findMany({
+        where,
+        orderBy: [{ dueAt: 'asc' }, { id: 'asc' }],
+        skip: (page - 1) * pageSize,
+        take: pageSize,
+      }),
+      this.db.problemReport.count({ where }),
+    ]);
+    return { data: rows.map((row) => toProblemReportItem(row, now)), meta: { page, page_size: pageSize, total } };
+  }
+
+  /** `acknowledge` — `OPEN → ACKNOWLEDGED` เท่านั้น (ไม่ย้อน — data-schema) ไม่งั้น `409 STATE_CONFLICT` + `NOT_OPEN` */
+  async acknowledge(user: JwtClaims, reportId: string, now = new Date()): Promise<ProblemReportItem> {
+    return this.db.$transaction(async (tx) => {
+      const report = await this.lockForReviewer(tx, user, reportId);
+      if (report.status !== 'OPEN') throw stateConflict('NOT_OPEN');
+      const row = await tx.problemReport.update({
+        where: { id: report.id },
+        data: { status: 'ACKNOWLEDGED', acknowledgedBy: user.sub, acknowledgedAt: now },
+      });
+      return toProblemReportItem(row, now);
+    });
+  }
+
+  /**
+   * `resolve` `{note, follow_up_action?}` — จาก `OPEN` หรือ `ACKNOWLEDGED` → `RESOLVED` (จาก `OPEN` ตั้ง acknowledged ไปด้วย)
+   * `RESOLVED` แล้ว ⇒ `409 STATE_CONFLICT` + `ALREADY_RESOLVED` • `follow_up_action` บันทึกอย่างเดียว ไม่เปลี่ยนสถานะใบสมัครเอง
+   */
+  async resolve(user: JwtClaims, reportId: string, body: ResolveProblemReportDto, now = new Date()): Promise<ProblemReportItem> {
+    return this.db.$transaction(async (tx) => {
+      const report = await this.lockForReviewer(tx, user, reportId);
+      if (report.status === 'RESOLVED') throw stateConflict('ALREADY_RESOLVED');
+      const row = await tx.problemReport.update({
+        where: { id: report.id },
+        data: {
+          status: 'RESOLVED',
+          ...(report.acknowledgedAt ? {} : { acknowledgedBy: user.sub, acknowledgedAt: now }),
+          resolvedBy: user.sub,
+          resolvedAt: now,
+          resolutionNote: body.note,
+          followUpAction: body.follow_up_action ?? null,
+        },
+      });
+      return toProblemReportItem(row, now);
+    });
+  }
+
+  /**
+   * ล็อกแถวรายงาน แล้วตรวจสิทธิ์: Admin ได้ทุกรายงาน • อาจารย์ต้องเป็น `advisor_user_id` ปัจจุบันของใบสมัคร ไม่งั้น 403
+   * ไม่มี ⇒ 404 (HR ถูกกันที่ `@Roles` ก่อนถึงตรงนี้ — README §5.11)
+   */
+  private async lockForReviewer(tx: Tx, user: JwtClaims, reportId: string): Promise<ProblemReport> {
+    await tx.$queryRaw`SELECT id FROM problem_reports WHERE id = ${reportId}::uuid FOR UPDATE`;
+    const report = await tx.problemReport.findUnique({
+      where: { id: reportId },
+      include: { application: { select: { advisorUserId: true } } },
+    });
+    if (!report) throw new AppException('NOT_FOUND', 'ไม่พบรายงานปัญหา', 404);
+    if (user.role !== 'PLATFORM_ADMIN') assertAdvisorOwnership(user, report.application.advisorUserId);
+    return report;
   }
 }
