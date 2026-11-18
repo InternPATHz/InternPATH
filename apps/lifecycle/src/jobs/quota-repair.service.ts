@@ -5,12 +5,24 @@ import { PrismaService } from '../prisma/prisma.service';
 import { QuotaLeaseService } from '../state-machine/quota-lease.service';
 import { QuotaService } from '../state-machine/quota.service';
 
-/** สถานะที่ถือโควตาแบบ "จองแล้วรอยืนยัน" — Job ควรเป็น `RESERVED` */
+/**
+ * สถานะที่ถือโควตาแบบ "จองแล้วรอยืนยัน" — Job ควรเป็น `RESERVED` (ตรวจทุกรอบ)
+ * ทุกสถานะอื่นที่ `quota_reserved = true` = ผ่าน `start` มาแล้ว ⇒ ที่นั่งยืนยันถาวร Job ควรเป็น `CONFIRMED`
+ * (transition-table: release ได้เฉพาะก่อน confirm — ใบที่ยุติ/ประเมิน/จบหลังเริ่มฝึกยังถือที่นั่งต่อ)
+ */
 export const QUOTA_RESERVED_STATUSES: readonly ApplicationStatus[] = ['HR_ACCEPTED', 'ADVISOR_PENDING', 'ADVISOR_APPROVED'];
-/** สถานะที่ยืนยันโควตาแล้ว (`start`) — Job ควรเป็น `CONFIRMED` */
-export const QUOTA_CONFIRMED_STATUSES: readonly ApplicationStatus[] = ['IN_PROGRESS'];
-/** ขอบเขตการซ่อม: ใบที่ยังดำเนินอยู่และถือโควตา (ใบที่จบแล้วไม่ซ่อม — ที่นั่งที่ยืนยันไปแล้วไม่ต้องไล่ตามอีก) */
-export const QUOTA_REPAIR_STATUSES: readonly ApplicationStatus[] = [...QUOTA_RESERVED_STATUSES, ...QUOTA_CONFIRMED_STATUSES];
+
+/**
+ * ใบที่ควรเป็น `CONFIRMED` จะถูกจด `quota_synced_at` = "ตรวจตรงกับ Job ล่าสุดเมื่อ" เมื่อซ่อม/ตรวจยืนยันแล้ว
+ * **และสถานะนิ่งมาอย่างน้อยช่วงนี้** (เผื่อ release เก่าที่ค้างบนเครือข่ายมาถึงทีหลัง)
+ */
+export const QUOTA_SYNC_SETTLE_MS = 3_600_000;
+
+/**
+ * ไม่ข้ามการตรวจถาวร (รีวิว JR): ใบที่จดแล้วถูกตรวจซ้ำเมื่อค่าเก่ากว่านี้ — release เก่าที่มาช้าหลังจดก็ยังกู้ได้
+ * งานต่อวัน = จำนวนใบที่ยืนยันที่นั่งแล้ว (เรียก Job 2 ครั้งต่อใบต่อวัน) ไม่ใช่ทุกรอบ Scheduler
+ */
+export const QUOTA_SYNC_RECHECK_MS = 24 * 3_600_000;
 
 const BATCH_SIZE = 200;
 
@@ -19,7 +31,7 @@ export interface QuotaRepairResult {
   scanned: number;
   /** Job อยู่ในสถานะที่ต้องการแล้ว (รวมกรณีที่ตรงอยู่แล้ว — reserve/confirm ซ้ำเป็น no-op) */
   synced: number;
-  /** จองใหม่ไม่ได้เพราะที่นั่งถูกจองไปแล้ว — **ไม่ถือว่าซ่อมสำเร็จ** ลองใหม่รอบหน้า */
+  /** จองใหม่ไม่ได้เพราะที่นั่งถูกจองไปแล้ว = **จองเกินจริง** — ไม่ถือว่าซ่อมสำเร็จ (log error) ลองใหม่รอบหน้า */
   quotaFull: number;
   /** Job ไม่ตอบ/ปฏิเสธ — ลองใหม่รอบหน้า */
   failed: number;
@@ -34,9 +46,13 @@ export interface QuotaRepairResult {
  * - release เก่าที่มาช้าไปปลดการจองของ accept รอบใหม่ (Job ไม่มีการจอง แต่ Lifecycle ถือ `quota_reserved = true`)
  * - confirm ล้มหลัง commit (ใบเป็น `IN_PROGRESS` แต่ Job ค้าง `RESERVED`)
  *
- * ทำโดยเรียก reserve (idempotent ขณะ `RESERVED`/`CONFIRMED`, หลัง `RELEASED` จองใหม่ — api-contract §9) แล้ว confirm เมื่อ `IN_PROGRESS`
+ * ขอบเขต: **ทุกใบที่ `quota_reserved = true`** (รวม `TERMINATED`/หลังประเมิน — ที่นั่งที่ยืนยันแล้วต้องคงอยู่ใน Job ถาวร)
+ * - สถานะก่อน `start` (`QUOTA_RESERVED_STATUSES`) ⇒ reserve ซ้ำ ตรวจทุกรอบ
+ * - สถานะอื่น ⇒ reserve ซ้ำ + confirm จนยืนยันตรงแล้วจด `quota_synced_at` (สถานะนิ่ง ≥ `QUOTA_SYNC_SETTLE_MS`)
+ *   ข้ามจนกว่าค่านั้นจะเก่ากว่า `QUOTA_SYNC_RECHECK_MS` แล้วตรวจซ้ำ (ไม่ข้ามถาวร)
+ * ทำโดยเรียก reserve (idempotent ขณะ `RESERVED`/`CONFIRMED`, หลัง `RELEASED` จองใหม่ — api-contract §9) แล้ว confirm เมื่อควรเป็น `CONFIRMED`
  * - ถือ lease เดียวกับคำสั่ง accept (`QuotaLeaseService`) — ใบที่มีคำสั่งค้างอยู่ข้ามไปรอบหน้า
- * - อ่านใบซ้ำหลังได้ lease: ถ้าไม่ถือโควตาแล้ว/สถานะนอกขอบเขต ⇒ ไม่เรียก Job (ไม่จองให้ใบที่คืนไปแล้ว)
+ * - อ่านใบซ้ำหลังได้ lease: ถ้าไม่ถือโควตาแล้ว ⇒ ไม่เรียก Job (ไม่จองให้ใบที่คืนไปแล้ว)
  * - ล้มรายใบไม่หยุดใบอื่น และไม่เขียนอะไรกลับ ⇒ ไม่หลอกตัวเองว่าซ่อมสำเร็จ (นับเป็น `quotaFull`/`failed` แล้ว log)
  */
 @Injectable()
@@ -49,13 +65,20 @@ export class QuotaRepairService {
     private readonly quota: QuotaService,
   ) {}
 
-  async runOnce(): Promise<QuotaRepairResult> {
+  async runOnce(now = new Date()): Promise<QuotaRepairResult> {
     const result: QuotaRepairResult = { scanned: 0, synced: 0, quotaFull: 0, failed: 0, skipped: 0 };
     const correlationId = randomUUID();
     let cursor: string | undefined;
     for (;;) {
       const batch = await this.db.application.findMany({
-        where: { quotaReserved: true, status: { in: [...QUOTA_REPAIR_STATUSES] } },
+        where: {
+          quotaReserved: true,
+          OR: [
+            { status: { in: [...QUOTA_RESERVED_STATUSES] } },
+            { quotaSyncedAt: null },
+            { quotaSyncedAt: { lt: new Date(now.getTime() - QUOTA_SYNC_RECHECK_MS) } },
+          ],
+        },
         select: { id: true },
         orderBy: { id: 'asc' },
         take: BATCH_SIZE,
@@ -66,7 +89,7 @@ export class QuotaRepairService {
       for (const { id } of batch) {
         result.scanned += 1;
         try {
-          const outcome = await this.repairOne(id, correlationId);
+          const outcome = await this.repairOne(id, correlationId, now);
           result[outcome] += 1;
         } catch (error) {
           result.failed += 1;
@@ -83,22 +106,32 @@ export class QuotaRepairService {
     return result;
   }
 
-  private async repairOne(applicationId: string, correlationId: string): Promise<'synced' | 'quotaFull' | 'failed' | 'skipped'> {
+  private async repairOne(
+    applicationId: string,
+    correlationId: string,
+    now: Date,
+  ): Promise<'synced' | 'quotaFull' | 'failed' | 'skipped'> {
     const token = await this.lease.acquire(applicationId);
     if (!token) return 'skipped';
     try {
       const fresh = await this.db.application.findUnique({
         where: { id: applicationId },
-        select: { jobId: true, status: true, quotaReserved: true },
+        select: { jobId: true, status: true, quotaReserved: true, quotaSyncedAt: true, statusChangedAt: true },
       });
-      if (!fresh || !fresh.quotaReserved || !QUOTA_REPAIR_STATUSES.includes(fresh.status)) return 'skipped';
-      const outcome = await this.quota.repair(
-        fresh.jobId,
-        applicationId,
-        QUOTA_CONFIRMED_STATUSES.includes(fresh.status),
-        correlationId,
-      );
-      return outcome === 'OK' ? 'synced' : outcome === 'QUOTA_FULL' ? 'quotaFull' : 'failed';
+      if (!fresh || !fresh.quotaReserved) return 'skipped';
+      const confirmed = !QUOTA_RESERVED_STATUSES.includes(fresh.status);
+      if (confirmed && fresh.quotaSyncedAt && now.getTime() - fresh.quotaSyncedAt.getTime() < QUOTA_SYNC_RECHECK_MS) {
+        return 'skipped';
+      }
+
+      const outcome = await this.quota.repair(fresh.jobId, applicationId, confirmed, correlationId);
+      if (outcome !== 'OK') return outcome === 'QUOTA_FULL' ? 'quotaFull' : 'failed';
+
+      // ยืนยันตรงแล้วและสถานะนิ่งพอ ⇒ จดไว้ ไม่ตรวจซ้ำ (ยังไม่นิ่ง ⇒ ตรวจอีกรอบเผื่อ release เก่าตามมา)
+      if (confirmed && now.getTime() - fresh.statusChangedAt.getTime() >= QUOTA_SYNC_SETTLE_MS) {
+        await this.db.application.updateMany({ where: { id: applicationId }, data: { quotaSyncedAt: now } });
+      }
+      return 'synced';
     } finally {
       await this.lease.release(applicationId, token);
     }

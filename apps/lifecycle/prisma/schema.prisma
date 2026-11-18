@@ -303,6 +303,8 @@ model Application {
   quotaReserved            Boolean                   @default(false) @map("quota_reserved")
   /// Lease กันคำสั่ง reserve/compensate ของใบเดียวกันซ้อนกัน (QIR-01) — NULL หรือ <= now() = ว่าง; ห้ามคืนออก API
   quotaOpUntil             DateTime?                 @map("quota_op_until") @db.Timestamptz(6)
+  /// เวลาที่ Scheduler ตรวจว่าที่นั่งของใบที่ยืนยันแล้ว (สถานะหลัง `start`) ตรงกับ Job ล่าสุด — ตรวจซ้ำทุก 24 ชม.; ห้ามคืนออก API
+  quotaSyncedAt            DateTime?                 @map("quota_synced_at") @db.Timestamptz(6)
   statusChangedAt          DateTime                  @default(now()) @map("status_changed_at") @db.Timestamptz(6)
   terminatedBy             TerminatedBy?             @map("terminated_by")
   terminateReason          String?                   @map("terminate_reason") @db.Text
