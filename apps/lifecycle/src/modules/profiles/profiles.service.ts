@@ -33,18 +33,29 @@ export class ProfilesService {
     private readonly identity: IdentityInternalClient,
   ) {}
 
-  /** GET /me/profile — ยังไม่มีแถว ⇒ สร้างจากข้อมูล Identity (ฟิลด์อื่นว่าง) */
+  /**
+   * GET /me/profile — ยังไม่มีแถว ⇒ สร้างจากข้อมูล Identity (ฟิลด์อื่นว่าง)
+   * คำขอแรกพร้อมกันหลายคำขอ (React effect สองรอบ / เปิดสองแท็บ) จะชน unique `user_id` ตอนสร้าง
+   * ⇒ ถือว่าอีกคำขอสร้างให้แล้ว อ่านแถวนั้นคืน (ไม่ใช่ข้อผิดพลาด)
+   */
   async get(userId: string, correlationId?: string): Promise<StudentProfile> {
     const existing = await this.db.studentProfile.findUnique({ where: { userId } });
     if (existing) return toStudentProfile(existing);
 
     const student = await this.identity.getStudent(userId, correlationId);
-    const created = await this.db.studentProfile.upsert({
-      where: { userId },
-      create: { userId, major: student.major, yearLevel: student.year_level, skills: [] },
-      update: {},
-    });
-    return toStudentProfile(created);
+    try {
+      const created = await this.db.studentProfile.upsert({
+        where: { userId },
+        create: { userId, major: student.major, yearLevel: student.year_level, skills: [] },
+        update: {},
+      });
+      return toStudentProfile(created);
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      const winner = await this.db.studentProfile.findUnique({ where: { userId } });
+      if (!winner) throw error;
+      return toStudentProfile(winner);
+    }
   }
 
   /** PUT /me/profile — แทนที่ฟิลด์ที่แก้ได้ และรีเฟรชสำเนา major/year_level จาก Identity */
@@ -65,12 +76,19 @@ export class ProfilesService {
     }
 
     const copy = { major: student.major, yearLevel: student.year_level };
-    const saved = await this.db.studentProfile.upsert({
-      where: { userId },
-      create: { userId, ...copy, ...editable },
-      update: { ...copy, ...editable },
-    });
-    return toStudentProfile(saved);
+    try {
+      const saved = await this.db.studentProfile.upsert({
+        where: { userId },
+        create: { userId, ...copy, ...editable },
+        update: { ...copy, ...editable },
+      });
+      return toStudentProfile(saved);
+    } catch (error) {
+      // อีกคำขอ (GET/PUT ครั้งแรก) สร้างแถวไปก่อนระหว่างนี้ ⇒ แถวมีแล้ว แก้ทับด้วยค่าของคำขอนี้
+      if (!isUniqueViolation(error)) throw error;
+      const saved = await this.db.studentProfile.update({ where: { userId }, data: { ...copy, ...editable } });
+      return toStudentProfile(saved);
+    }
   }
 
   /**
@@ -93,6 +111,11 @@ export class ProfilesService {
       throw error;
     }
   }
+}
+
+/** Prisma P2002 = ชน unique constraint (ที่นี่คือ PK `student_profiles.user_id`) */
+function isUniqueViolation(error: unknown): boolean {
+  return (error as { code?: unknown } | null)?.code === 'P2002';
 }
 
 function dedupe(values: string[]): string[] {

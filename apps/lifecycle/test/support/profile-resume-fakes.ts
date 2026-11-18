@@ -39,13 +39,26 @@ export class FakePrisma {
   executeRawCalls = 0;
   /** ตั้งให้ resume.create โยน error (ทดสอบการลบไฟล์ชดเชย) */
   failResumeCreate = false;
+  /**
+   * จำลองแพ้การแข่งตอนสร้างโปรไฟล์ครั้งแรก: upsert ครั้งถัดไปจะเพิ่มแถวนี้แทน "อีกคำขอ" แล้วโยน P2002
+   * เหมือน Postgres เมื่อสองคำขอผ่าน findUnique พร้อมกัน
+   */
+  profileRaceWinner: Row | null = null;
 
   studentProfile = {
     findUnique: async ({ where }: { where: Row }) => {
       const row = this.profiles.find((p) => matches(p, where));
       return row ? { ...row } : null;
     },
+    count: async ({ where }: { where: Row }) => this.profiles.filter((p) => matches(p, where)).length,
     upsert: async ({ where, create, update }: { where: Row; create: Row; update: Row }) => {
+      if (this.profileRaceWinner) {
+        const winner = { headline: null, bio: null, portfolioUrl: null, skills: [], createdAt: new Date(), updatedAt: new Date(),
+          ...this.profileRaceWinner };
+        this.profileRaceWinner = null;
+        this.profiles.push(winner);
+        throw Object.assign(new Error('Unique constraint failed on the fields: (`user_id`)'), { code: 'P2002' });
+      }
       const row = this.profiles.find((p) => matches(p, where));
       if (row) {
         Object.assign(row, update, { updatedAt: new Date() });
