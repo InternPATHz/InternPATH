@@ -302,7 +302,13 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | GET | `/me/certificates` | S | |
 | GET | `/me/certificates/{id}/download` | S | Signed URL (~10 นาที) |
 | GET | `/public/certificates/{certificate_code}` | **Public** | `{status:'VALID'|'REVOKED', holder_name, company_name, job_title, period}` — **ไม่มี PII อื่น**; Header `X-Robots-Tag: noindex`; Rate limit ต่อ IP; ไม่พบ ⇒ 404 รูปแบบเดียวกันไม่ว่าเป็น ID ที่ไม่มีอยู่หรือรูปแบบผิด |
-| GET | `/public/certificates/{certificate_code}/verify-hash` | **Public** | `{sha256}` ให้เทียบกับไฟล์ที่ถือ *(ถ้าทีมต้องการ)* |
+
+**กติกาใบรับรอง (PM ตัดสิน 2026-11-18):**
+- ออกใบได้เมื่อบริษัทประเมิน `PASS` และฝึกจริง ≥ 30 วัน จากสถานะ `EVALUATED_PASS` **หรือ `COMPLETED`** (กัน HR ถูกล็อกถาวรเมื่ออาจารย์บันทึกผลก่อนกดออกใบ)
+- **ใบสมัครหนึ่งใบมีใบรับรองได้ใบเดียว** แม้เพิกถอนแล้วก็ออกใหม่ไม่ได้ (ยอมรับข้อจำกัดนี้: เพิกถอนผิดแล้วแก้ไม่ได้ผ่านระบบ)
+- ใบที่ถูกเพิกถอนยังอยู่ในรายการ (`status: 'REVOKED'`) แต่ดาวน์โหลดไม่ได้; หน้าสาธารณะแสดงสถานะ `REVOKED`
+- URL ใน QR คือ **หน้าเว็บ** `/public/certificates?code={certificate_code}` (ไม่ใช่เส้นทาง API ด้านบน) หน้านั้นเรียก `GET /public/certificates/{certificate_code}`
+- **ไม่มี `verify-hash`** (ตัดออก — ดู §10 ข้อ 1)
 
 ### 7.6 รีวิว
 | Method | Path | Role | คำอธิบาย |
@@ -365,7 +371,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ## 10. สิ่งที่ต้องตกลงเพิ่มก่อนเริ่ม Implement
 | # | ประเด็น | หมายเหตุ |
 | :-: | :--- | :--- |
-| 1 | `verify-hash` ของ Certificate | README ระบุเก็บ SHA-256 แต่ไม่ระบุว่าจะมี Endpoint สาธารณะ — ถ้าไม่ต้องการ ตัดออก |
+| 1 | ~~`verify-hash` ของ Certificate~~ | ✅ ปิดแล้ว (PM ตัดสิน 2026-11-18): **ตัดออก** ไม่มี Endpoint สาธารณะ — ยังเก็บ SHA-256 ของไฟล์ในระบบตาม README 5.4 |
 | 2 | ~~Pagination/Sort มาตรฐานของ Admin Queue~~ | ✅ ปิดแล้ว: ใช้ Pagination มาตรฐาน §1; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อนแล้ว `due_at` น้อยไปมาก (§6.1) — ปรับตาม UI ภายหลังได้ |
 
 ## 11. รูปร่าง Response/ค่า Enum ที่ PM ตัดสินแล้ว (2026-11-14)
