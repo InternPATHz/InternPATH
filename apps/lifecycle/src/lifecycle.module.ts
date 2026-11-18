@@ -3,13 +3,13 @@ import { JwtAuthGuard, MessagingModule, RolesGuard } from '@internpath/common';
 import { LifecycleConfigModule } from './config/lifecycle-config.module';
 import { StorageModule } from './common/storage/storage.module';
 import { InternalModule } from './internal/internal.module';
-import { AdminLifecycleModule } from './modules/admin/admin-lifecycle.module';
 import { AdvisorModule } from './modules/advisor/advisor.module';
 import { ReviewConsumersModule } from './events/consumers/review-moderation-result.consumer';
 import { CertificatesModule } from './modules/certificates/certificates.module';
 import { ApplicationsModule } from './modules/applications/applications.module';
 import { HrApplicationsModule } from './modules/hr-applications/hr-applications.module';
 import { ProblemReportsModule } from './modules/problem-reports/problem-reports.module';
+import { AdminLifecycleModule } from './modules/admin/admin-lifecycle.module';
 import { ProfilesModule } from './modules/profiles/profiles.module';
 import { ResumesModule } from './modules/resumes/resumes.module';
 import { ReviewsModule } from './modules/reviews/reviews.module';
@@ -48,12 +48,12 @@ import type { Tx } from './prisma/types';
     ResumesModule,
     ApplicationsModule,
     HrApplicationsModule,
+    AdminLifecycleModule,
     ProblemReportsModule,
     AdvisorModule,
     ReviewsModule,
     ReviewConsumersModule,
     CertificatesModule,
-    AdminLifecycleModule,
   ],
   providers: [JwtAuthGuard, RolesGuard],
   exports: [
