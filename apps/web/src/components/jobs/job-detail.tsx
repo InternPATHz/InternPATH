@@ -7,6 +7,7 @@ import type { SearchJobItem, WorkMode } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { ApplyPanel } from '@/components/jobs/apply-panel';
 import { formatDeadline } from '@/components/jobs/job-result-card';
+import { ReportPanel } from '@/components/reports/report-panel';
 import { getJob } from '@/lib/job-search';
 import type { JobDetailResult } from '@/lib/job-search';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -139,6 +140,10 @@ export function JobDetail() {
         <aside className="h-fit rounded-xl border border-border bg-surface p-5 shadow-sm md:sticky md:top-6">
           <p className="text-sm text-ink-soft">เปิดรับอีก {job.quota_available} จาก {job.quota} ตำแหน่ง</p>
           <div className="mt-4"><ApplyBox closed={closed} job={job} /></div>
+          {/* รายงานได้เฉพาะประกาศ PUBLISHED/CLOSED (หน้านี้แสดงเฉพาะสองสถานะนี้) — ผู้เยี่ยมชมเห็นลิงก์เข้าสู่ระบบ */}
+          <div className="mt-5 border-t border-border pt-4">
+            <ReportPanel kind="job" targetId={job.id} loginNext={`/jobs/item?id=${job.id}`} />
+          </div>
         </aside>
       </div>
     </main>

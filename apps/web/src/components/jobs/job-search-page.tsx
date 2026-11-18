@@ -26,6 +26,9 @@ function readQuery(params: URLSearchParams): { query: SearchJobsQuery; page: num
       work_mode: WORK_MODES.includes(workMode as WorkMode) ? (workMode as WorkMode) : undefined,
       major: params.get('major')?.trim() || undefined,
       allowance: params.get('allowance') === 'true' ? true : undefined,
+      // ลิงก์จากหน้าบริษัท — ต้องเป็น UUID เท่านั้น (URL เป็นข้อมูลจากภายนอก)
+      company_id: /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(params.get('company_id') ?? '') || /^mock-co-\d+$/.test(params.get('company_id') ?? '')
+        ? (params.get('company_id') as string) : undefined,
       sort: SORTS.includes(sort as (typeof SORTS)[number]) ? (sort as (typeof SORTS)[number]) : 'newest',
     },
     page: Number.isInteger(page) && page >= 1 ? page : 1,
@@ -72,7 +75,7 @@ export function JobSearchPage() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
-  const hasFilters = Boolean(query.q || query.category || query.work_mode || query.major || query.allowance);
+  const hasFilters = Boolean(query.q || query.category || query.work_mode || query.major || query.allowance || query.company_id);
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
 
   return (
