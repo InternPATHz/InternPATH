@@ -9,7 +9,9 @@ import { ApplyPanel } from '@/components/jobs/apply-panel';
 import { formatDeadline } from '@/components/jobs/job-result-card';
 import { getJob } from '@/lib/job-search';
 import type { JobDetailResult } from '@/lib/job-search';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { CATEGORIES } from '@/lib/mock-landing';
+import { JOB_STATUS, statusView } from '@/lib/status-map';
 
 const workModeLabel: Record<WorkMode, string> = { ONSITE: 'On-Site', HYBRID: 'Hybrid', REMOTE: 'Remote' };
 
@@ -99,7 +101,7 @@ export function JobDetail() {
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="neutral">{category}</Badge>
           {job.featured && <Badge tone="accent">Featured</Badge>}
-          {closed && <Badge tone="warning">ปิดรับสมัคร</Badge>}
+          {closed && <StatusBadge tone={statusView(JOB_STATUS, 'CLOSED').tone} icon={statusView(JOB_STATUS, 'CLOSED').icon}>ปิดรับสมัคร</StatusBadge>}
         </div>
         <h1 className="mt-3 text-3xl font-bold">{job.job_title}</h1>
         <p className="mt-1 text-ink-soft">{job.company.name}</p>
