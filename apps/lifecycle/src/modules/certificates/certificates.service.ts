@@ -96,7 +96,7 @@ export class CertificatesService {
 
     for (let attempt = 1; ; attempt += 1) {
       const certificateCode = generateCertificateCode(now);
-      const pdf = await this.renderer.render({
+      const pdf = await this.renderPdf({
         certificateCode,
         holderName,
         companyName,
@@ -288,6 +288,20 @@ export class CertificatesService {
       return after;
     });
     return toCertificateItem(updated);
+  }
+
+  /**
+   * สร้าง PDF ไม่สำเร็จ (เช่น ไม่มี Chromium) ⇒ `503 UPSTREAM_UNAVAILABLE` + `details[].issue = PDF_RENDER_FAILED`
+   * ให้หน้าเว็บแสดงข้อความตรงเหตุแทน 500 ทั่วไป (PM ขอ 2026-11-18) • ไม่มีอะไรถูกเขียน (สร้าง PDF ก่อนอัปโหลด/Transaction)
+   */
+  private async renderPdf(input: Parameters<CertificatePdfRenderer['render']>[0]): Promise<Buffer> {
+    try {
+      return await this.renderer.render(input);
+    } catch (error) {
+      // ไม่ log ข้อความเต็ม (อาจมีชื่อผู้ถือใน stack ของ template)
+      this.logger.error(`PDF render failed: ${(error as Error).name}`);
+      throw new AppException('UPSTREAM_UNAVAILABLE', 'สร้างไฟล์ใบรับรองไม่สำเร็จ ลองใหม่ภายหลัง', 503, [{ issue: 'PDF_RENDER_FAILED' }]);
+    }
   }
 
   private async minActualDays(): Promise<number> {

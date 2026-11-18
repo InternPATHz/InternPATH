@@ -325,6 +325,16 @@ describe('Lifecycle 1.8 — รีวิวบริษัท (HTTP + Postgres �
       expect(await stats()).to.include({ reviewCount: 1, entityVersion: 3 });
     });
 
+    it('ADMIN_REMOVE ของ PUBLISHED เมื่อไม่มีแถวสถิติ ⇒ ไม่ throw (ไม่ retry/DLQ) ไม่ติดลบ และยังส่ง E11 (PM รีวิว #57)', async () => {
+      const r = await submitted({ rating: 4 });
+      await deliver(r.id, 'PUBLISH');
+      await prisma.companyReviewStats.delete({ where: { companyId } });
+      await deliver(r.id, 'ADMIN_REMOVE');
+      expect(await reviewStatus(r.id)).to.equal('REMOVED');
+      expect(await stats()).to.include({ reviewCount: 0, ratingSum: 0 });
+      expect((await publishedEvents()).at(-1)).to.include({ review_id: r.id, company_review_count: 0, company_rating_sum: 0 });
+    });
+
     it('สถานะไม่ตรง ⇒ ข้ามไม่ throw (ack): ADMIN_PUBLISH ของ PUBLISHED, PUBLISH/HOLD ของ HELD/REMOVED, ADMIN_REMOVE ซ้ำ, ไม่พบรีวิว', async () => {
       const r = await submitted();
       await deliver(r.id, 'PUBLISH');

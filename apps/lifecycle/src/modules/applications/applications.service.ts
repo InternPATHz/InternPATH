@@ -22,7 +22,7 @@ import { alreadyApplied, applicationNotFound, mapApplicationUniqueViolation } fr
 import { ReapplyPolicy } from '../../state-machine/reapply-policy';
 import { StatusHistoryWriter, type Actor } from '../../state-machine/status-history.writer';
 import { INACTIVE_STATUSES, type UserTrigger } from '../../state-machine/transition-table';
-import { loadSnapshotNames, toApplicationBase, toStudentDetail } from './application-view';
+import { loadSnapshotNames, toStudentDetail, toStudentItem } from './application-view';
 import type { CreateApplicationDto } from './applications.dto';
 import {
   assertJobOpen,
@@ -146,7 +146,7 @@ export class ApplicationsService {
       return app;
     });
 
-    return toApplicationBase(created, await loadSnapshotNames(this.db, [created]));
+    return toStudentItem(created, await loadSnapshotNames(this.db, [created]));
   }
 
   // ---------- GET ----------
@@ -168,7 +168,7 @@ export class ApplicationsService {
       this.db.application.count({ where }),
     ]);
     const names = await loadSnapshotNames(this.db, rows);
-    return { data: rows.map((row) => toApplicationBase(row, names)), meta: { page, page_size: pageSize, total } };
+    return { data: rows.map((row) => toStudentItem(row, names)), meta: { page, page_size: pageSize, total } };
   }
 
   /** GET /me/applications/{id} — Timeline จาก `status_history` + `available_actions[]` ของนักศึกษา */

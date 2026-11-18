@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { JwtAuthGuard, MessagingModule, RolesGuard } from '@internpath/common';
 import { LifecycleConfigModule } from './config/lifecycle-config.module';
+import { ServiceSecretsCheck } from './config/service-secrets.check';
 import { StorageModule } from './common/storage/storage.module';
 import { InternalModule } from './internal/internal.module';
 import { AdvisorModule } from './modules/advisor/advisor.module';
@@ -53,7 +54,7 @@ import type { Tx } from './prisma/types';
     ReviewConsumersModule,
     CertificatesModule,
   ],
-  providers: [JwtAuthGuard, RolesGuard],
+  providers: [JwtAuthGuard, RolesGuard, ServiceSecretsCheck],
   exports: [
     PrismaModule,
     LifecycleConfigModule,

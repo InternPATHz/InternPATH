@@ -73,8 +73,13 @@ export interface ApplicationBase {
   created_at: string;
 }
 
-/** POST /applications (201) และรายการ GET /me/applications */
-export type StudentApplicationItem = ApplicationBase;
+/**
+ * POST /applications (201) และรายการ GET /me/applications
+ * `academic_result` = ผลวิชาที่อาจารย์บันทึก (ไม่มีเมื่อยังไม่บันทึก) — ป้าย `COMPLETED` ใช้แยกผ่าน/ไม่ผ่าน (PM ขอ 2026-11-18)
+ */
+export interface StudentApplicationItem extends ApplicationBase {
+  academic_result?: AcademicResult;
+}
 
 /** GET /me/applications/{id} — รวม timeline (จาก status_history) และปุ่มที่กดได้ */
 export interface StudentApplicationDetail extends ApplicationBase {
@@ -89,6 +94,8 @@ export interface StudentApplicationDetail extends ApplicationBase {
 /** รายการ GET /hr/applications */
 export interface HrApplicationItem extends ApplicationBase {
   student_user_id: string;
+  /** ชื่อนักศึกษา ดึงสดจาก Identity (ไม่เก็บใน Lifecycle) — Identity ล่ม/ไม่พบ ⇒ ไม่มีฟิลด์ (PM ขอ 2026-11-18) */
+  student_name?: string;
 }
 
 /** ผลประเมินของบริษัท (`evaluations` — data-schema §7) */
