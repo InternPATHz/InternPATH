@@ -4,16 +4,18 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { CircleCheck, CircleX } from 'lucide-react';
 import type { HrApplicationDetail, HrStartResponse, ResumeUrlResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { ApplicationStatusBadge, formatDate } from '@/components/student/application-ui';
 import { ApiError } from '@/lib/api';
 
 const MIN_DAYS = 30;          // ระยะฝึก ≥ 30 วัน (README 5.2.2) — Lifecycle ตรวจจริงอีกชั้น
 const REASON_MAX = 2000;
 
-type FormKind = 'accept' | 'reject' | 'rescind-offer' | 'start' | 'terminate';
+type FormKind = 'accept' | 'reject' | 'rescind-offer' | 'start' | 'terminate' | 'revoke-certificate';
 type Message = { tone: 'error' | 'success'; text: string };
 
 const FORM_TITLE: Record<FormKind, string> = {
@@ -22,6 +24,7 @@ const FORM_TITLE: Record<FormKind, string> = {
   'rescind-offer': 'ถอนข้อเสนอ',
   start: 'ยืนยันว่าเริ่มงานจริง',
   terminate: 'ยุติการฝึกงาน',
+  'revoke-certificate': 'เพิกถอนใบรับรอง',
 };
 
 const inputClass = 'mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-base font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft';
@@ -96,13 +99,46 @@ export function ApplicantDetail() {
     } finally { setBusy(false); }
   }
 
+  /** ออกใบรับรอง — ไม่มี body; ออกได้ใบเดียวต่อใบสมัคร ตรวจ PASS และฝึกจริง ≥ 30 วันที่เซิร์ฟเวอร์ */
+  async function issueCertificate() {
+    if (!window.confirm('ออก E-Certificate ให้นักศึกษาคนนี้? ออกได้เพียงใบเดียวต่อใบสมัคร และถ้าเพิกถอนแล้วจะออกใหม่ไม่ได้')) return;
+    setBusy(true);
+    setMessage(null);
+    try {
+      await request(`/hr/applications/${encodeURIComponent(id)}/certificate`, { method: 'POST' });
+      await load();
+      setMessage({ tone: 'success', text: 'ออก E-Certificate แล้ว นักศึกษาดาวน์โหลดได้จากหน้าของตน' });
+    } catch (cause) {
+      setMessage({ tone: 'error', text: failure(cause) });
+      await load();
+    } finally { setBusy(false); }
+  }
+
+  async function revokeCertificate(certificateId: string, reason: string) {
+    setBusy(true);
+    setMessage(null);
+    try {
+      await request(`/hr/certificates/${encodeURIComponent(certificateId)}/actions/revoke`, { method: 'POST', body: { reason } });
+      setForm(null);
+      await load();
+      setMessage({ tone: 'success', text: 'เพิกถอนใบรับรองแล้ว' });
+    } catch (cause) {
+      setMessage({ tone: 'error', text: failure(cause) });
+      await load();
+    } finally { setBusy(false); }
+  }
+
   function submit(event: FormEvent) {
     event.preventDefault();
     const value = text.trim();
     const bad = (problem: string) => setMessage({ tone: 'error', text: problem });
     if (value.length > REASON_MAX) return bad(`ข้อความต้องไม่เกิน ${REASON_MAX} ตัวอักษร`);
 
-    if (form === 'accept') {
+    if (form === 'revoke-certificate') {
+      if (!app?.certificate) return bad('ไม่พบใบรับรองของใบสมัครนี้');
+      if (!value) return bad('กรุณาระบุเหตุผลที่เพิกถอนใบรับรอง');
+      void revokeCertificate(app.certificate.id, value);
+    } else if (form === 'accept') {
       if (!startDate || !endDate) return bad('กรุณาระบุวันเริ่มและวันสิ้นสุด');
       if (daysBetween(startDate, endDate) < MIN_DAYS) return bad(`ระยะฝึกงานต้องไม่น้อยกว่า ${MIN_DAYS} วัน`);
       void act('accept', { start_date: startDate, end_date: endDate }, 'ส่งข้อเสนอแล้ว รอนักศึกษายืนยัน');
@@ -156,6 +192,9 @@ export function ApplicantDetail() {
     ['start', 'ยืนยันเริ่มงาน', true], ['terminate', 'ยุติการฝึก', false],
   ];
   const visibleButtons = buttons.filter(([kind]) => can(kind));
+  const certificate = app.certificate;
+  const canRevoke = certificate?.status === 'VALID';
+  const showActions = visibleButtons.length > 0 || Boolean(app.accept_blocked_reason) || can('evaluate') || can('certificate') || canRevoke;
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <Link href="/hr/applicants" className="text-sm font-medium text-primary hover:underline">← ผู้สมัครของบริษัท</Link>
@@ -210,7 +249,41 @@ export function ApplicantDetail() {
         </button>
       </section>
 
-      {(visibleButtons.length > 0 || app.accept_blocked_reason || can('evaluate')) && (
+      {app.evaluation && (
+        <section aria-labelledby="evaluation-title" className="mt-8">
+          <h2 id="evaluation-title" className="text-lg font-bold">ผลประเมิน</h2>
+          <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+            {/* ป้ายสถานะกลางตาม design.md ชิ้นที่ 1: ไอคอน + ข้อความ ไม่ใช้สีอย่างเดียว */}
+            {app.evaluation.result === 'PASS'
+              ? <StatusBadge tone="success" icon={CircleCheck}>ประเมินผ่าน</StatusBadge>
+              : <StatusBadge tone="danger" icon={CircleX}>ประเมินไม่ผ่าน</StatusBadge>}
+            <span className="text-ink-soft">รอบที่ {app.evaluation.round} · {formatDate(app.evaluation.evaluated_at)}</span>
+          </p>
+          {app.evaluation.reason && <p className="mt-2 whitespace-pre-line text-sm text-ink-soft">เหตุผล: {app.evaluation.reason}</p>}
+          {app.evaluation.score_note && <p className="mt-1 whitespace-pre-line text-sm text-ink-soft">หมายเหตุ: {app.evaluation.score_note}</p>}
+        </section>
+      )}
+
+      {certificate && (
+        <section aria-labelledby="certificate-title" className="mt-8">
+          <h2 id="certificate-title" className="text-lg font-bold">E-Certificate</h2>
+          <dl className="mt-3 grid grid-cols-2 gap-4 rounded-xl border border-border bg-surface-muted p-4 sm:grid-cols-4">
+            <Fact label="รหัสใบรับรอง">{certificate.certificate_code}</Fact>
+            <Fact label="สถานะ">
+              {certificate.status === 'VALID'
+                ? <StatusBadge tone="success" icon={CircleCheck}>ใช้ได้</StatusBadge>
+                : <StatusBadge tone="danger" icon={CircleX}>ถูกเพิกถอน</StatusBadge>}
+            </Fact>
+            <Fact label="ฝึกจริง">{certificate.actual_days} วัน</Fact>
+            <Fact label="ออกเมื่อ">{formatDate(certificate.issued_at)}</Fact>
+          </dl>
+          {certificate.status === 'REVOKED' && (
+            <p className="mt-2 text-sm text-ink-soft">ใบนี้ถูกเพิกถอนแล้ว นักศึกษาดาวน์โหลดไม่ได้ และออกใบใหม่ให้ใบสมัครนี้ไม่ได้</p>
+          )}
+        </section>
+      )}
+
+      {showActions && (
         <section aria-labelledby="actions-title" className="mt-8">
           <h2 id="actions-title" className="text-lg font-bold">ดำเนินการ</h2>
           {app.accept_blocked_reason && (
@@ -218,8 +291,21 @@ export function ApplicantDetail() {
               ส่งข้อเสนอไม่ได้ในขณะนี้: {app.accept_blocked_reason === 'ALREADY_CONFIRMED_ELSEWHERE' ? 'นักศึกษายืนยันฝึกงานกับที่อื่นแล้ว' : app.accept_blocked_reason === 'JOB_FROZEN' ? 'ประกาศถูกระงับชั่วคราว' : app.accept_blocked_reason}
             </p>
           )}
-          {can('evaluate') && <p className="mt-1 text-sm text-ink-soft">ถึงเวลาประเมินผลแล้ว — การประเมินและการออก E-Certificate อยู่ในหน้าประเมินผล</p>}
+          {can('evaluate') && <p className="mt-1 text-sm text-ink-soft">ถึงเวลาประเมินผลแล้ว — การประเมินอยู่ในหน้าประเมินผล</p>}
+          {can('certificate') && <p className="mt-1 text-sm text-ink-soft">ประเมินผ่านและฝึกครบเกณฑ์แล้ว ออก E-Certificate ให้นักศึกษาได้</p>}
           <div className="mt-3 flex flex-wrap gap-3">
+            {can('certificate') && (
+              <button type="button" disabled={busy} onClick={() => void issueCertificate()}
+                className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
+                ออกใบรับรอง
+              </button>
+            )}
+            {canRevoke && (
+              <button type="button" disabled={busy} onClick={() => openForm('revoke-certificate')}
+                className="rounded-lg border border-border px-5 py-2.5 text-sm font-semibold text-danger-text hover:bg-danger-soft disabled:opacity-60">
+                เพิกถอนใบรับรอง
+              </button>
+            )}
             {visibleButtons.map(([kind, label, primary]) => (
               <button key={kind} type="button" disabled={busy} onClick={() => openForm(kind)}
                 className={`rounded-lg px-5 py-2.5 text-sm font-semibold disabled:opacity-60 ${primary ? 'bg-primary text-white hover:bg-primary-hover' : 'border border-border hover:bg-surface-muted'}`}>
@@ -259,7 +345,10 @@ export function ApplicantDetail() {
                   <input type="date" value={actualDate} max={todayBangkok()} onChange={(event) => setActualDate(event.target.value)} className={inputClass} />
                 </label>
               )}
-              {(form === 'reject' || form === 'rescind-offer' || form === 'terminate') && (
+              {form === 'revoke-certificate' && (
+                <p className="text-xs text-ink-soft">การเพิกถอนทำย้อนกลับไม่ได้ และจะออกใบรับรองใหม่ให้ใบสมัครนี้ไม่ได้ หน้าตรวจสอบสาธารณะจะแสดงสถานะ "ถูกเพิกถอน"</p>
+              )}
+              {(form === 'reject' || form === 'rescind-offer' || form === 'terminate' || form === 'revoke-certificate') && (
                 <label className="block font-medium">
                   {form === 'reject' ? 'เหตุผล (ไม่บังคับ)' : 'เหตุผล'}
                   <textarea value={text} onChange={(event) => setText(event.target.value)} rows={3} className={inputClass} />
