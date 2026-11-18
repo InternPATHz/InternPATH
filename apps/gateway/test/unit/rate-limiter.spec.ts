@@ -19,4 +19,28 @@ describe('Gateway rate limiter capacity', () => {
     expect(limiter.checkIp(certificate, 'certificate-visitor')).to.equal(0);
     expect(limiter.checkAccount(login, '/auth/login', Buffer.from('{"email":"new@example.com"}'))).to.equal(0);
   });
+
+  it('gives each public read route its own 60/min bucket and only for GET', () => {
+    const limiter = new RateLimiter();
+    const paths = ['/search/jobs', '/jobs/abc', '/directory/companies', '/directory/companies/abc',
+      '/companies/abc/reviews'];
+    const rules = paths.map((path) => limiter.rule('GET', path));
+    for (const [index, rule] of rules.entries()) {
+      expect(rule, paths[index]).to.include({ max: 60, windowMs: 60_000 });
+      expect(rule!.name, paths[index]).to.match(/^public-/);
+    }
+    expect(new Set(rules.map((rule) => rule!.name)).size).to.equal(paths.length);
+    for (const [method, path] of [['POST', '/jobs/abc/reports'], ['GET', '/jobs/abc/reports'], ['POST', '/search/jobs'],
+      ['GET', '/users/me']]) expect(limiter.rule(method, path), `${method} ${path}`).to.equal(undefined);
+  });
+
+  it('rejects the 61st public read from one IP without touching other routes or IPs', () => {
+    const limiter = new RateLimiter();
+    const search = limiter.rule('GET', '/search/jobs')!;
+    const directory = limiter.rule('GET', '/directory/companies')!;
+    for (let index = 0; index < 60; index++) expect(limiter.checkIp(search, '203.0.113.1')).to.equal(0);
+    expect(limiter.checkIp(search, '203.0.113.1')).to.be.greaterThan(0);
+    expect(limiter.checkIp(directory, '203.0.113.1')).to.equal(0);
+    expect(limiter.checkIp(search, '203.0.113.2')).to.equal(0);
+  });
 });

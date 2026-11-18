@@ -8,12 +8,14 @@ import type { Request, Response } from 'express';
 import { AccessTokenError, verifyAccessToken } from './auth/verify-access-token';
 import { DenylistService } from './denylist/denylist.service';
 import { RateLimiter } from './rate-limit/rate-limiter';
-import { isPublicRoute, resolveService, ServiceName } from './routing/routing';
+import { isPublicRoute, publicReadRoute, resolveService, ServiceName } from './routing/routing';
 
 const URL_ENV: Record<ServiceName, string> = {
   identity: 'IDENTITY_URL', job: 'JOB_URL', verification: 'VERIFICATION_URL',
   lifecycle: 'LIFECYCLE_URL', notification: 'NOTIFICATION_URL',
 };
+/** api-contract §3: public read responses are identical for every caller, so shared caches may keep them. */
+const PUBLIC_READ_CACHE = 'public, max-age=60';
 const HOP_HEADERS = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
   'te', 'trailer', 'transfer-encoding', 'upgrade'];
 
@@ -80,11 +82,11 @@ export class GatewayMiddleware {
         }
       }
     }
-    this.proxy(req, res, service, raw, clientIp, user, body);
+    this.proxy(req, res, service, raw, clientIp, user, body, publicReadRoute(req.method, path) !== undefined);
   };
 
   private proxy(req: Request, res: Response, service: ServiceName, raw: string, clientIp: string,
-    user?: JwtClaims, body?: Buffer): void {
+    user?: JwtClaims, body?: Buffer, publicRead = false): void {
     let base: URL;
     try {
       base = new URL(this.config.get<string>(URL_ENV[service]) ?? '');
@@ -107,7 +109,10 @@ export class GatewayMiddleware {
       for (const [name, value] of Object.entries(response.headers)) {
         if (value !== undefined && !HOP_HEADERS.includes(name) && name !== 'x-correlation-id') res.setHeader(name, value);
       }
-      res.status(response.statusCode ?? 502);
+      const status = response.statusCode ?? 502;
+      // Only cache successes; errors (404 for an unverified company, 5xx) must not stick for a minute.
+      if (publicRead) res.setHeader('Cache-Control', status >= 200 && status < 300 ? PUBLIC_READ_CACHE : 'no-store');
+      res.status(status);
       response.pipe(res);
     });
     upstream.on('timeout', () => upstream.destroy(new Error('upstream timeout')));

@@ -39,7 +39,9 @@ describe('Gateway proxy and security', function () {
       const chunks: Buffer[] = [];
       req.on('data', (chunk: Buffer) => chunks.push(chunk));
       req.on('end', () => {
+        res.statusCode = req.url?.includes('/missing') ? 404 : 200;
         res.setHeader('Content-Type', 'application/json');
+        if (req.url?.includes('/upstream-cache')) res.setHeader('Cache-Control', 'private, max-age=3600');
         res.end(JSON.stringify({ path: req.url, method: req.method, headers: req.headers,
           body: Buffer.concat(chunks).toString('utf8') }));
       });
@@ -172,6 +174,87 @@ describe('Gateway proxy and security', function () {
     await edge(request(app.getHttpServer()).post('/api/v1/auth/login'))
       .set('X-Client-IP', '198.51.100.30')
       .send({ email: 'large@example.com', filler: 'x'.repeat(65 * 1024) }).expect(413);
+  });
+
+  describe('public read routes', () => {
+    const publicReads = ['/search/jobs?q=dev&page=1', '/jobs/job-1', '/directory/companies?ids=a,b',
+      '/directory/companies/company-1', '/companies/company-1/reviews?page=1'];
+
+    it('forwards without Authorization and never sends user identity headers', async () => {
+      for (const [index, path] of publicReads.entries()) {
+        const result = await edge(request(app.getHttpServer()).get(`/api/v1${path}`))
+          .set('X-Client-IP', `198.51.100.${200 + index}`)
+          .set('X-User-Id', 'forged').set('X-User-Role', 'PLATFORM_ADMIN').set('X-Company-Id', 'forged')
+          .expect(200);
+        expect(result.body.path, path).to.equal(`/v1${path}`);
+        for (const header of ['x-user-id', 'x-user-role', 'x-company-id'])
+          expect(result.body.headers, `${path} ${header}`).not.to.have.property(header);
+      }
+    });
+
+    it('ignores invalid or valid Authorization instead of returning 401 or forwarding claims', async () => {
+      for (const [index, path] of publicReads.entries()) {
+        await edge(request(app.getHttpServer()).get(`/api/v1${path}`))
+          .set('X-Client-IP', `198.51.100.${210 + index}`).set('Authorization', 'Bearer not-a-jwt').expect(200);
+        const withValid = await edge(request(app.getHttpServer()).get(`/api/v1${path}`))
+          .set('X-Client-IP', `198.51.100.${210 + index}`).set('Authorization', `Bearer ${token()}`).expect(200);
+        expect(withValid.body.headers, path).not.to.have.property('x-user-id');
+      }
+    });
+
+    it('does not depend on the denylist (no 503 when it is stale)', async () => {
+      const denylist = app.get(DenylistService);
+      const original = denylist.isFresh;
+      denylist.isFresh = () => false;
+      try {
+        await edge(request(app.getHttpServer()).get('/api/v1/users/me'))
+          .set('Authorization', `Bearer ${token()}`).expect(503);
+        for (const [index, path] of publicReads.entries())
+          await edge(request(app.getHttpServer()).get(`/api/v1${path}`))
+            .set('X-Client-IP', `198.51.100.${220 + index}`).expect(200);
+      } finally {
+        denylist.isFresh = original;
+      }
+    });
+
+    it('still requires login for job reports and other methods on public paths', async () => {
+      const post = await edge(request(app.getHttpServer()).post('/api/v1/jobs/job-1/reports'))
+        .send({ reason: 'scam' }).expect(401);
+      expect(post.body.error.code).to.equal('UNAUTHENTICATED');
+      await edge(request(app.getHttpServer()).get('/api/v1/jobs/job-1/reports')).expect(401);
+      await edge(request(app.getHttpServer()).post('/api/v1/companies/company-1/reviews')).expect(401);
+      await edge(request(app.getHttpServer()).post('/api/v1/jobs/job-1/reports'))
+        .set('Authorization', `Bearer ${token()}`).send({ reason: 'scam' }).expect(200);
+    });
+
+    it('marks successful public reads cacheable for 60s and nothing else', async () => {
+      for (const [index, path] of publicReads.entries()) {
+        const result = await edge(request(app.getHttpServer()).get(`/api/v1${path}`))
+          .set('X-Client-IP', `198.51.100.${230 + index}`).expect(200);
+        expect(result.headers['cache-control'], path).to.equal('public, max-age=60');
+      }
+      const overridden = await edge(request(app.getHttpServer()).get('/api/v1/directory/companies/upstream-cache'))
+        .set('X-Client-IP', '198.51.100.236').expect(200);
+      expect(overridden.headers['cache-control']).to.equal('public, max-age=60');
+      const missing = await edge(request(app.getHttpServer()).get('/api/v1/directory/companies/missing'))
+        .set('X-Client-IP', '198.51.100.237').expect(404);
+      expect(missing.headers['cache-control']).to.equal('no-store');
+      const privateRead = await edge(request(app.getHttpServer()).get('/api/v1/users/me'))
+        .set('Authorization', `Bearer ${token()}`).expect(200);
+      expect(privateRead.headers['cache-control']).to.equal(undefined);
+    });
+
+    it('returns 429 after 60 requests per IP per route, with separate buckets per route', async () => {
+      for (const path of publicReads) {
+        for (let index = 0; index < 60; index++)
+          await edge(request(app.getHttpServer()).get(`/api/v1${path}`)).set('X-Client-IP', '198.51.100.240').expect(200);
+        const limited = await edge(request(app.getHttpServer()).get(`/api/v1${path}`))
+          .set('X-Client-IP', '198.51.100.240').expect(429);
+        expect(limited.body.error.code, path).to.equal('RATE_LIMITED');
+        expect(Number(limited.headers['retry-after']), path).to.be.greaterThan(0);
+      }
+      await edge(request(app.getHttpServer()).get('/api/v1/search/jobs')).set('X-Client-IP', '198.51.100.241').expect(200);
+    });
   });
 
   it('limits public certificate checks per trusted client IP', async () => {

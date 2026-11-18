@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { Request } from 'express';
+import { publicReadRoute } from '../routing/routing';
 
 type Limit = { count: number; resetAt: number };
 type Rule = { name: string; max: number; windowMs: number };
@@ -16,6 +17,8 @@ export class RateLimiter {
       return { name: 'account-recovery', max: 5, windowMs: 3_600_000 };
     if (method === 'GET' && /^\/public\/certificates\/[^/]+(?:\/verify-hash)?$/.test(path))
       return { name: 'certificate', max: 30, windowMs: 60_000 };
+    const publicRead = publicReadRoute(method, path);
+    if (publicRead) return { name: publicRead, max: 60, windowMs: 60_000 };
     return undefined;
   }
 
