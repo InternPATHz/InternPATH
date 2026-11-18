@@ -12,6 +12,7 @@ import type { Application } from '../../../generated/client';
 import { assertCompanyOwnership } from '../../common/auth/ownership';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
 import { IdentityInternalClient } from '../../internal/identity-client.service';
+import { StudentNamesService } from '../../internal/student-names.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApplicationStateMachine } from '../../state-machine/application-state-machine.service';
 import type { TransitionCommand } from '../../state-machine/application-transition.service';
@@ -46,6 +47,7 @@ export class HrApplicationsService {
     private readonly identity: IdentityInternalClient,
     private readonly stateMachine: ApplicationStateMachine,
     private readonly config: LifecycleConfigService,
+    private readonly studentNames: StudentNamesService,
   ) {}
 
   // ---------- GET ----------
@@ -68,8 +70,16 @@ export class HrApplicationsService {
       }),
       this.db.application.count({ where }),
     ]);
-    const names = await loadSnapshotNames(this.db, rows);
-    return { data: rows.map((row) => toHrItem(row, names)), meta: { page, page_size: pageSize, total } };
+    // ชื่อนักศึกษาดึงสดจาก Identity แบบ Batch (ไม่เก็บ) **เฉพาะคนที่ให้ Consent กับบริษัทนี้** (README §5.11 — ผู้ใช้ตัดสิน 18 พ.ย.)
+    // ไม่มี Consent / Identity ล่ม ⇒ ส่งรายการต่อโดยไม่มี `student_name` (PM ขอ 2026-11-18)
+    const [names, studentNames] = await Promise.all([
+      loadSnapshotNames(this.db, rows),
+      this.consentedNames(companyId, rows.map((r) => r.studentUserId)),
+    ]);
+    return {
+      data: rows.map((row) => toHrItem(row, names, studentNames.get(row.studentUserId))),
+      meta: { page, page_size: pageSize, total },
+    };
   }
 
   /**
@@ -94,12 +104,14 @@ export class HrApplicationsService {
       this.db.certificate.findUnique({ where: { applicationId: app.id } }),
       this.config.getNumber('CERT_MIN_ACTUAL_DAYS'),
     ]);
+    // ชื่อมาพร้อมโปรไฟล์ที่ได้ Consent เท่านั้น (ไม่มี Consent ⇒ ไม่มีชื่อ — เทสต์ 1.5)
+    const studentName = profile?.full_name;
     const issuable =
       !certificate && !('error' in checkCertificateIssuable(app, evaluation?.result, effectiveMinActualDays(minDays)));
     const available = issuable
       ? { ...actions, available_actions: [...actions.available_actions, CERTIFICATE_ACTION] }
       : actions;
-    return toHrDetail(app, names, profile, available, { evaluation, certificate });
+    return toHrDetail(app, names, profile, available, { evaluation, certificate, studentName });
   }
 
   // ---------- Actions ----------
@@ -255,6 +267,23 @@ export class HrApplicationsService {
    * `full_name` ดึงสดจาก Identity (`students/{id}`) ทุกครั้ง — **ห้ามเก็บลง DB/cache/log** (api-contract §9)
    * Identity อ่านไม่ได้ (ล่ม/บัญชีถูกระงับ) แต่มีโปรไฟล์ใน Lifecycle ⇒ ส่งโปรไฟล์โดย `full_name` ว่าง
    */
+  /** ชื่อของนักศึกษาที่มี Consent กับบริษัทนี้ (ตรวจพร้อมกันต่อคน) — ตรวจไม่สำเร็จ ⇒ ถือว่าไม่มี Consent */
+  private async consentedNames(companyId: string, studentUserIds: readonly string[]): Promise<Map<string, string>> {
+    const unique = [...new Set(studentUserIds)];
+    const consented = (
+      await Promise.all(
+        unique.map(async (id) => {
+          try {
+            return (await this.identity.checkConsent(id, companyId)).has_consent ? id : null;
+          } catch {
+            return null;
+          }
+        }),
+      )
+    ).filter((id): id is string => id !== null);
+    return consented.length ? this.studentNames.names(consented) : new Map();
+  }
+
   private async consentedProfile(app: Application, correlationId?: string): Promise<HrProfile | undefined> {
     try {
       const consent = await this.identity.checkConsent(app.studentUserId, app.companyId, correlationId);

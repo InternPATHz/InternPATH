@@ -215,6 +215,25 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
       await http().get('/v1/hr/applications?job_id=x').set('Authorization', asHr()).expect(400);
     });
 
+    it('student_name ดึงสดจาก Identity เฉพาะคนที่ให้ Consent (รายการ + รายละเอียด) • ไม่มี Consent/Identity ล่ม ⇒ ไม่มีชื่อ (PM ขอ 18 พ.ย.)', async () => {
+      const a = await seed('PENDING');
+      const noConsent = randomUUID();
+      identity.setStudent(noConsent, { full_name: 'ไม่ยินยอม ไม่แสดง' });
+      const unknown = await seed('PENDING', { studentUserId: noConsent });
+      const list = await http().get('/v1/hr/applications').set('Authorization', asHr()).expect(200);
+      const byId = new Map(list.body.data.map((r: { id: string }) => [r.id, r]));
+      expect(byId.get(a.id)).to.include({ student_name: 'สมชาย ใจดี' });
+      expect(byId.get(unknown.id)).to.not.have.property('student_name');
+      expect(JSON.stringify(list.body)).to.not.include('ไม่ยินยอม');
+      const detail = await http().get(`/v1/hr/applications/${a.id}`).set('Authorization', asHr()).expect(200);
+      expect(detail.body).to.include({ student_name: 'สมชาย ใจดี' });
+
+      identity.unavailable = true;
+      const down = await http().get('/v1/hr/applications').set('Authorization', asHr()).expect(200);
+      expect(down.body.data).to.have.length(2);
+      expect(down.body.data.every((r: object) => !('student_name' in r))).to.equal(true);
+    });
+
     it('มี Consent ⇒ มี profile (จากโปรไฟล์ของ Lifecycle + ชื่อสดจาก Identity) + cover_letter + available_actions; ไม่มีรายงานปัญหา', async () => {
       await prisma.studentProfile.create({
         data: { userId: student, headline: 'Backend', skills: ['TypeScript'], major: 'วิศวกรรมคอมพิวเตอร์', yearLevel: 3 },

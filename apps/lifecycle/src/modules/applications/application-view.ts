@@ -9,6 +9,7 @@ import type {
   HrApplicationDetail,
   HrApplicationItem,
   StudentApplicationDetail,
+  StudentApplicationItem,
   StudentProfile,
 } from '@internpath/contracts';
 import type { Application, Certificate, Evaluation, StatusHistory } from '../../../generated/client';
@@ -111,8 +112,18 @@ export function toAdvisorItem(app: Application, names: SnapshotNames, studentNam
 }
 
 /** รายการ GET /hr/applications — ไม่มีโปรไฟล์/ข้อความ (ดูได้ในรายละเอียดหลังตรวจ Consent) */
-export function toHrItem(app: Application, names: SnapshotNames): HrApplicationItem {
-  return { ...toApplicationBase(app, names), student_user_id: app.studentUserId };
+/** รายการ GET /me/applications และ POST /applications — มี `academic_result` เมื่ออาจารย์บันทึกแล้ว (ป้าย COMPLETED ผ่าน/ไม่ผ่าน) */
+export function toStudentItem(app: Application, names: SnapshotNames): StudentApplicationItem {
+  return { ...toApplicationBase(app, names), ...optional('academic_result', app.academicResult ?? undefined) };
+}
+
+/** `studentName` ดึงสดจาก Identity (`StudentNamesService`) — ว่าง (ล่ม/ไม่พบ) ⇒ ไม่มีฟิลด์ `student_name` */
+export function toHrItem(app: Application, names: SnapshotNames, studentName?: string): HrApplicationItem {
+  return {
+    ...toApplicationBase(app, names),
+    student_user_id: app.studentUserId,
+    ...optional('student_name', studentName || undefined),
+  };
 }
 
 /**
@@ -152,10 +163,10 @@ export function toHrDetail(
   names: SnapshotNames,
   profile: (StudentProfile & { full_name: string }) | undefined,
   actions: { available_actions: ApplicationAction[]; accept_blocked_reason?: string },
-  extra: { evaluation?: Evaluation | null; certificate?: Certificate | null } = {},
+  extra: { evaluation?: Evaluation | null; certificate?: Certificate | null; studentName?: string } = {},
 ): HrApplicationDetail {
   return {
-    ...toHrItem(app, names),
+    ...toHrItem(app, names, extra.studentName),
     ...optional('cover_letter', app.coverLetter ?? undefined),
     ...optional('profile', profile),
     available_actions: actions.available_actions,

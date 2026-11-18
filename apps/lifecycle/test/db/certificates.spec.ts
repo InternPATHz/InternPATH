@@ -306,10 +306,13 @@ describe('Lifecycle 1.7 — E-Certificate (HTTP + Postgres จริง)', funct
       expect(res.body.error.details[0].issue).to.equal('JOB_SNAPSHOT_MISSING');
     });
 
-    it('สร้าง PDF ไม่สำเร็จ ⇒ 500 ไม่มีแถว/ไฟล์/Event', async () => {
+    it('สร้าง PDF ไม่สำเร็จ ⇒ 503 PDF_RENDER_FAILED ไม่มีแถว/ไฟล์/Event', async () => {
       const row = await seedEvaluated();
       renderer.fail = true;
-      await issue(row.id).expect(500);
+      // PM ขอ (18 พ.ย.): สร้าง PDF ล้ม ⇒ 503 + PDF_RENDER_FAILED (ไม่ใช่ 500 ทั่วไป)
+      const failed = await issue(row.id).expect(503);
+      expect(failed.body.error.code).to.equal('UPSTREAM_UNAVAILABLE');
+      expect(failed.body.error.details).to.deep.equal([{ issue: 'PDF_RENDER_FAILED' }]);
       expect(await myCertificates()).to.equal(0);
       expect(await myIssuedEvents()).to.equal(0);
       expect(storage.objects.size).to.equal(0);

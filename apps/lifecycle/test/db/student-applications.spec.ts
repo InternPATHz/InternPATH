@@ -383,6 +383,15 @@ describe('Lifecycle 1.4 — ใบสมัครฝั่งนักศึก�
       await http().get('/v1/me/applications?status=NOPE').set('Authorization', asStudent()).expect(400);
     });
 
+    it('รายการมี academic_result เมื่ออาจารย์บันทึกแล้ว (ป้าย COMPLETED ผ่าน/ไม่ผ่าน — PM ขอ 18 พ.ย.)', async () => {
+      const failed = await seed('COMPLETED', { academicResult: 'REPEAT_REQUIRED', academicRecordedAt: new Date() });
+      const open = await seed('PENDING', { jobId: randomUUID() });
+      const res = await http().get('/v1/me/applications').set('Authorization', asStudent()).expect(200);
+      const byId = new Map(res.body.data.map((r: { id: string }) => [r.id, r]));
+      expect(byId.get(failed.id)).to.include({ status: 'COMPLETED', academic_result: 'REPEAT_REQUIRED' });
+      expect(byId.get(open.id)).to.not.have.property('academic_result');
+    });
+
     it('รายละเอียด: timeline จาก status_history + available_actions ตามสถานะ', async () => {
       const created = await apply((await openJob()).job_id).expect(201);
       const pending = await http().get(`/v1/me/applications/${created.body.id}`).set('Authorization', asStudent()).expect(200);
