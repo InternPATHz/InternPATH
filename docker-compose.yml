@@ -1,5 +1,5 @@
 # ใช้งาน:
-#   docker compose --profile infra up -d                 # เฉพาะ Postgres/RabbitMQ/MinIO/Mailpit (pnpm infra:up)
+#   docker compose --profile infra up -d                 # เฉพาะ Postgres/RabbitMQ/RustFS/Mailpit (pnpm infra:up)
 #   docker compose --profile infra --profile identity up # รัน Service เดียวบน Docker (profile = ชื่อ Service)
 #   docker compose --profile all up --build              # ทุกอย่าง
 # ตอนพัฒนาปกติให้รัน infra ใน Docker แล้วรัน Service ด้วย `pnpm --filter @internpath/<name> start:dev`
@@ -12,7 +12,7 @@ x-service: &service
   environment: &service-env
     # ในคอนเทนเนอร์ต้องเรียก infra ด้วยชื่อ service ไม่ใช่ localhost
     RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@rabbitmq:5672
-    S3_ENDPOINT: http://minio:9000
+    S3_ENDPOINT: http://rustfs:9000
     SMTP_HOST: mailpit
 
 services:
@@ -51,19 +51,20 @@ services:
       timeout: 5s
       retries: 10
 
-  minio:
-    image: minio/minio:latest
+  rustfs:
+    # แทน MinIO (Docker Hub ไม่มี image ให้ดึงแล้ว) — ปักเวอร์ชัน ไม่ใช้ latest; ใช้เฉพาะ dev/สาธิตในเครื่อง (สาธิตจริงใช้ Cloudflare R2)
+    # ครั้งแรกรัน `pnpm infra:init-buckets` เพื่อสร้าง bucket
+    image: rustfs/rustfs:1.0.6
     profiles: ["infra", "all"]
     restart: unless-stopped
-    command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      RUSTFS_ACCESS_KEY: ${S3_ACCESS_KEY}
+      RUSTFS_SECRET_KEY: ${S3_SECRET_KEY}
     ports:
       - "127.0.0.1:9000:9000"
       - "127.0.0.1:9001:9001"
     volumes:
-      - minio-data:/data
+      - rustfs-data:/data
 
   mailpit:
     image: axllent/mailpit:latest
@@ -150,4 +151,4 @@ services:
 
 volumes:
   postgres-data:
-  minio-data:
+  rustfs-data:
