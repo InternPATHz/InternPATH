@@ -9,7 +9,7 @@ export type NavItem = { label: string; href: string; ready: boolean };
 
 export const PUBLIC_NAV: NavItem[] = [
   { label: 'ค้นหางาน', href: '/jobs', ready: true },
-  { label: 'บริษัทและรีวิว', href: '/companies', ready: false },
+  { label: 'บริษัทและรีวิว', href: '/companies', ready: true },
 ];
 
 export const ROLE_NAV: Record<Role, NavItem[]> = {
@@ -18,7 +18,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { label: 'โปรไฟล์และเรซูเม่', href: '/student/profile', ready: true },
   ],
   COMPANY_HR: [
-    { label: 'ประกาศของฉัน', href: '/hr/jobs', ready: false },
+    { label: 'ประกาศของฉัน', href: '/hr/jobs', ready: true },
     { label: 'ผู้สมัคร', href: '/hr/applicants', ready: true },
   ],
   ADVISOR: [{ label: 'คำขออนุมัติ', href: '/advisor/requests', ready: false }],
