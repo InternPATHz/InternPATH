@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import type { JwtClaims } from '@internpath/common';
 import { expect } from 'chai';
 import request from 'supertest';
-import { AppealModule } from '../../src/appeal/appeal.module';
 import { QueueModule } from '../../src/queue/queue.module';
 import { QueueService } from '../../src/queue/queue.service';
 import { ReportModule } from '../../src/report/report.module';
@@ -25,7 +24,7 @@ describe('GET /admin/queue/{id} ของ JOB_REPORT + ความเป็น�
   before(async function () {
     await dbReachableOrSkip(this);
     db = await createTestDatabase();
-    t = await createTestApp({ imports: [ReportModule, QueueModule, AppealModule], db });
+    t = await createTestApp({ imports: [ReportModule, QueueModule], db });
     reports = t.app.get(ReportService);
     queue = t.app.get(QueueService);
     admin = { Authorization: `Bearer ${t.token({ role: 'PLATFORM_ADMIN', sub: randomUUID() })}` };
@@ -36,7 +35,7 @@ describe('GET /admin/queue/{id} ของ JOB_REPORT + ความเป็น�
   });
   afterEach(async () => {
     await t.prisma.$executeRawUnsafe(
-      'TRUNCATE job_snapshots, job_reports, job_report_counters, reporter_stats, evaluations, queue_items, outbox_events, status_history, admin_audit_log',
+      'TRUNCATE job_snapshots, job_reports, job_report_counters, reporter_stats, job_submission_snapshots, queue_items, outbox_events, status_history, admin_audit_log',
     );
   });
 
@@ -48,10 +47,10 @@ describe('GET /admin/queue/{id} ของ JOB_REPORT + ความเป็น�
     const companyId = randomUUID();
     const submissionId = randomUUID();
     await t.prisma.jobSnapshot.create({ data: { jobId, companyId, status: 'PUBLISHED', entityVersion: 1 } });
-    await t.prisma.evaluation.create({
+    await t.prisma.jobSubmissionSnapshot.create({
       data: {
         jobId, companyId, submissionId, submissionKind: 'NEW', submittedAt: new Date(), content: { job_title: 'ฝึกงานพัฒนาซอฟต์แวร์' },
-        riskScore: 0, riskLevel: 'LOW', decision: 'APPROVE', negatedOnly: false, matchedKeywords: [], reasons: [], companyFlagUnderReview: false, fastTrack: false,
+        fastTrack: false,
       },
     });
     const users: string[] = [];
@@ -79,7 +78,7 @@ describe('GET /admin/queue/{id} ของ JOB_REPORT + ความเป็น�
 
   it('รายการชนิดอื่น (JOB_REVIEW) ⇒ reports เป็น []', async () => {
     const item = await t.prisma.$transaction((tx) =>
-      queue.createItem(tx, { type: 'JOB_REVIEW', jobId: randomUUID(), companyId: randomUUID(), submissionId: randomUUID(), riskLevel: 'MEDIUM', fastTrack: false, origin: 'EVALUATION' }),
+      queue.createItem(tx, { type: 'JOB_REVIEW', jobId: randomUUID(), companyId: randomUUID(), submissionId: randomUUID(), fastTrack: false, origin: 'FLAGGED_COMPANY' }),
     );
     const res = await http().get(`/v1/admin/queue/${item.id}`).set(admin).expect(200);
     expect(res.body.reports).to.deep.equal([]);
@@ -102,12 +101,10 @@ describe('GET /admin/queue/{id} ของ JOB_REPORT + ความเป็น�
     }
   });
 
-  it('ตัวตนผู้รายงานและ detail ไม่รั่ว: ผลตรวจของ HR ไม่มี reports/reporter_user_id/detail และ Event ใน outbox ไม่มีสตริงเหล่านี้', async () => {
+  it('ตัวตนผู้รายงานและ detail ไม่รั่ว: HR เปิดคิว Admin ไม่ได้, ไม่มี endpoint ผลตรวจ (ถอดแล้ว) และ Event ใน outbox ไม่มีสตริงเหล่านี้', async () => {
     const { jobId, companyId, users } = await reportedJob();
     const hr = { Authorization: `Bearer ${t.token({ role: 'COMPANY_HR', sub: randomUUID(), company_id: companyId })}` };
-    const res = await http().get(`/v1/verification/jobs/${jobId}/result`).set(hr).expect(200);
-    const body = JSON.stringify(res.body);
-    for (const leak of ['reports', 'reporter_user_id', 'detail', MARKER, ...users]) expect(body, leak).to.not.include(leak);
+    await http().get(`/v1/verification/jobs/${jobId}/result`).set(hr).expect(404);
 
     const events = await t.prisma.outboxEvent.findMany();
     expect(events.length).to.be.greaterThan(0);

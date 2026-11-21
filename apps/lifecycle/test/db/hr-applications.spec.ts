@@ -21,7 +21,7 @@ import { ApplicationStateMachine } from '../../src/state-machine/application-sta
 import { addDays, bangkokToday } from '../../src/state-machine/dates';
 import { FakeJobClient } from '../support/application-fakes';
 import { createTestDatabase, type TestDatabase } from '../support/db';
-import { TEST_JWT, bearer } from '../support/jwt';
+import { ALL_CATEGORIES, TEST_JWT, bearer } from '../support/jwt';
 import { FakeIdentity, FakeStorage } from '../support/profile-resume-fakes';
 
 /** OutboxWriter มาจาก MessagingModule (Global) ในแอปจริง — เทสต์ไม่ต่อ RabbitMQ จึงให้ตัวเขียนตรง */
@@ -60,7 +60,7 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
   const today = () => bangkokToday(new Date());
 
   const asHr = (company = companyId) =>
-    bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: company, company_role: 'MEMBER' });
+    bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: company, company_role: 'MEMBER', company_categories: ALL_CATEGORIES });
   const asStudent = (sub = student) => bearer({ role: 'STUDENT', sub });
 
   before(async function () {
@@ -124,10 +124,17 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
   });
 
   /** ใส่ใบสมัครตรง (ข้าม API) เพื่อตั้งสถานะเริ่มต้น */
-  const seed = (status: ApplicationStatus, data: Record<string, unknown> = {}) =>
-    prisma.application.create({
-      data: { jobId: randomUUID(), companyId, studentUserId: student, advisorUserId: advisorId, resumeId, status, ...data },
+  const seed = async (status: ApplicationStatus, data: Record<string, unknown> = {}) => {
+    const jobId = (data.jobId as string | undefined) ?? randomUUID();
+    const row = await prisma.application.create({
+      data: { jobId, companyId, studentUserId: student, advisorUserId: advisorId, resumeId, status, ...data },
     });
+    // สายงานของประกาศ (ใช้ตรวจสิทธิ์ HR Member ตามสายงาน) — เทสต์ทั่วไปให้อยู่ในสายงาน TECH_IT
+    await prisma.jobSnapshot.upsert({
+      where: { jobId }, create: { jobId, companyId, title: 'x', status: 'PUBLISHED', category: 'TECH_IT' }, update: {},
+    });
+    return row;
+  };
 
   /** ใบที่อาจารย์อนุมัติแล้ว: จองโควตาแล้ว ช่วงฝึก 60 วันเริ่มวันนี้ */
   const seedApproved = (data: Record<string, unknown> = {}) =>
@@ -198,6 +205,79 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
   });
 
   // ------------------------------------------------------------------
+  describe('สิทธิ์ตามสายงานของ HR Member (ปรับ 2026-11-21)', () => {
+    const memberOf = (categories: string[]) =>
+      bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: companyId, company_role: 'MEMBER', company_categories: categories as never });
+    const owner = () => bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: companyId, company_role: 'OWNER' });
+    const seedIn = async (category: 'TECH_IT' | 'BUSINESS_MARKETING' | 'CORPORATE_SERVICES', status: ApplicationStatus = 'PENDING') => {
+      const jobId = randomUUID();
+      await prisma.jobSnapshot.create({ data: { jobId, companyId, title: 'x', status: 'PUBLISHED', category } });
+      return prisma.application.create({ data: { jobId, companyId, studentUserId: randomUUID(), advisorUserId: advisorId, resumeId, status } });
+    };
+    const ids = async (token: string, qs = '') =>
+      (await http().get(`/v1/hr/applications${qs}`).set('Authorization', token).expect(200)).body.data.map((r: { id: string }) => r.id).sort();
+
+    it('รายการ: Member เห็นเฉพาะใบของประกาศในสายงานตน; Owner เห็นทุกสายงาน; Member ไม่มีสายงาน ⇒ รายการว่าง; ?job_id= นอกสายงาน ⇒ ว่าง', async () => {
+      const tech = await seedIn('TECH_IT');
+      const biz = await seedIn('BUSINESS_MARKETING');
+      const corp = await seedIn('CORPORATE_SERVICES');
+      expect(await ids(memberOf(['TECH_IT']))).to.deep.equal([tech.id]);
+      expect(await ids(memberOf(['TECH_IT', 'CORPORATE_SERVICES']))).to.deep.equal([tech.id, corp.id].sort());
+      expect(await ids(memberOf(['BUSINESS_MARKETING']))).to.deep.equal([biz.id]);
+      expect(await ids(owner())).to.deep.equal([tech.id, biz.id, corp.id].sort());
+      expect(await ids(memberOf([]))).to.deep.equal([]);
+      expect(await ids(memberOf(['TECH_IT']), `?job_id=${biz.jobId}`)).to.deep.equal([]);
+      expect(await ids(memberOf(['BUSINESS_MARKETING']), `?job_id=${biz.jobId}`)).to.deep.equal([biz.id]);
+      const total = (await http().get('/v1/hr/applications').set('Authorization', memberOf(['TECH_IT'])).expect(200)).body.meta.total;
+      expect(total).to.equal(1);
+    });
+
+    it('รายละเอียด/actions ของใบนอกสายงาน ⇒ 403 FORBIDDEN_ROLE (FORBIDDEN_CATEGORY) และไม่เปลี่ยนสถานะ; ในสายงานทำได้', async () => {
+      const biz = await seedIn('BUSINESS_MARKETING');
+      const token = memberOf(['TECH_IT']);
+      const calls: Array<['get' | 'post', string, Record<string, unknown>?]> = [
+        ['get', `/v1/hr/applications/${biz.id}`],
+        ['post', `/v1/hr/applications/${biz.id}/actions/reject`, { reason: 'x' }],
+        ['post', `/v1/hr/applications/${biz.id}/actions/accept`, validPeriod()],
+      ];
+      for (const [method, url, body] of calls) {
+        const req = http()[method](url).set('Authorization', token);
+        const res = await (method === 'post' ? req.send(body ?? {}) : req);
+        expect(res.status, url).to.equal(403);
+        expect(res.body.error.code, url).to.equal('FORBIDDEN_ROLE');
+        expect(res.body.error.details[0].issue, url).to.equal('FORBIDDEN_CATEGORY');
+      }
+      expect((await reload(biz.id)).status).to.equal('PENDING');
+      await http().get(`/v1/hr/applications/${biz.id}`).set('Authorization', memberOf(['BUSINESS_MARKETING'])).expect(200);
+      await http().get(`/v1/hr/applications/${biz.id}`).set('Authorization', owner()).expect(200);
+      await http().post(`/v1/hr/applications/${biz.id}/actions/reject`).set('Authorization', memberOf(['BUSINESS_MARKETING'])).send({ reason: 'ไม่ตรงสาย' }).expect(200);
+      expect((await reload(biz.id)).status).to.equal('HR_REJECTED');
+    });
+
+    it('Token ของ Member ที่ไม่มี company_categories ⇒ ปิดไว้ (403) ส่วนบริษัทอื่นยังเป็น NOT_OWNER_OF_RESOURCE ก่อน', async () => {
+      const tech = await seedIn('TECH_IT');
+      const bare = bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: companyId, company_role: 'MEMBER' });
+      const res = await http().get(`/v1/hr/applications/${tech.id}`).set('Authorization', bare).expect(403);
+      expect(res.body.error.details[0].issue).to.equal('FORBIDDEN_CATEGORY');
+      const foreign = bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: otherCompany, company_role: 'MEMBER', company_categories: ALL_CATEGORIES });
+      expect((await http().get(`/v1/hr/applications/${tech.id}`).set('Authorization', foreign).expect(403)).body.error.code).to.equal('NOT_OWNER_OF_RESOURCE');
+    });
+
+    it('snapshot ที่ยังไม่มีสายงาน ⇒ ถามจาก Job แล้วเติมให้ (ทั้งหน้ารายการและรายละเอียด); Job ไม่รู้จักประกาศ ⇒ ปิดไว้', async () => {
+      const known = job.addJob({ company_id: companyId, category: 'CORPORATE_SERVICES' });
+      await prisma.jobSnapshot.create({ data: { jobId: known.job_id, companyId, title: 'x', status: 'PUBLISHED' } });
+      const withJob = await prisma.application.create({ data: { jobId: known.job_id, companyId, studentUserId: randomUUID(), advisorUserId: advisorId, resumeId, status: 'PENDING' } });
+      const orphan = await prisma.application.create({ data: { jobId: randomUUID(), companyId, studentUserId: randomUUID(), advisorUserId: advisorId, resumeId, status: 'PENDING' } });
+
+      expect(await ids(memberOf(['TECH_IT']))).to.deep.equal([]);
+      expect(await ids(memberOf(['CORPORATE_SERVICES']))).to.deep.equal([withJob.id]);
+      expect((await prisma.jobSnapshot.findUniqueOrThrow({ where: { jobId: known.job_id } })).category).to.equal('CORPORATE_SERVICES');
+      await http().get(`/v1/hr/applications/${withJob.id}`).set('Authorization', memberOf(['CORPORATE_SERVICES'])).expect(200);
+      await http().get(`/v1/hr/applications/${orphan.id}`).set('Authorization', memberOf(ALL_CATEGORIES)).expect(403);
+      expect(await ids(owner())).to.include.members([withJob.id, orphan.id]);
+    });
+  });
+
   describe('GET /hr/applications และ /hr/applications/{id}', () => {
     it('รายการเฉพาะบริษัทของตน กรอง ?job_id= / ?status= + pagination; ไม่มีโปรไฟล์ในรายการ', async () => {
       const jobA = randomUUID();

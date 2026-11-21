@@ -17,7 +17,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import type { Tx } from '../../src/prisma/types';
 import { addDays, bangkokToday } from '../../src/state-machine/dates';
 import { createTestDatabase, type TestDatabase } from '../support/db';
-import { TEST_JWT, bearer } from '../support/jwt';
+import { ALL_CATEGORIES, TEST_JWT, bearer } from '../support/jwt';
 import { FakeIdentity } from '../support/profile-resume-fakes';
 
 @Global()
@@ -45,7 +45,7 @@ describe('Lifecycle 1.8 — รีวิวบริษัท (HTTP + Postgres �
   const today = () => bangkokToday(new Date());
 
   const asStudent = (sub = student) => bearer({ role: 'STUDENT', sub });
-  const asHr = (company = companyId) => bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: company, company_role: 'MEMBER' });
+  const asHr = (company = companyId) => bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: company, company_role: 'MEMBER', company_categories: ALL_CATEGORIES });
 
   before(async function () {
     database = await createTestDatabase('lc_review');

@@ -1,8 +1,8 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Roles, RolesGuard } from '@internpath/common';
-import type { AdvisorApplicationItem, AdvisorDisputeItem, AdvisorStudentOverview, Paginated } from '@internpath/contracts';
+import type { AdvisorApplicationItem, AdvisorDisputeItem, AdvisorStudentOverview, AdvisorTrainingStudentItem, Paginated } from '@internpath/contracts';
 import { PageQueryDto } from '../resumes/resumes.dto';
-import { AcademicResultDto, AdvisorApplicationsQueryDto, AdvisorReasonDto, DisputeDecisionDto } from './advisor.dto';
+import { AcademicResultDto, AdvisorApplicationsQueryDto, AdvisorReasonDto, AdvisorStudentsQueryDto, DisputeDecisionDto } from './advisor.dto';
 import { AdvisorService } from './advisor.service';
 
 /**
@@ -23,6 +23,12 @@ export class AdvisorController {
   @Get('disputes')
   disputes(@CurrentUser() user: JwtClaims, @Query() query: PageQueryDto): Promise<Paginated<AdvisorDisputeItem>> {
     return this.service.disputes(user, query.page, query.page_size);
+  }
+
+  /** รายชื่อนักศึกษาในความดูแล + ตัวกรองชั้นปี/กำลังฝึก/ฝึกเสร็จแล้ว (ต้องประกาศก่อน `students/:id/overview`) */
+  @Get('students')
+  students(@CurrentUser() user: JwtClaims, @Query() query: AdvisorStudentsQueryDto): Promise<Paginated<AdvisorTrainingStudentItem>> {
+    return this.service.students(user, query);
   }
 
   @Get('students/:id/overview')

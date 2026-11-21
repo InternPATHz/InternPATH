@@ -3,11 +3,7 @@ import { AppException } from '@internpath/common';
 import type { Prisma, QueueItem } from '../../generated/client';
 import { Page, skipOf } from '../common/pagination';
 import { PrismaService } from '../prisma/prisma.service';
-import { reviewText, scanReview } from '../review/review-scan';
-import { RulesRepository } from '../rules/rules.repository';
-import type { MatchedKeyword } from '../screening/types';
 import { QueueQuery } from './dto';
-import { Highlight, buildHighlights } from './highlights';
 import { isOverdue } from './sla';
 
 export interface QueueListItem {
@@ -17,8 +13,6 @@ export interface QueueListItem {
   company_id: string | null;
   company_name: string | null;
   priority: string;
-  risk_level: string | null;
-  is_appeal: boolean;
   due_at: Date;
   overdue: boolean;
   status: string;
@@ -31,14 +25,11 @@ export interface QueueDetail extends QueueListItem {
   assigned_to: string | null;
   resolution: string | null;
   resolved_at: Date | null;
-  risk_score: number | null;
-  reasons: unknown;
+  /** เนื้อหาประกาศที่ส่งมากับ E01 (เฉพาะรายการที่มี submission) — ให้ Admin อ่านก่อนตัดสิน */
   content: unknown;
-  highlights: Highlight[];
-  appeal_statement: string | null;
   /** เฉพาะ JOB_REPORT: รายงานทั้งหมดของประกาศ (ตัวตนผู้รายงานเห็นได้เฉพาะ Admin ผ่าน endpoint นี้) — ชนิดอื่นเป็น [] */
   reports: ReportView[];
-  /** เฉพาะ REVIEW_HELD/REVIEW_REPORT (สไลซ์ 3 §5.6) */
+  /** เฉพาะ REVIEW_REPORT */
   review: ReviewView | null;
   /** เฉพาะ REVIEW_REPORT: รายงานทั้งหมดของรีวิว (ตัวตนผู้รายงานเห็นได้เฉพาะ Admin) */
   review_reports: ReviewReportView[];
@@ -51,9 +42,6 @@ export interface ReviewView {
   title: string | null;
   body: string;
   moderation_status: string;
-  /** ออฟเซ็ตอ้างอิงข้อความ `title
-body` (reviewText) ที่ผ่าน normalizeText แล้ว */
-  highlights: Highlight[];
 }
 
 export interface ReviewReportView {
@@ -75,16 +63,13 @@ export interface ReportView {
 
 @Injectable()
 export class QueueQueryService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly rules: RulesRepository,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async list(q: QueueQuery, now = new Date()): Promise<Page<QueueListItem>> {
     const and: Prisma.QueueItemWhereInput[] = [];
     if (q.type) and.push({ type: q.type });
     if (q.priority) and.push({ priority: q.priority });
-    if (q.risk_level) and.push({ riskLevel: q.risk_level });
+
     // ไม่ส่ง status ⇒ เฉพาะงานที่ยังไม่ปิด (OPEN/IN_REVIEW) — ดูที่ปิดแล้วด้วย status=RESOLVED
     and.push(q.status ? { status: q.status } : { status: { not: 'RESOLVED' } });
     if (q.overdue) and.push({ status: { not: 'RESOLVED' }, dueAt: { lt: now } });
@@ -106,13 +91,12 @@ export class QueueQueryService {
   async detail(id: string, now = new Date()): Promise<QueueDetail> {
     const item = await this.prisma.queueItem.findUnique({ where: { id } });
     if (!item) throw new AppException('NOT_FOUND', 'ไม่พบรายการคิว', 404);
-    const [evaluation, appeal, names, reportRows] = await Promise.all([
-      item.submissionId ? this.prisma.evaluation.findUnique({ where: { submissionId: item.submissionId } }) : null,
-      item.type === 'JOB_APPEAL' ? this.prisma.appeal.findUnique({ where: { jobId: item.targetId } }) : null,
+    const [submission, names, reportRows] = await Promise.all([
+      item.submissionId ? this.prisma.jobSubmissionSnapshot.findUnique({ where: { submissionId: item.submissionId } }) : null,
       this.companyNames([item.companyId]),
       item.type === 'JOB_REPORT' ? this.prisma.jobReport.findMany({ where: { jobId: item.targetId }, orderBy: { createdAt: 'asc' } }) : [],
     ]);
-    const isReviewItem = item.type === 'REVIEW_HELD' || item.type === 'REVIEW_REPORT';
+    const isReviewItem = item.type === 'REVIEW_REPORT';
     const [moderation, reviewReportRows] = isReviewItem
       ? await Promise.all([
           this.prisma.reviewModeration.findUnique({ where: { reviewId: item.targetId } }),
@@ -129,7 +113,6 @@ export class QueueQueryService {
           title: moderation.title,
           body: moderation.body,
           moderation_status: moderation.status,
-          highlights: buildHighlights(scanReview(reviewText(moderation.title, moderation.body), await this.rules.load(this.prisma)).matched),
         }
       : null;
     return {
@@ -139,11 +122,7 @@ export class QueueQueryService {
       assigned_to: item.assignedTo,
       resolution: item.resolution,
       resolved_at: item.resolvedAt,
-      risk_score: evaluation?.riskScore ?? null,
-      reasons: evaluation?.reasons ?? [],
-      content: evaluation?.content ?? null,
-      highlights: buildHighlights((evaluation?.matchedKeywords ?? []) as unknown as MatchedKeyword[]),
-      appeal_statement: appeal?.statement ?? null,
+      content: submission?.content ?? null,
       reports: reportRows.map((r) => ({
         id: r.id,
         reporter_user_id: r.reporterUserId,
@@ -173,8 +152,6 @@ export class QueueQueryService {
       company_id: r.companyId,
       company_name: r.companyId ? (names.get(r.companyId) ?? null) : null,
       priority: r.priority,
-      risk_level: r.riskLevel,
-      is_appeal: r.isAppeal,
       due_at: r.dueAt,
       overdue: isOverdue(r, now),
       status: r.status,

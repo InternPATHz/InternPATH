@@ -30,7 +30,7 @@ export default function VerifyEmailPage() {
         {!token && <Notice error>ไม่พบ token ในลิงก์ กรุณาเปิดลิงก์จากอีเมลอีกครั้ง</Notice>}
         {error && <Notice error>{error}</Notice>}
         <button type="button" disabled={!token || busy} onClick={verify}
-          className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-white hover:bg-primary-hover disabled:opacity-50">
+          className="w-full rounded-full bg-primary px-4 py-3 font-semibold text-white hover:bg-primary-hover disabled:opacity-50">
           {busy ? 'กำลังยืนยัน…' : 'ยืนยันอีเมล'}
         </button>
       </>}

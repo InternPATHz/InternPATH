@@ -12,7 +12,7 @@ import { HR_JOBS_MOCK, hrJobsApi } from '@/lib/hr-jobs';
 import { JOB_STATUS } from '@/lib/status-map';
 
 const QUICK: Array<[string, JobStatus | '']> = [
-  ['ทั้งหมด', ''], ['ร่าง', 'DRAFT'], ['กำลังตรวจสอบ', 'VERIFYING'], ['เปิดรับสมัคร', 'PUBLISHED'], ['ถูกตีกลับ', 'AUTO_REJECTED'], ['ปิดแล้ว', 'CLOSED'],
+  ['ทั้งหมด', ''], ['ร่าง', 'DRAFT'], ['รอ Admin ตรวจ', 'PENDING_REVIEW'], ['เปิดรับสมัคร', 'PUBLISHED'], ['ถูกตีกลับ', 'ADMIN_REJECTED'], ['ปิดแล้ว', 'CLOSED'],
 ];
 
 export function HrJobList() {
@@ -46,11 +46,11 @@ export function HrJobList() {
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">ประกาศของฉัน</h1>
-          <p className="mt-2 text-sm text-ink-soft">สร้าง แก้ไข ส่งตรวจ และปิดประกาศรับนักศึกษาฝึกงานของบริษัท</p>
+          <h1 className="text-3xl font-semibold">ประกาศของฉัน</h1>
+          <p className="mt-2 text-sm text-ink-soft">สร้าง แก้ไข เผยแพร่ และปิดประกาศรับนักศึกษาฝึกงานของบริษัท</p>
           {HR_JOBS_MOCK && <p className="mt-1 text-xs text-warning-text">ข้อมูลในหน้านี้เป็นข้อมูลจำลอง</p>}
         </div>
-        <Link href="/hr/jobs/form" className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover">สร้างประกาศใหม่</Link>
+        <Link href="/hr/jobs/form" className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover">สร้างประกาศใหม่</Link>
       </div>
 
       <div role="group" aria-label="กรองตามสถานะ" className="mt-6 flex flex-wrap gap-2">
@@ -74,7 +74,7 @@ export function HrJobList() {
         {result && result.data.length > 0 && (
           <ul className="space-y-3">
             {result.data.map((job) => (
-              <li key={job.id} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+              <li key={job.id} className="rounded-xl border border-border bg-surface p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold">{jobTitleOf(job)}</h2>

@@ -25,7 +25,7 @@ export function RequireAuth({ roles, children }: { roles?: Role[]; children: Rea
   if (roles && !roles.includes(user.role)) {
     return (
       <main className="mx-auto max-w-md p-8 text-center">
-        <h1 className="text-xl font-bold">ไม่มีสิทธิ์เข้าหน้านี้</h1>
+        <h1 className="text-xl font-semibold">ไม่มีสิทธิ์เข้าหน้านี้</h1>
         <p className="mt-2 text-sm text-ink-soft">หน้านี้สำหรับบทบาทอื่น หากคิดว่าเป็นข้อผิดพลาด กรุณาติดต่อผู้ดูแลระบบ</p>
         <Link href="/" className="mt-4 inline-block text-sm text-primary hover:underline">กลับหน้าแรก</Link>
       </main>

@@ -29,3 +29,6 @@ export function signAccessToken(claims: TestClaims, expiresInSeconds = 900): str
 
 export const bearer = (claims: TestClaims, expiresInSeconds?: number): string =>
   `Bearer ${signAccessToken(claims, expiresInSeconds)}`;
+
+/** สายงานครบทั้งหมด — ใช้กับ HR Member ในเทสต์ทั่วไปที่ไม่ได้ทดสอบสิทธิ์ตามสายงาน */
+export const ALL_CATEGORIES: Array<'TECH_IT' | 'BUSINESS_MARKETING' | 'CORPORATE_SERVICES'> = ['TECH_IT', 'BUSINESS_MARKETING', 'CORPORATE_SERVICES'];

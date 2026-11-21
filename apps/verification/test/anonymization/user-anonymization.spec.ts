@@ -97,14 +97,9 @@ describe('UserAnonymizationService — E15 UserDeletionRequested (Postgres จ�
     expect(await t.prisma.reporterStat.findUnique({ where: { userId: other } })).to.not.equal(null);
   });
 
-  it('id ของ Admin ในตารางอื่น: decided_by / created_by / updated_by / cleared_by → รหัสนิรนาม; คิวที่ยังไม่ปิดถูกปลดผู้รับผิดชอบ, คิวที่ปิดแล้วเก็บเป็นรหัสนิรนาม', async () => {
+  it('id ของ Admin ในตารางอื่น: cleared_by → รหัสนิรนาม; คิวที่ยังไม่ปิดถูกปลดผู้รับผิดชอบ, คิวที่ปิดแล้วเก็บเป็นรหัสนิรนาม', async () => {
     const admin = randomUUID();
     const anonymous = randomUUID();
-    const appeal = await t.prisma.appeal.create({
-      data: { jobId: randomUUID(), submissionId: randomUUID(), statement: 'ข้อความอุทธรณ์ของบริษัท', status: 'DENIED', decidedBy: admin, decidedAt: new Date() },
-    });
-    const term = await t.prisma.blacklistTerm.create({ data: { term: `คำ-${randomUUID()}`, severity: 'SOFT', createdBy: admin } });
-    await t.prisma.riskRule.update({ where: { code: 'CONTACT_IN_TEXT' }, data: { updatedBy: admin } });
     const companyId = randomUUID();
     await t.prisma.companyFlag.create({ data: { companyId, underReview: false, clearedBy: admin, setBy: 'ADMIN' } });
     const open = await queueItem({ status: 'OPEN', assignedTo: admin });
@@ -113,9 +108,6 @@ describe('UserAnonymizationService — E15 UserDeletionRequested (Postgres จ�
 
     await apply(payload(admin, anonymous, 'PLATFORM_ADMIN'));
 
-    expect((await t.prisma.appeal.findUnique({ where: { id: appeal.id } }))!).to.include({ decidedBy: anonymous, statement: 'ข้อความอุทธรณ์ของบริษัท' });
-    expect((await t.prisma.blacklistTerm.findUnique({ where: { id: term.id } }))!.createdBy).to.equal(anonymous);
-    expect((await t.prisma.riskRule.findUnique({ where: { code: 'CONTACT_IN_TEXT' } }))!.updatedBy).to.equal(anonymous);
     expect((await t.prisma.companyFlag.findUnique({ where: { companyId } }))!.clearedBy).to.equal(anonymous);
     expect((await t.prisma.queueItem.findUnique({ where: { id: open.id } }))!.assignedTo).to.equal(null);
     expect((await t.prisma.queueItem.findUnique({ where: { id: inReview.id } }))!.assignedTo).to.equal(null);
@@ -160,7 +152,7 @@ describe('UserAnonymizationService — E15 UserDeletionRequested (Postgres จ�
     const anonymous = randomUUID();
     const held = await moderation(user, 'HELD');
     const queueItem = await t.prisma.queueItem.create({
-      data: { type: 'REVIEW_HELD', targetType: 'review', targetId: held.reviewId, origin: 'REVIEW_SCAN', dueAt: new Date(Date.now() + 1e8) },
+      data: { type: 'REVIEW_REPORT', targetType: 'review', targetId: held.reviewId, origin: 'REVIEW_REPORT', dueAt: new Date(Date.now() + 1e8) },
     });
     const passed = await moderation(user, 'PASSED');
     const published = await moderation(user, 'ADMIN_PUBLISHED');
@@ -174,7 +166,7 @@ describe('UserAnonymizationService — E15 UserDeletionRequested (Postgres จ�
       expect(await row(r.reviewId)).to.include({ studentUserId: anonymous, title: 'หัวข้อรีวิว', body: 'เนื้อหารีวิว โทร 081-234-5678' });
     }
     expect(await row(othersHeld.reviewId)).to.include({ studentUserId: other, title: 'หัวข้อรีวิว', body: 'เนื้อหารีวิว โทร 081-234-5678' });
-    expect(await t.prisma.queueItem.findUniqueOrThrow({ where: { id: queueItem.id } })).to.include({ status: 'OPEN', type: 'REVIEW_HELD' });
+    expect(await t.prisma.queueItem.findUniqueOrThrow({ where: { id: queueItem.id } })).to.include({ status: 'OPEN', type: 'REVIEW_REPORT' });
     expect(await t.prisma.reviewModeration.count({ where: { studentUserId: user } })).to.equal(0);
   });
 

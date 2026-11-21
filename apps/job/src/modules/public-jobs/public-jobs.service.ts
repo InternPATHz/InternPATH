@@ -1,5 +1,5 @@
 import { AppException } from '@internpath/common';
-import type { JobObject, Paginated, SearchJobItem } from '@internpath/contracts';
+import type { JobObject, JobTag, Paginated, SearchJobItem } from '@internpath/contracts';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { isUUID } from 'class-validator';
@@ -9,7 +9,7 @@ import type { SearchJobsQueryDto } from './search-jobs-query.dto';
 
 type PublicJobRow = Omit<
   JobObject,
-  'company' | 'allowance' | 'period' | 'status' | 'application_deadline' | 'published_at'
+  'company' | 'allowance' | 'period' | 'status' | 'application_deadline' | 'published_at' | 'tags'
 > & {
   status: 'PUBLISHED' | 'CLOSED';
   company_id: string;
@@ -67,6 +67,14 @@ export class PublicJobsService {
     if (query.work_mode) filters.push(Prisma.sql`j.work_mode = ${query.work_mode}::work_mode`);
     if (query.company_id) filters.push(Prisma.sql`j.company_id = ${query.company_id}::uuid`);
     if (query.allowance) filters.push(Prisma.sql`j.allowance_type = 'AMOUNT'`);
+    if (query.tags) {
+      // any-of: ประกาศที่มี Tag ใดก็ได้ในรายการ (Tag ที่ปิดใช้งานแล้วยังกรองได้ — ประกาศเดิมยังติด Tag อยู่)
+      const slugs = query.tags.split(',');
+      filters.push(Prisma.sql`EXISTS (
+        SELECT 1 FROM job_tags AS jt JOIN tags AS t ON t.id = jt.tag_id
+        WHERE jt.job_id = j.id AND t.slug IN (${Prisma.join(slugs)})
+      )`);
+    }
     const q = query.q?.trim();
     if (q) {
       const pattern = `%${q.replace(/[\\%_]/g, '\\$&')}%`;
@@ -100,8 +108,9 @@ export class PublicJobsService {
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
     const major = normalizeMajor(query.major ?? '');
+    const tagsByJob = await this.tagsFor(rows.map((row) => row.id));
     const data = rows.map((row): SearchJobItem => ({
-      ...this.toJobObject(row),
+      ...this.toJobObject(row, tagsByJob.get(row.id) ?? []),
       ...(major ? { major_mismatch: majorMismatch(major, row.target_majors) } : {}),
     }));
     return { data, meta: { page, page_size: pageSize, total: Number(count.total) } };
@@ -114,9 +123,21 @@ export class PublicJobsService {
         ${WITH_VERIFIED_COMPANY} ${WITH_ENTITLEMENT}
         WHERE j.id = ${id}::uuid AND j.status IN ('PUBLISHED', 'CLOSED')
       `;
-      if (row) return this.toJobObject(row);
+      if (row) return this.toJobObject(row, (await this.tagsFor([row.id])).get(row.id) ?? []);
     }
     throw new AppException('NOT_FOUND', 'ไม่พบประกาศงาน', 404);
+  }
+
+  private async tagsFor(jobIds: string[]): Promise<Map<string, JobTag[]>> {
+    const map = new Map<string, JobTag[]>();
+    if (jobIds.length === 0) return map;
+    const rows = await this.db.jobTag.findMany({
+      where: { jobId: { in: jobIds } },
+      select: { jobId: true, tag: { select: { id: true, name: true, slug: true } } },
+      orderBy: { tag: { name: 'asc' } },
+    });
+    for (const row of rows) map.set(row.jobId, [...(map.get(row.jobId) ?? []), row.tag]);
+    return map;
   }
 
   private logoUrl(key: string | null): string | undefined {
@@ -130,7 +151,7 @@ export class PublicJobsService {
       return `${base.replace(/\/$/, '')}/${key.split('/').map(encodeURIComponent).join('/')}`;
   }
 
-  private toJobObject(row: PublicJobRow): JobObject {
+  private toJobObject(row: PublicJobRow, tags: JobTag[]): JobObject {
     const badges: string[] = [];
     if (row.verified_badge) badges.push('Verified by Platform');
     if (row.university_partner) badges.push('University Partner');
@@ -163,6 +184,7 @@ export class PublicJobsService {
         end: dateOnly(row.internship_period_end),
       },
       target_majors: row.target_majors,
+      tags,
       quota: row.quota,
       quota_available: row.quota_available,
       application_deadline: dateOnly(row.application_deadline),

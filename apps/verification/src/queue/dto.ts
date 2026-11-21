@@ -5,7 +5,7 @@ import { NoNul } from '../common/no-nul';
 
 const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : value === 'false' ? false : value);
 
-export const QUEUE_TYPES = ['JOB_REVIEW', 'JOB_APPEAL', 'COMPANY_ACCOUNT', 'JOB_REPORT', 'REVIEW_HELD', 'REVIEW_REPORT'] as const;
+export const QUEUE_TYPES = ['JOB_REVIEW', 'COMPANY_ACCOUNT', 'JOB_REPORT', 'REVIEW_REPORT'] as const;
 
 export class QueueQuery extends PageQuery {
   @IsOptional()
@@ -16,9 +16,6 @@ export class QueueQuery extends PageQuery {
   @IsIn(['NORMAL', 'FAST_TRACK'])
   priority?: 'NORMAL' | 'FAST_TRACK';
 
-  @IsOptional()
-  @IsIn(['LOW', 'MEDIUM', 'HIGH'])
-  risk_level?: 'LOW' | 'MEDIUM' | 'HIGH';
 
   @IsOptional()
   @IsIn(['OPEN', 'IN_REVIEW', 'RESOLVED'])

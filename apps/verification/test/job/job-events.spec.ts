@@ -25,7 +25,7 @@ describe('JobEventsService: E03 → job_snapshots + นับการปฏิ�
   });
   afterEach(async () => {
     await t.prisma.$executeRawUnsafe(
-      'TRUNCATE job_snapshots, company_rejection_events, company_flags, queue_items, outbox_events, status_history, evaluations',
+      'TRUNCATE job_snapshots, company_rejection_events, company_flags, queue_items, outbox_events, status_history, job_submission_snapshots',
     );
   });
 
@@ -59,7 +59,7 @@ describe('JobEventsService: E03 → job_snapshots + นับการปฏิ�
   it('E03 ตัวเดียวกัน (event_id เดิม) ประมวลผลสองครั้ง ⇒ เหตุการณ์ปฏิเสธแถวเดียว', async () => {
     const companyId = randomUUID();
     const eventId = randomUUID();
-    const over = { company_id: companyId, from_status: 'VERIFYING' as const, to_status: 'AUTO_REJECTED' as const };
+    const over = { company_id: companyId, from_status: 'PENDING_REVIEW' as const, to_status: 'ADMIN_REJECTED' as const };
     await send({ ...over, job_id: randomUUID() }, eventId);
     await send({ ...over, job_id: randomUUID() }, eventId);
     expect(await rejections(companyId)).to.have.length(1);
@@ -73,9 +73,9 @@ describe('JobEventsService: E03 → job_snapshots + นับการปฏิ�
     expect((await rejections(companyId))[0]).to.include({ kind: 'SUSPENDED' });
   });
 
-  it('AUTO_REJECTED + ADMIN_REJECTED + SUSPENDED ต่างประกาศของบริษัทเดียว ⇒ ติดธง + COMPANY_ACCOUNT + E18', async () => {
+  it('ADMIN_REJECTED + REMOVED + SUSPENDED ต่างประกาศของบริษัทเดียว ⇒ ติดธง + COMPANY_ACCOUNT + E18', async () => {
     const companyId = randomUUID();
-    await send({ company_id: companyId, from_status: 'VERIFYING', to_status: 'AUTO_REJECTED' });
+    await send({ company_id: companyId, from_status: 'PUBLISHED', to_status: 'REMOVED' });
     await send({ company_id: companyId, from_status: 'PENDING_REVIEW', to_status: 'ADMIN_REJECTED' });
     expect((await t.prisma.companyFlag.findUnique({ where: { companyId } }))?.underReview ?? false).to.equal(false);
     await send({ company_id: companyId, from_status: 'PUBLISHED', to_status: 'SUSPENDED' });
@@ -105,6 +105,12 @@ describe('JobEventsService: E03 → job_snapshots + นับการปฏิ�
     const rows = await t.prisma.jobSnapshot.findMany({ where: { jobId: { in: ids } } });
     expect(rows).to.have.length(40);
     expect(rows.filter((r) => r.entityVersion !== 2 || r.status !== 'CLOSED')).to.have.length(0);
+  });
+
+  it('AUTO_REJECTED (เลิกใช้) ไม่นับเป็นเหตุปฏิเสธอีกแล้ว', async () => {
+    const companyId = randomUUID();
+    await send({ company_id: companyId, from_status: 'VERIFYING', to_status: 'AUTO_REJECTED' });
+    expect(await rejections(companyId)).to.have.length(0);
   });
 
   it('VERIFY_TIMEOUT ยังสร้าง JOB_REVIEW เหมือนเดิม และ to=PENDING_REVIEW ปกติไม่นับเป็นปฏิเสธ', async () => {

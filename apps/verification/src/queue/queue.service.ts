@@ -6,19 +6,18 @@ import type { Tx } from '../prisma/types';
 import { SLA_CONFIG, SlaConfig, computeDueAt } from './sla';
 
 export interface CreateQueueItemArgs {
-  type: 'JOB_REVIEW' | 'JOB_APPEAL';
+  type: 'JOB_REVIEW';
   jobId: string;
   companyId: string;
   submissionId: string | null;
-  riskLevel: 'LOW' | 'MEDIUM' | 'HIGH' | null;
   fastTrack: boolean;
-  origin: 'EVALUATION' | 'VERIFY_TIMEOUT' | 'APPEAL';
+  origin: 'FLAGGED_COMPANY' | 'VERIFY_TIMEOUT';
   now?: Date;
   correlationId?: string;
 }
 
-type JobItemType = 'JOB_REVIEW' | 'JOB_APPEAL';
-const JOB_ITEM_TYPES: JobItemType[] = ['JOB_REVIEW', 'JOB_APPEAL'];
+type JobItemType = 'JOB_REVIEW';
+const JOB_ITEM_TYPES: JobItemType[] = ['JOB_REVIEW'];
 
 @Injectable()
 export class QueueService {
@@ -36,8 +35,6 @@ export class QueueService {
         companyId: a.companyId,
         submissionId: a.submissionId,
         priority,
-        riskLevel: a.riskLevel,
-        isAppeal: a.type === 'JOB_APPEAL',
         origin: a.origin,
         dueAt: computeDueAt(now, priority, this.sla),
         status: 'OPEN',
@@ -62,7 +59,7 @@ export class QueueService {
 
   /**
    * รายการ JOB_REPORT ของประกาศ (รายงานครบเกณฑ์ หรือรายงานที่ไม่นับเข้าเกณฑ์) — priority NORMAL เสมอ
-   * (Fast-Track ใช้เฉพาะ JOB_REVIEW/JOB_APPEAL — OD-10) due_at = created_at + SLA ปกติ
+   * (Fast-Track ใช้เฉพาะ JOB_REVIEW — OD-10) due_at = created_at + SLA ปกติ
    */
   createReportItem(
     tx: Tx,
@@ -88,17 +85,17 @@ export class QueueService {
   }
 
   /**
-   * รายการคิวของรีวิว (REVIEW_HELD / REVIEW_REPORT; target = review_id) — priority NORMAL, SLA ปกติ
+   * รายการคิวของรีวิว (REVIEW_REPORT; target = review_id) — priority NORMAL, SLA ปกติ
    * ใช้ createMany + skipDuplicates (ON CONFLICT DO NOTHING) กัน partial unique index: ถ้ามีรายการเปิดของรีวิวนี้อยู่แล้ว คืน null
    * (ไม่เขียน status_history) โดยไม่ทำให้ Transaction ของผู้เรียกล้ม
    */
   async createReviewItem(
     tx: Tx,
     a: {
-      type: 'REVIEW_HELD' | 'REVIEW_REPORT';
+      type: 'REVIEW_REPORT';
       reviewId: string;
       companyId: string;
-      origin: 'REVIEW_SCAN' | 'REVIEW_REPORT';
+      origin: 'REVIEW_REPORT';
       correlationId?: string;
       now?: Date;
     },
@@ -115,7 +112,6 @@ export class QueueService {
           companyId: a.companyId,
           submissionId: null,
           priority: 'NORMAL',
-          isAppeal: false,
           origin: a.origin,
           dueAt: computeDueAt(now, 'NORMAL', this.sla),
           status: 'OPEN',
@@ -180,7 +176,6 @@ export class QueueService {
         companyId: a.companyId,
         submissionId: a.submissionId,
         priority: 'NORMAL',
-        isAppeal: false,
         origin: a.origin,
         dueAt: computeDueAt(now, 'NORMAL', this.sla),
         status: 'OPEN',
@@ -245,7 +240,7 @@ export class QueueService {
     return true;
   }
 
-  /** รายการคิวที่ยังเปิดอยู่ของประกาศ (ระบุ type เพื่อจำกัด; ไม่ระบุ = JOB_REVIEW หรือ JOB_APPEAL) */
+  /** รายการคิวที่ยังเปิดอยู่ของประกาศ (ระบุ type เพื่อจำกัด; ไม่ระบุ = JOB_REVIEW) */
   findOpenItem(tx: Tx, jobId: string, type?: JobItemType): Promise<QueueItem | null> {
     return tx.queueItem.findFirst({
       where: { targetId: jobId, type: type ?? { in: JOB_ITEM_TYPES }, status: { not: 'RESOLVED' } },

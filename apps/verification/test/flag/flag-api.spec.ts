@@ -145,7 +145,7 @@ describe('ธงบริษัท UNDER_REVIEW: API ของ Admin (Postgres �
 
   it('company-clear-flag: ชนิดอื่น ⇒ 422 UNSUPPORTED_ITEM_TYPE; ไม่พบ ⇒ 404', async () => {
     const review = await t.prisma.$transaction((tx) =>
-      queue.createItem(tx, { type: 'JOB_REVIEW', jobId: randomUUID(), companyId: randomUUID(), submissionId: randomUUID(), riskLevel: 'MEDIUM', fastTrack: false, origin: 'EVALUATION' }),
+      queue.createItem(tx, { type: 'JOB_REVIEW', jobId: randomUUID(), companyId: randomUUID(), submissionId: randomUUID(), fastTrack: false, origin: 'FLAGGED_COMPANY' }),
     );
     const res = await http().post(`/v1/admin/queue/${review.id}/actions/company-clear-flag`).set(admin).send({});
     expect(res.status).to.equal(422);

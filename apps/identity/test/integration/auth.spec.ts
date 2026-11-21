@@ -84,24 +84,50 @@ describe('Identity Auth API (Postgres จริง)', function () {
     delete process.env.JWT_PUBLIC_KEY;
   });
 
-  it('student: consent, email verification, login, refresh rotation and reuse revocation', async () => {
-    const body = { email: 'Student@Test.ac.th', password: 'correct horse battery', full_name: 'Student Test', student_code: 'ST001', major: 'Computer Science', year_level: 3, accept_privacy: true };
-    await request(app.getHttpServer()).post('/v1/auth/register/student').send(body).expect(201);
-    const user = await db.user.findUniqueOrThrow({ where: { email: body.email.toLowerCase() } });
-    expect(user.status).to.equal('PENDING_EMAIL');
-    expect(user.passwordHash).to.match(/^\$argon2id\$/);
-    expect(await db.consent.count({ where: { userId: user.id, type: 'PRIVACY_POLICY' } })).to.equal(1);
-    await request(app.getHttpServer()).post('/v1/auth/login').send({ email: body.email, password: body.password }).expect(403);
-    const token = emails.find((item) => item.email === body.email.toLowerCase())?.token;
-    expect(token).to.be.a('string');
-    expect(await db.emailToken.count({ where: { tokenHash: token } })).to.equal(0);
-    await request(app.getHttpServer()).post('/v1/auth/verify-email').send({ token }).expect(204);
+  const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+  /** นักศึกษาที่อาจารย์สร้าง (ยังไม่มีรหัสผ่าน) + โทเคนคำเชิญที่รู้ค่าดิบ */
+  async function invitedStudent(email: string, over: { expiresAt?: Date } = {}) {
+    const university = await db.university.upsert({ where: { emailDomain: 'test.ac.th' }, create: { emailDomain: 'test.ac.th', name: 'test.ac.th' }, update: {} });
+    const advisor = await db.user.create({ data: { email: `adv-${randomBytes(3).toString('hex')}@test.ac.th`, passwordHash: 'x', fullName: 'Advisor', role: 'ADVISOR', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId: university.id } });
+    const user = await db.user.create({ data: { email, passwordHash: null, fullName: 'Student Test', role: 'STUDENT', status: 'PENDING_EMAIL', universityId: university.id,
+      studentProfile: { create: { studentCode: `ST${randomBytes(3).toString('hex')}`, major: 'Computer Science', yearLevel: 3, advisorId: advisor.id, advisorLinkStatus: 'LINKED', createdByAdvisorId: advisor.id } } } });
+    const token = randomBytes(32).toString('base64url');
+    await db.emailToken.create({ data: { userId: user.id, purpose: 'STUDENT_INVITATION', tokenHash: sha(token), expiresAt: over.expiresAt ?? new Date(Date.now() + 7 * 86_400_000) } });
+    return { user, token };
+  }
+
+  it('student: no self-registration; invitation sets password, activates account, records consent; then login, refresh rotation and reuse revocation', async () => {
+    const body = { email: 'student@test.ac.th', password: 'correct horse battery' };
+    await request(app.getHttpServer()).post('/v1/auth/register/student').send({ ...body, full_name: 'x', student_code: 'x', major: 'x', year_level: 3, accept_privacy: true }).expect(404);
+    const { user, token } = await invitedStudent(body.email);
+    expect(user.passwordHash).to.equal(null);
+    // ยังไม่ตั้งรหัสผ่าน ⇒ เข้าสู่ระบบไม่ได้ ไม่ว่าจะส่งรหัสอะไร และรีเซ็ตรหัสผ่านไม่ออกโทเคน
+    await request(app.getHttpServer()).post('/v1/auth/login').send(body).expect(401);
+    await request(app.getHttpServer()).post('/v1/auth/password/forgot').send({ email: body.email }).expect(204);
+    expect(await db.emailToken.count({ where: { userId: user.id, purpose: 'RESET_PASSWORD' } })).to.equal(0);
+    // โทเคนคำเชิญใช้กับ verify-email ไม่ได้ และตรวจข้อมูลขาเข้า
     await request(app.getHttpServer()).post('/v1/auth/verify-email').send({ token }).expect(400);
+    await request(app.getHttpServer()).post('/v1/auth/student-invitations/accept').send({ token, password: 'short', accept_privacy: true }).expect(400);
+    await request(app.getHttpServer()).post('/v1/auth/student-invitations/accept').send({ token, password: body.password, accept_privacy: false }).expect(400);
+    const bad = await request(app.getHttpServer()).post('/v1/auth/student-invitations/accept').send({ token: 'wrong-token', password: body.password, accept_privacy: true }).expect(400);
+    expect(bad.body.error.code).to.equal('VALIDATION_FAILED');
+    expect(bad.body.error.details[0].issue).to.equal('INVALID_TOKEN');
+    expect(await db.consent.count({ where: { userId: user.id } })).to.equal(0);
+    await request(app.getHttpServer()).post('/v1/auth/student-invitations/accept').send({ token, password: body.password, accept_privacy: true }).expect(204);
+    await request(app.getHttpServer()).post('/v1/auth/student-invitations/accept').send({ token, password: 'another password 12345', accept_privacy: true }).expect(400);
+    const accepted = await db.user.findUniqueOrThrow({ where: { id: user.id } });
+    expect(accepted.status).to.equal('ACTIVE');
+    expect(accepted.emailVerifiedAt).to.be.instanceOf(Date);
+    expect(accepted.passwordHash).to.match(/^\$argon2id\$/);
+    expect(await db.consent.count({ where: { userId: user.id, type: 'PRIVACY_POLICY' } })).to.equal(1);
+    expect(await db.statusHistory.count({ where: { entityId: user.id, toStatus: 'ACTIVE' } })).to.equal(1);
     const login = await request(app.getHttpServer()).post('/v1/auth/login').send({ email: body.email, password: body.password }).expect(200);
     expect(login.body.expires_in).to.equal(900);
     const claims = jwt.verify(login.body.access_token, publicKey, { algorithms: ['RS256'] }) as jwt.JwtPayload;
     expect(claims.role).to.equal('STUDENT');
     expect(claims.university_id).to.equal(user.universityId);
+    expect(claims.advisor_id).to.equal((await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: user.id } })).advisorId);
+    expect(claims).to.not.have.property('company_categories');
     await db.user.update({ where: { id: user.id }, data: { fullName: 'Updated Student' } });
     const refresh = await request(app.getHttpServer()).post('/v1/auth/refresh').send({ refresh_token: login.body.refresh_token }).expect(200);
     expect(refresh.body.refresh_token).to.not.equal(login.body.refresh_token);
@@ -145,12 +171,8 @@ describe('Identity Auth API (Postgres จริง)', function () {
     expect(await db.company.count({ where: { name: body.company.name } })).to.equal(0);
   });
 
-  it('keeps committed student, advisor and company accounts when verification email fails', async () => {
+  it('keeps committed advisor and company accounts when verification email fails', async () => {
     const cases = [
-      { route: 'student', email: 'mail-fail-student@test.ac.th', conflict: 'ACCOUNT_EXISTS', body: {
-        email: 'mail-fail-student@test.ac.th', password: 'correct horse battery', full_name: 'Student Mail Failure',
-        student_code: 'MAIL-FAIL-STUDENT', major: 'Computer Science', year_level: 3, accept_privacy: true,
-      } },
       { route: 'advisor', email: 'mail-fail-advisor@test.ac.th', conflict: 'ACCOUNT_EXISTS', body: {
         email: 'mail-fail-advisor@test.ac.th', password: 'correct horse battery', full_name: 'Advisor Mail Failure',
         department: 'Science', accept_privacy: true,

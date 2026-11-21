@@ -4,6 +4,7 @@ import type {
   AcademicResult,
   ApplicationStatus,
   CertificateStatus,
+  JobCategory,
   JobStatus,
   ProblemReportStatus,
   ReviewStatus,
@@ -136,6 +137,19 @@ export interface AdvisorApplicationItem extends ApplicationBase {
 export interface AdvisorDisputeItem extends AdvisorApplicationItem {
   dispute: { id: string; statement: string; created_at: string };
   evaluation?: Pick<EvaluationView, 'round' | 'result' | 'reason' | 'evaluated_at'>;
+}
+
+/** GET /advisor/students — นักศึกษาในความดูแลพร้อมสถานะการฝึกงาน (ชื่อ/รหัส/สาขา/ชั้นปีดึงสดจาก Identity ไม่เก็บ) */
+export interface AdvisorTrainingStudentItem {
+  student_user_id: string;
+  full_name: string;
+  student_code: string;
+  major: string;
+  year_level: number;
+  /** `IN_TRAINING` = มีใบสมัคร `IN_PROGRESS`; `COMPLETED` = ไม่มี `IN_PROGRESS` แต่มี `COMPLETED`; ไม่มีทั้งสอง = `NONE` */
+  training_status: 'IN_TRAINING' | 'COMPLETED' | 'NONE';
+  /** ใบสมัครที่ยังดำเนินอยู่ (ไม่อยู่ในสถานะสิ้นสุด) */
+  active_application_count: number;
 }
 
 /** GET /advisor/students/{id}/overview */
@@ -282,6 +296,8 @@ export interface InternalJobResponse {
   quota_available: number;
   /** ชื่อประกาศ — ใช้เติม `job_snapshots.title` (E03 ไม่มีชื่อ) */
   job_title: string;
+  /** สายงาน — Lifecycle ใช้ตรวจสิทธิ์ HR Member ตามสายงาน (`job_snapshots.category`, ปรับ 2026-11-21) */
+  category: JobCategory;
   target_majors: string[];
   application_deadline: string;
   entity_version: number;

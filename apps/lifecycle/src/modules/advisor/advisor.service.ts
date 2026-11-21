@@ -4,13 +4,15 @@ import type {
   AdvisorApplicationItem,
   AdvisorDisputeItem,
   AdvisorStudentOverview,
+  AdvisorTrainingStudentItem,
   EvaluationView,
   Paginated,
 } from '@internpath/contracts';
 import { Injectable } from '@nestjs/common';
 import type { Application, Prisma } from '../../../generated/client';
 import { assertAdvisorOwnership } from '../../common/auth/ownership';
-import { StudentNamesService } from '../../internal/student-names.service';
+import { IdentityInternalClient } from '../../internal/identity-client.service';
+import { STUDENT_NAMES_BATCH_MAX, StudentNamesService } from '../../internal/student-names.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApplicationStateMachine } from '../../state-machine/application-state-machine.service';
 import {
@@ -19,9 +21,9 @@ import {
 } from '../../state-machine/application-transition.service';
 import { applicationNotFound, stateConflict } from '../../state-machine/errors';
 import type { Actor } from '../../state-machine/status-history.writer';
-import { ACADEMIC_RESULT_WITHOUT_TRANSITION } from '../../state-machine/transition-table';
+import { ACADEMIC_RESULT_WITHOUT_TRANSITION, INACTIVE_STATUSES } from '../../state-machine/transition-table';
 import { loadSnapshotNames, toAdvisorItem, toApplicationBase } from '../applications/application-view';
-import type { AcademicResultDto, AdvisorApplicationsQueryDto } from './advisor.dto';
+import type { AcademicResultDto, AdvisorApplicationsQueryDto, AdvisorStudentsQueryDto } from './advisor.dto';
 
 /** action ของอาจารย์ที่รับแค่เหตุผล (บังคับ — Guard) */
 export type AdvisorReasonAction = 'reject';
@@ -41,6 +43,7 @@ export class AdvisorService {
     private readonly stateMachine: ApplicationStateMachine,
     private readonly transitions: ApplicationTransitionService,
     private readonly studentNames: StudentNamesService,
+    private readonly identity: IdentityInternalClient,
   ) {}
 
   // ---------- GET ----------
@@ -60,6 +63,70 @@ export class AdvisorService {
       this.db.application.count({ where }),
     ]);
     return { data: await this.toItems(rows), meta: { page, page_size: pageSize, total } };
+  }
+
+  /**
+   * GET /advisor/students — นักศึกษาที่ `LINKED` กับอาจารย์พร้อมสถานะการฝึกงาน (ปรับ Requirement 2026-11-21)
+   * สถานะการฝึกงานคำนวณจากใบสมัครใน Lifecycle (`IN_PROGRESS` = กำลังฝึก, `COMPLETED` = ฝึกเสร็จแล้ว);
+   * ชื่อ/รหัส/สาขา/ชั้นปีดึงสดจาก Identity `students/summaries` ทุกครั้ง **ห้ามเก็บ `full_name` ลง DB/cache/Event/log**
+   * ตัวกรองชั้นปี/คำค้นอยู่ที่ Identity จึงกรองหลังดึงสรุป แล้วแบ่งหน้า (รายชื่อในความดูแลของอาจารย์หนึ่งคนมีจำนวนจำกัด)
+   */
+  async students(user: JwtClaims, query: AdvisorStudentsQueryDto): Promise<Paginated<AdvisorTrainingStudentItem>> {
+    const page = query.page ?? 1;
+    const pageSize = query.page_size ?? 20;
+    const links = await this.db.studentAdvisorLink.findMany({
+      where: { advisorUserId: user.sub, linkStatus: 'LINKED' },
+      select: { studentUserId: true },
+    });
+    const linked = links.map((link) => link.studentUserId);
+    const applications = linked.length
+      ? await this.db.application.findMany({ where: { studentUserId: { in: linked } }, select: { studentUserId: true, status: true } })
+      : [];
+    const training = new Map<string, { inProgress: boolean; completed: boolean; active: number }>();
+    for (const app of applications) {
+      const entry = training.get(app.studentUserId) ?? { inProgress: false, completed: false, active: 0 };
+      if (app.status === 'IN_PROGRESS') entry.inProgress = true;
+      if (app.status === 'COMPLETED') entry.completed = true;
+      if (!INACTIVE_STATUSES.includes(app.status)) entry.active += 1;
+      training.set(app.studentUserId, entry);
+    }
+    const candidates = linked.filter((id) => {
+      const entry = training.get(id);
+      if (query.training_status === 'IN_TRAINING') return !!entry?.inProgress;
+      if (query.training_status === 'COMPLETED') return !!entry?.completed;
+      return true;
+    });
+
+    const summaries = new Map<string, { full_name: string; student_code: string; major: string; year_level: number }>();
+    for (let i = 0; i < candidates.length; i += STUDENT_NAMES_BATCH_MAX) {
+      for (const row of await this.identity.getStudentSummaries(candidates.slice(i, i + STUDENT_NAMES_BATCH_MAX))) summaries.set(row.user_id, row);
+    }
+    const q = query.q?.trim().toLocaleLowerCase('th-TH');
+    const matched = candidates.filter((id) => {
+      const row = summaries.get(id);
+      if (!row) return false; // บัญชีถูกลบ/ไม่ใช่นักศึกษาแล้ว
+      if (query.year_level !== undefined && row.year_level !== query.year_level) return false;
+      return !q || `${row.full_name} ${row.student_code} ${row.major}`.toLocaleLowerCase('th-TH').includes(q);
+    });
+    matched.sort((a, b) => {
+      const x = summaries.get(a)!;
+      const y = summaries.get(b)!;
+      return x.student_code.localeCompare(y.student_code) || a.localeCompare(b);
+    });
+    const data = matched.slice((page - 1) * pageSize, page * pageSize).map((id): AdvisorTrainingStudentItem => {
+      const row = summaries.get(id)!;
+      const entry = training.get(id);
+      return {
+        student_user_id: id,
+        full_name: row.full_name,
+        student_code: row.student_code,
+        major: row.major,
+        year_level: row.year_level,
+        training_status: entry?.inProgress ? 'IN_TRAINING' : entry?.completed ? 'COMPLETED' : 'NONE',
+        active_application_count: entry?.active ?? 0,
+      };
+    });
+    return { data, meta: { page, page_size: pageSize, total: matched.length } };
   }
 
   /** GET /advisor/disputes — `FAIL_DISPUTED` ของนักศึกษาในความดูแล พร้อมคำโต้แย้งที่ยังไม่ตัดสิน + ผลประเมินล่าสุด */

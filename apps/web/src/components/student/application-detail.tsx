@@ -103,7 +103,7 @@ export function ApplicationDetail() {
   if (loadError) {
     return (
       <main className="mx-auto max-w-md px-4 py-16 text-center">
-        <h1 className="text-xl font-bold">{loadError.missing ? 'ไม่พบใบสมัครนี้' : 'โหลดใบสมัครไม่สำเร็จ'}</h1>
+        <h1 className="text-xl font-semibold">{loadError.missing ? 'ไม่พบใบสมัครนี้' : 'โหลดใบสมัครไม่สำเร็จ'}</h1>
         {!loadError.missing && <p className="mt-2 text-sm text-ink-soft">{loadError.text}</p>}
         <Link href="/student/applications" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปใบสมัครของฉัน</Link>
       </main>
@@ -119,7 +119,7 @@ export function ApplicationDetail() {
 
       <header className="mt-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">{app.job_title}</h1>
+          <h1 className="text-3xl font-semibold">{app.job_title}</h1>
           <p className="mt-1 text-ink-soft">{app.company_name}</p>
         </div>
         <ApplicationStatusBadge status={app.status} academicResult={app.academic_result} />
@@ -128,7 +128,7 @@ export function ApplicationDetail() {
       {app.frozen && <div className="mt-4"><Notice tone="error">ประกาศนี้ถูกระงับชั่วคราว ใบสมัครของคุณจึงยังไม่เดินต่อจนกว่าผู้ดูแลระบบจะตรวจสอบเสร็จ</Notice></div>}
       {message && <div className="mt-4"><Notice tone={message.tone}>{message.text}</Notice></div>}
 
-      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl border border-border bg-surface-muted p-4 sm:grid-cols-3">
+      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-3">
         <Fact label="สมัครเมื่อ">{formatDate(app.created_at)}</Fact>
         <Fact label="เริ่มฝึก (ตามข้อเสนอ)">{app.start_date ? formatDate(app.start_date) : '-'}</Fact>
         <Fact label="สิ้นสุด (ตามข้อเสนอ)">{app.end_date ? formatDate(app.end_date) : '-'}</Fact>
@@ -149,41 +149,41 @@ export function ApplicationDetail() {
       )}
       {app.cover_letter && (
         <section className="mt-6">
-          <h2 className="text-lg font-bold">จดหมายสมัคร</h2>
+          <h2 className="text-lg font-semibold">จดหมายสมัคร</h2>
           <p className="mt-2 whitespace-pre-line text-ink-soft">{app.cover_letter}</p>
         </section>
       )}
 
       {(app.available_actions.length > 0 || app.status === 'IN_PROGRESS') && (
         <section aria-labelledby="actions-title" className="mt-8">
-          <h2 id="actions-title" className="text-lg font-bold">ดำเนินการ</h2>
+          <h2 id="actions-title" className="text-lg font-semibold">ดำเนินการ</h2>
           {app.status === 'HR_ACCEPTED' && (
             <p className="mt-1 text-sm text-ink-soft">การยืนยันข้อเสนอนี้จะปฏิเสธข้อเสนออื่นที่คุณได้รับอัตโนมัติ (ยืนยันได้ทีละที่)</p>
           )}
           <div className="mt-3 flex flex-wrap gap-3">
             {can('confirm-offer') && (
               <button type="button" disabled={busy} onClick={() => confirmAndAct('ยืนยันรับข้อเสนอนี้? ข้อเสนออื่นของคุณจะถูกปฏิเสธอัตโนมัติ', 'confirm-offer', 'ยืนยันข้อเสนอแล้ว รออาจารย์ที่ปรึกษาอนุมัติ')}
-                className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ยืนยันรับข้อเสนอ</button>
+                className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ยืนยันรับข้อเสนอ</button>
             )}
             {can('decline-offer') && (
               <button type="button" disabled={busy} onClick={() => confirmAndAct('ปฏิเสธข้อเสนอนี้?', 'decline-offer', 'ปฏิเสธข้อเสนอแล้ว')}
-                className="rounded-lg border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">ปฏิเสธข้อเสนอ</button>
+                className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">ปฏิเสธข้อเสนอ</button>
             )}
             {can('withdraw') && (
               <button type="button" disabled={busy} onClick={() => confirmAndAct('ถอนใบสมัครนี้? ทำย้อนกลับไม่ได้', 'withdraw', 'ถอนใบสมัครแล้ว')}
-                className="rounded-lg border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">ถอนใบสมัคร</button>
+                className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">ถอนใบสมัคร</button>
             )}
             {can('request-termination') && (
               <button type="button" disabled={busy} onClick={() => { setForm('terminate'); setText(''); setMessage(null); }}
-                className="rounded-lg border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">ขอยุติการฝึก</button>
+                className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">ขอยุติการฝึก</button>
             )}
             {can('dispute-fail') && (
               <button type="button" disabled={busy} onClick={() => { setForm('dispute'); setText(''); setMessage(null); }}
-                className="rounded-lg border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">โต้แย้งผลประเมิน</button>
+                className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">โต้แย้งผลประเมิน</button>
             )}
             {app.status === 'IN_PROGRESS' && (
               <button type="button" disabled={busy} onClick={() => { setForm('problem'); setText(''); setMessage(null); }}
-                className="rounded-lg border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">รายงานปัญหา</button>
+                className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">รายงานปัญหา</button>
             )}
           </div>
 
@@ -208,10 +208,10 @@ export function ApplicationDetail() {
                 <span className="mt-1 block text-xs font-normal text-ink-soft">{text.length}/{form === 'terminate' ? REASON_MAX : LONG_TEXT_MAX}</span>
               </label>
               <div className="flex gap-3">
-                <button type="submit" disabled={busy} className="rounded-lg bg-primary px-5 py-2 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
+                <button type="submit" disabled={busy} className="rounded-full bg-primary px-5 py-2 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
                   {busy ? 'กำลังส่ง…' : 'ส่ง'}
                 </button>
-                <button type="button" onClick={() => setForm(null)} className="rounded-lg border border-border px-5 py-2 font-semibold hover:bg-surface-muted">ยกเลิก</button>
+                <button type="button" onClick={() => setForm(null)} className="rounded-full border border-border px-5 py-2 font-semibold hover:bg-surface-muted">ยกเลิก</button>
               </div>
             </form>
           )}
@@ -219,7 +219,7 @@ export function ApplicationDetail() {
       )}
 
       <section aria-labelledby="timeline-title" className="mt-8">
-        <h2 id="timeline-title" className="text-lg font-bold">ประวัติสถานะ</h2>
+        <h2 id="timeline-title" className="text-lg font-semibold">ประวัติสถานะ</h2>
         {app.timeline.length === 0 ? (
           <p className="mt-2 text-sm text-ink-soft">ยังไม่มีประวัติ</p>
         ) : (

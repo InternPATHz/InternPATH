@@ -30,7 +30,7 @@ describe('POST /jobs/{job_id}/reports (Postgres จริง)', function () {
   });
   afterEach(async () => {
     await t.prisma.$executeRawUnsafe(
-      'TRUNCATE job_snapshots, job_reports, job_report_counters, reporter_stats, evaluations, queue_items, outbox_events, status_history',
+      'TRUNCATE job_snapshots, job_reports, job_report_counters, reporter_stats, job_submission_snapshots, queue_items, outbox_events, status_history',
     );
   });
 
@@ -46,10 +46,9 @@ describe('POST /jobs/{job_id}/reports (Postgres จริง)', function () {
   const claims = (sub: string) => ({ sub, role: 'STUDENT' }) as JwtClaims;
   const outbox = async (type: string) => (await t.prisma.outboxEvent.findMany({ where: { type } })).map((o) => o.payload as any);
   const seedEvaluation = (jobId: string, companyId: string, submissionId: string, submittedAt: Date) =>
-    t.prisma.evaluation.create({
+    t.prisma.jobSubmissionSnapshot.create({
       data: {
-        jobId, companyId, submissionId, submissionKind: 'NEW', submittedAt, content: {}, riskScore: 0, riskLevel: 'LOW', decision: 'APPROVE',
-        negatedOnly: false, matchedKeywords: [], reasons: [], companyFlagUnderReview: false, fastTrack: false,
+        jobId, companyId, submissionId, submissionKind: 'NEW', submittedAt, content: {}, fastTrack: false,
       },
     });
 

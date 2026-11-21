@@ -317,6 +317,40 @@ describe('Public Job Search and Detail (real PostgreSQL)', function () {
     }
   });
 
+  it('returns skill tags on public jobs and filters by tags (any-of, case-insensitive slug) without changing totals for other filters', async () => {
+    const [nextjs, rust, python] = await Promise.all(
+      ['nextjs', 'rust', 'python'].map((slug) => db.prisma.tag.findUniqueOrThrow({ where: { slug } })),
+    );
+    await db.prisma.jobTag.createMany({
+      data: [
+        { jobId: id(1), tagId: nextjs.id },
+        { jobId: id(1), tagId: rust.id },
+        { jobId: id(2), tagId: rust.id },
+        { jobId: id(3), tagId: python.id },
+      ],
+    });
+    try {
+      const all = await list({ page_size: 100 });
+      const tagsOf = (jobId: string) => all.data.find((job) => job.id === jobId)!.tags.map((tag) => tag.slug);
+      expect(tagsOf(id(1))).to.deep.equal(['nextjs', 'rust']); // เรียงตามชื่อ
+      expect(tagsOf(id(2))).to.deep.equal(['rust']);
+      expect(tagsOf(id(5))).to.deep.equal([]);
+      for (const tag of all.data.flatMap((job) => job.tags)) expect(tag).to.have.all.keys('id', 'name', 'slug');
+
+      expect((await list({ tags: 'rust' })).data.map((job) => job.id).sort()).to.deep.equal([id(1), id(2)].sort());
+      expect((await list({ tags: 'nextjs,python' })).data.map((job) => job.id).sort()).to.deep.equal([id(1), id(3)].sort());
+      expect((await list({ tags: 'rust,nextjs' })).meta.total).to.equal(2); // ไม่นับซ้ำประกาศที่มีหลาย Tag ที่ตรง
+      expect((await list({ tags: 'unknown-skill' })).meta.total).to.equal(0);
+      for (const bad of ['Rust Lang', 'rust,', ',rust', 'a'.repeat(5) + '/x', Array.from({ length: 11 }, (_, i) => `t${i}`).join(',')]) {
+        await search().query({ tags: bad }).expect(400);
+      }
+      const detail = await request(app.getHttpServer()).get(`/v1/jobs/${id(1)}`).expect(200);
+      expect(detail.body.tags.map((tag: { slug: string }) => tag.slug)).to.deep.equal(['nextjs', 'rust']);
+    } finally {
+      await db.prisma.jobTag.deleteMany({ where: { jobId: { in: [id(1), id(2), id(3)] } } });
+    }
+  });
+
   it('omits major_mismatch for a missing or blank major', async () => {
     const query = { page: 2, page_size: 2 };
     const omitted = await list(query);
@@ -411,6 +445,7 @@ describe('Public Job Search and Detail (real PostgreSQL)', function () {
       hours_per_week: 40,
       period: { start: '2027-01-01', end: '2027-04-01' },
       target_majors: designMajors,
+      tags: [],
       quota: 5,
       quota_available: 2,
       application_deadline: '2099-12-26',

@@ -36,7 +36,7 @@ describe('คำตัดสินรายงานของ Admin: dismiss-rep
   });
   afterEach(async () => {
     await t.prisma.$executeRawUnsafe(
-      'TRUNCATE job_snapshots, job_reports, job_report_counters, reporter_stats, evaluations, queue_items, outbox_events, status_history, admin_audit_log',
+      'TRUNCATE job_snapshots, job_reports, job_report_counters, reporter_stats, job_submission_snapshots, queue_items, outbox_events, status_history, admin_audit_log',
     );
   });
 
@@ -54,10 +54,9 @@ describe('คำตัดสินรายงานของ Admin: dismiss-rep
     const submissionId = randomUUID();
     await t.prisma.jobSnapshot.create({ data: { jobId, companyId, status: 'PUBLISHED', entityVersion: 1 } });
     if (withEval) {
-      await t.prisma.evaluation.create({
+      await t.prisma.jobSubmissionSnapshot.create({
         data: {
-          jobId, companyId, submissionId, submissionKind: 'NEW', submittedAt: new Date(), content: {}, riskScore: 0, riskLevel: 'LOW',
-          decision: 'APPROVE', negatedOnly: false, matchedKeywords: [], reasons: [], companyFlagUnderReview: false, fastTrack: false,
+          jobId, companyId, submissionId, submissionKind: 'NEW', submittedAt: new Date(), content: {}, fastTrack: false,
         },
       });
     }
@@ -83,7 +82,7 @@ describe('คำตัดสินรายงานของ Admin: dismiss-rep
 
       const out = await verified();
       expect(out).to.have.length(1);
-      expect(out[0]).to.include({ job_id: jobId, submission_id: submissionId, decision: 'RESTORE', decided_by: 'ADMIN', is_appeal: false, queue_item_id: item.id });
+      expect(out[0]).to.include({ job_id: jobId, submission_id: submissionId, decision: 'RESTORE', decided_by: 'ADMIN', queue_item_id: item.id });
       expect(out[0].reasons[0]).to.include({ code: 'REPORT_DISMISSED', detail: 'ประกาศปกติ' });
       expectEventTimestamps(out[0], 'E02 JobVerified(RESTORE)');
       expect((await t.prisma.jobReport.findMany({ where: { jobId } })).map((r) => r.status)).to.deep.equal(['DISMISSED', 'DISMISSED', 'DISMISSED']);
@@ -120,7 +119,7 @@ describe('คำตัดสินรายงานของ Admin: dismiss-rep
 
       const out = await verified();
       expect(out).to.have.length(1);
-      expect(out[0]).to.include({ job_id: jobId, decision: 'REMOVE', decided_by: 'ADMIN', is_appeal: false, queue_item_id: item.id });
+      expect(out[0]).to.include({ job_id: jobId, decision: 'REMOVE', decided_by: 'ADMIN', queue_item_id: item.id });
       expect(out[0].reasons[0].code).to.equal('REPORT_UPHELD');
       expectEventTimestamps(out[0], 'E02 JobVerified(REMOVE)');
       const rows = await t.prisma.jobReport.findMany({ where: { jobId } });
@@ -234,7 +233,7 @@ describe('คำตัดสินรายงานของ Admin: dismiss-rep
   describe('ข้อผิดพลาดและการกดพร้อมกัน', () => {
     it('ชนิดไม่ใช่ JOB_REPORT ⇒ 422 UNSUPPORTED_ITEM_TYPE; ไม่พบ ⇒ 404', async () => {
       const review = await t.prisma.$transaction((tx) =>
-        queue.createItem(tx, { type: 'JOB_REVIEW', jobId: randomUUID(), companyId: randomUUID(), submissionId: randomUUID(), riskLevel: 'MEDIUM', fastTrack: false, origin: 'EVALUATION' }),
+        queue.createItem(tx, { type: 'JOB_REVIEW', jobId: randomUUID(), companyId: randomUUID(), submissionId: randomUUID(), fastTrack: false, origin: 'FLAGGED_COMPANY' }),
       );
       for (const action of ['dismiss-report', 'uphold-report'] as const) {
         const res = await act(review.id, action);

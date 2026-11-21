@@ -43,6 +43,14 @@ enum JobStatus {
   @@map("job_status")
 }
 
+enum JobCategory {
+  TECH_IT
+  BUSINESS_MARKETING
+  CORPORATE_SERVICES
+
+  @@map("job_category")
+}
+
 enum ApplicationStatus {
   PENDING
   HR_ACCEPTED
@@ -274,6 +282,8 @@ model JobSnapshot {
   status        JobStatus @map("status")
   targetMajors  String[]  @default([]) @map("target_majors")
   title         String    @db.Text
+  /// สายงานของประกาศ (เติมจาก Internal job ตอนสมัคร) — ใช้ตรวจสิทธิ์ HR Member ตามสายงาน (2026-11-21)
+  category      JobCategory?
   entityVersion Int       @default(1) @map("entity_version")
   updatedAt     DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
 

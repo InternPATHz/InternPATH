@@ -186,7 +186,7 @@ export class JobReportRoundService {
       !isUUID(p.job_id) ||
       typeof queueItemId !== 'string' ||
       !isUUID(queueItemId) ||
-      !isUUID(p.submission_id) ||
+      (p.submission_id !== undefined && !isUUID(p.submission_id)) ||
       (decidedBy !== 'SYSTEM' && decidedBy !== 'ADMIN') ||
       !decidedAt
     ) {

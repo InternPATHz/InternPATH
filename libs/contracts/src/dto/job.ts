@@ -1,6 +1,28 @@
 // ต้องตรงกับ docs/api-contract.md §5 (Job) และ §9 (Internal) — เฉพาะที่เอกสารระบุไว้
 import type { JobCategory, JobStatus, WorkMode } from '../enums';
 
+/** Tag ทักษะ (api-contract §5.4) — รายการกลางที่ Admin จัดการ */
+export interface JobTag {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+/** Tag สำหรับหน้า Admin (`GET /admin/tags`) */
+export interface AdminTag extends JobTag {
+  active: boolean;
+  job_count: number;
+}
+
+export interface CreateTagRequest {
+  name: string;
+}
+
+export interface UpdateTagRequest {
+  name?: string;
+  active?: boolean;
+}
+
 /** Job Object (ย่อ) ตาม §5.1 — ประกาศที่ส่งตรวจแล้ว (ทุกสถานะยกเว้น `DRAFT`) ฟิลด์เนื้อหาครบเสมอ; `DRAFT` ใช้ `JobDraftObject` */
 export interface JobObject {
   id: string;
@@ -16,6 +38,8 @@ export interface JobObject {
   hours_per_week: number;
   period: { start: string; end: string };
   target_majors: string[];
+  /** Tag ทักษะ 1–10 รายการ (เช่น NextJs, NestJs, Rust) */
+  tags: JobTag[];
   quota: number;
   quota_available: number;
   application_deadline: string;
@@ -42,6 +66,8 @@ export interface JobDraftObject {
   hours_per_week: number | null;
   period: { start: string | null; end: string | null };
   target_majors: string[] | null;
+  /** DRAFT ยังไม่มี Tag ได้ (ว่าง = []) */
+  tags: JobTag[];
   quota: number | null;
   /** `quota` ว่างอยู่ ⇒ null */
   quota_available: number | null;
@@ -60,13 +86,13 @@ export interface HrJobsQuery {
 /** ส่วนเพิ่มของมุมมอง HR/Admin (ไม่แสดงในหน้าสาธารณะ) */
 export interface HrJobExtras {
   contact_notes?: string;
+  admin_reason?: string;
   suspended_from_status?: JobStatus;
 }
 
 /**
  * GET /hr/jobs/{id} = Job Object (หรือ `JobDraftObject` เมื่อ `DRAFT`) + มุมมอง HR/Admin
- * ไม่มีเหตุผลการตีกลับ: Verification เป็นเจ้าของผลตรวจ — หน้าเว็บเรียก `GET /verification/jobs/{job_id}/result`
- * (`reasons[]`, `matched_keywords`, `admin_reason`, `can_appeal`) แทน (PM ตัดสิน 2026-11-18)
+ * เหตุผลที่ Admin ปฏิเสธ (`ADMIN_REJECTED`) แสดงจาก `GET /hr/jobs/{id}` ผ่านฟิลด์ `HrJobExtras.admin_reason` (ปรับ 2026-11-21: ตัดผลตรวจอัตโนมัติและอุทธรณ์)
  */
 export type HrJobDetail = HrJobObject & HrJobExtras;
 
@@ -84,6 +110,8 @@ export interface JobWritableFields {
   hours_per_week: number;
   period: { start: string; end: string };
   target_majors: string[];
+  /** id ของ Tag ทักษะ 1–10 รายการ (ต้องครบตอน `submit`) */
+  tag_ids: string[];
   quota: number;
   application_deadline: string;
 }
@@ -108,6 +136,8 @@ export interface SearchJobsQuery {
   category?: JobCategory;
   work_mode?: WorkMode;
   major?: string;
+  /** slug ของ Tag คั่นด้วยจุลภาค — ประกาศที่มี Tag ใดก็ได้ (any-of) */
+  tags?: string;
   allowance?: boolean;
   company_id?: string;
   /** `featured` ขึ้นก่อนเสมอ แล้วตามค่านี้: `newest` = `published_at` ใหม่ก่อน (ค่าเริ่มต้น), `deadline` = `application_deadline` ใกล้ก่อน */

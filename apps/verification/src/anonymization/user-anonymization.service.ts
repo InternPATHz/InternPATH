@@ -38,15 +38,12 @@ export class UserAnonymizationService {
     await tx.jobReport.updateMany({ where: { reporterUserId: userId }, data: { reporterUserId: anonymous, detail: '' } });
     await tx.reporterStat.deleteMany({ where: { userId } });
 
-    // รีวิว (สไลซ์ 3 §5.7): รีวิวที่ยังถูกพักไม่เผยแพร่และมักมีข้อมูลติดต่อส่วนตัว ⇒ ล้างเนื้อหา (คงรายการคิวไว้ให้ Admin ปิดได้)
-    // ต้องล้างก่อนเปลี่ยน student_user_id เพราะหาแถวด้วยตัวตนเดิม; รีวิวที่เผยแพร่แล้วคงเนื้อหาตาม README 5.11
+    // รีวิว: ล้างเนื้อหาของรีวิวที่ยังไม่เผยแพร่ (HELD — เลิกใช้แล้วแต่แถวเก่าอาจเหลือ) ก่อนเปลี่ยน student_user_id; รีวิวที่เผยแพร่แล้วคงเนื้อหาตาม README 5.11
     await tx.reviewModeration.updateMany({ where: { studentUserId: userId, status: 'HELD' }, data: { title: null, body: '' } });
     await tx.reviewModeration.updateMany({ where: { studentUserId: userId }, data: { studentUserId: anonymous } });
     await tx.reviewReport.updateMany({ where: { reporterUserId: userId }, data: { reporterUserId: anonymous, reason: '' } });
 
-    await tx.appeal.updateMany({ where: { decidedBy: userId }, data: { decidedBy: anonymous } });
-    await tx.blacklistTerm.updateMany({ where: { createdBy: userId }, data: { createdBy: anonymous } });
-    await tx.riskRule.updateMany({ where: { updatedBy: userId }, data: { updatedBy: anonymous } });
+
     await tx.companyFlag.updateMany({ where: { clearedBy: userId }, data: { clearedBy: anonymous } });
     await tx.queueItem.updateMany({ where: { assignedTo: userId, status: { not: 'RESOLVED' } }, data: { assignedTo: null } });
     await tx.queueItem.updateMany({ where: { assignedTo: userId, status: 'RESOLVED' }, data: { assignedTo: anonymous } });

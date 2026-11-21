@@ -50,7 +50,7 @@ export function CertificateList() {
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold">ใบรับรองของฉัน</h1>
+      <h1 className="text-3xl font-semibold">ใบรับรองของฉัน</h1>
       <p className="mt-2 text-sm text-ink-soft">E-Certificate ที่บริษัทออกให้หลังฝึกงานเสร็จ บุคคลภายนอกตรวจสอบความถูกต้องได้ด้วยรหัสใบรับรองหรือ QR บนไฟล์</p>
 
       {loadError && <div className="mt-6"><Notice tone="error">{loadError}</Notice></div>}
@@ -66,7 +66,7 @@ export function CertificateList() {
       {items && items.length > 0 && (
         <ul className="mt-6 space-y-4">
           {items.map((item) => (
-            <li key={item.id} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+            <li key={item.id} className="rounded-xl border border-border bg-surface p-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-semibold">{item.job_title}</h2>
@@ -85,7 +85,7 @@ export function CertificateList() {
               <div className="mt-4">
                 {item.status === 'VALID' ? (
                   <button type="button" disabled={busyId === item.id} onClick={() => void download(item)}
-                    className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
+                    className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
                     {busyId === item.id ? 'กำลังเตรียมไฟล์…' : 'ดาวน์โหลด PDF'}
                   </button>
                 ) : (

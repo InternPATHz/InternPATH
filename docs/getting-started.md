@@ -1,4 +1,4 @@
-# 🚀 Getting Started
+# Getting Started
 
 วิธีตั้งค่าเครื่องพัฒนาและรันโปรเจกต์ | โครงสร้างระบบดู [architecture.md](architecture.md)
 

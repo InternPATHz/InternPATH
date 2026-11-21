@@ -1,4 +1,4 @@
-# 📐 Diagrams (InternPath)
+# Diagrams (InternPath)
 
 > ชุด Diagram สำหรับอ่านประกอบเอกสาร — **Use Case • Sequence • Class • ER**
 > แหล่งข้อมูลจริงยังเป็น [data-schema.md](data-schema.md) (ตาราง/Enum/State Machine), [api-contract.md](api-contract.md) (Endpoint), [event-contract.md](event-contract.md) (Event) — ถ้า Diagram ขัดกับเอกสารเหล่านั้น ให้ยึดเอกสารต้นทาง แล้วแก้ Diagram
@@ -23,11 +23,11 @@
 
 ```mermaid
 flowchart LR
-    S["👤 นักศึกษา"]
+    S["นักศึกษา"]
 
     subgraph SYS["InternPath — ฝั่งนักศึกษา"]
         direction TB
-        U1(["ลงทะเบียน @ac.th + ยืนยันอีเมล + ผูกอาจารย์"])
+        U1(["ตั้งรหัสผ่านจากลิงก์คำเชิญที่อาจารย์สร้างให้ (ไม่สมัครเอง)"])
         U2(["ค้นหา / ดูประกาศงาน"])
         U3(["สมัครฝึกงาน"])
         U3a(["ให้ Consent แชร์เรซูเม่"])
@@ -49,7 +49,7 @@ flowchart LR
     S --- U8
     S --- U9
     U3 -.->|include| U3a
-    U3 -.->|ต้องผูกอาจารย์ก่อน| U1
+    U3 -.->|ต้องเปิดใช้บัญชีก่อน| U1
 ```
 
 ### 1.2 HR บริษัท (`COMPANY_HR`)
@@ -58,16 +58,16 @@ Owner เป็นสมาชิก HR ที่มีสิทธิ์เพ�
 
 ```mermaid
 flowchart LR
-    H["👤 HR Member"]
-    O["👤 HR Owner"]
+    H["HR Member"]
+    O["HR Owner"]
     O -->|สืบทอดสิทธิ์| H
 
     subgraph SYS["InternPath — ฝั่งบริษัท"]
         direction TB
         C1(["ลงทะเบียนบริษัท + ส่งเอกสารยืนยัน"])
-        C2(["จัดการทีม HR / โอน Owner"])
-        J1(["สร้างและส่งตรวจประกาศงาน"])
-        J2(["อุทธรณ์ประกาศที่ถูกปฏิเสธอัตโนมัติ"])
+        C2(["จัดการทีม HR + กำหนดสายงานสมาชิก / โอน Owner"])
+        J1(["สร้างและเผยแพร่ประกาศงาน + เลือก Tag ทักษะ"])
+        J2(["จัดการเฉพาะใบสมัครในสายงานของตน (Member)"])
         A1(["พิจารณาใบสมัคร: รับ / ปฏิเสธ / ถอนข้อเสนอ"])
         A2(["ยืนยันเริ่มฝึก"])
         A3(["ประเมินผลนักศึกษา"])
@@ -83,7 +83,7 @@ flowchart LR
     H --- A3
     H --- A4
     H --- A5
-    J2 -.->|extend| J1
+    J2 -.->|include| A1
     A4 -.->|ต้อง PASS และฝึกจริง ≥ 30 วัน| A3
 ```
 
@@ -91,19 +91,19 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    A["👤 อาจารย์ที่ปรึกษา"]
+    A["อาจารย์ที่ปรึกษา"]
 
     subgraph SYS["InternPath — ฝั่งอาจารย์"]
         direction TB
         V1(["ลงทะเบียน @ac.th + รอ Admin อนุมัติ"])
-        V2(["ยืนยัน / ปฏิเสธคำขอผูกนักศึกษา"])
+        V2(["เพิ่มนักศึกษา (สร้างบัญชี + ส่งคำเชิญ) / ส่งคำเชิญซ้ำ / ยกเลิก"])
         V3(["อนุมัติ / ไม่อนุมัติการฝึก — ต้องมีเหตุผลเมื่อไม่อนุมัติ"])
         V4(["ติดตามและปิดรายงานปัญหา"])
         V5(["ตัดสินคำโต้แย้ง: ประเมินซ้ำ 1 รอบ / ยืนยัน FAIL"])
         V6(["บันทึกผลทางวิชาการ academic_result"])
         V7(["ตัดสินใจเมื่อบริษัทถูกระงับ: ฝึกต่อ / ยุติ"])
         V8(["ยุติการฝึก"])
-        V9(["ดูภาพรวมนักศึกษาในความดูแล"])
+        V9(["ดูรายชื่อนักศึกษา + กรองชั้นปี / กำลังฝึก / ฝึกเสร็จแล้ว"])
     end
 
     A --- V1
@@ -123,15 +123,15 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    AD["👤 Admin"]
+    AD["Admin"]
 
     subgraph SYS["InternPath — ฝั่ง Admin"]
         direction TB
         D1(["ตรวจบัญชีบริษัท: verify / need-more-info / reject / suspend"])
         D2(["อนุมัติบัญชีอาจารย์"])
-        D3(["Admin Queue: ตรวจประกาศ และ Appeal"])
+        D3(["Admin Queue: ตรวจประกาศของบริษัทที่ติดธง"])
         D4(["จัดการรายงาน: ประกาศ / รีวิว"])
-        D5(["จัดการ Blacklist และ Risk Rules"])
+        D5(["จัดการ Tag ทักษะกลาง + เปลี่ยนอาจารย์ของนักศึกษา"])
         D6(["ระงับ / คืนสิทธิ์ผู้ใช้"])
         D7(["ยืนยัน NO_EVALUATION / ยุติการฝึก / เพิกถอนใบรับรอง"])
         D8(["ปลดล็อกสมัครซ้ำ + ตั้งสิทธิ์บริษัท Featured / Fast-Track / Partner"])
@@ -154,12 +154,12 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-    SY["⚙️ ระบบ / Scheduler"]
-    P["🌐 บุคคลทั่วไป (Public)"]
+    SY["ระบบ / Scheduler"]
+    P["บุคคลทั่วไป (Public)"]
 
     subgraph SYS["InternPath — งานอัตโนมัติและสาธารณะ"]
         direction TB
-        Y1(["ตรวจประกาศอัตโนมัติ: Blacklist + Risk score"])
+        Y1(["ส่งประกาศของบริษัทที่ติดธงเข้าคิว Admin"])
         Y2(["Fail-safe: VERIFYING เกิน 5 นาที → PENDING_REVIEW"])
         Y3(["หมดเวลาใบสมัคร → EXPIRED + คืนโควตา"])
         Y4(["Freeze / Unfreeze ใบสมัครตามสถานะประกาศ"])
@@ -184,9 +184,9 @@ flowchart LR
 
 ลูกศร `->>` = เรียกแบบ Synchronous (HTTP) • `-)` = ส่ง Event ผ่าน RabbitMQ (Asynchronous, at-least-once) — ตาม [event-contract.md](event-contract.md)
 
-### 2.1 ประกาศงาน: ส่งตรวจ → เผยแพร่ / ตีกลับ
+### 2.1 ประกาศงาน: เผยแพร่ทันที / บริษัทที่ติดธงรอ Admin
 
-Event ที่เกี่ยวข้อง: `JobSubmitted` (E01), `JobVerified` (E02), `JobStatusChanged` (E03) • สถานะดู [data-schema.md §8.2](data-schema.md)
+ปรับ Requirement 2026-11-21: ไม่มีการสแกนคำต้องห้ามหรือคะแนนความเสี่ยง และไม่มีอุทธรณ์ • Event ที่เกี่ยวข้อง: `JobSubmitted` (E01), `JobVerified` (E02), `JobStatusChanged` (E03) • สถานะดู [data-schema.md §8.2](data-schema.md)
 
 ```mermaid
 sequenceDiagram
@@ -197,34 +197,24 @@ sequenceDiagram
     actor Admin as Admin
 
     HR->>Job: POST /hr/jobs/{id}/actions/submit
-    Job->>Job: Guard: ฟิลด์บังคับครบ, บริษัท VERIFIED, ส่งไม่เกิน 5 ครั้ง/วัน
-    Note over Job: Transaction เดียว: DRAFT → VERIFYING + job_submissions + outbox(JobSubmitted)
-    Job-->>HR: 200 status = VERIFYING
-    Job-)Ver: JobSubmitted
-    Ver->>Ver: สแกน Blacklist + Negation, คิดคะแนน Risk rules
+    Job->>Job: Guard: ฟิลด์บังคับครบ (รวม Tag 1–10), บริษัท VERIFIED
 
-    alt ผลตรวจ APPROVE
-        Ver-)Job: JobVerified(APPROVE)
-        Job->>Job: VERIFYING → PUBLISHED
-    else ผลตรวจ PENDING_REVIEW
-        Ver->>Ver: สร้าง queue_item JOB_REVIEW
+    alt บริษัทไม่ติดธง UNDER_REVIEW
+        Note over Job: Transaction เดียว: DRAFT → PUBLISHED + outbox(JobStatusChanged)
+        Job-->>HR: 200 status = PUBLISHED
+    else บริษัทติดธง UNDER_REVIEW
+        Note over Job: Transaction เดียว: DRAFT → VERIFYING + job_submissions + outbox(JobSubmitted)
+        Job-->>HR: 200 status = VERIFYING
+        Job-)Ver: JobSubmitted
+        Ver->>Ver: เก็บสำเนาเนื้อหา + สร้าง queue_item JOB_REVIEW
         Ver-)Job: JobVerified(PENDING_REVIEW)
         Job->>Job: VERIFYING → PENDING_REVIEW
-        Admin->>Ver: POST /admin/queue/{id}/actions/approve หรือ reject
+        Admin->>Ver: POST /admin/queue/{id}/actions/approve หรือ reject {reason}
         Ver-)Job: JobVerified(ADMIN_APPROVE / ADMIN_REJECT)
-        Job->>Job: PENDING_REVIEW → PUBLISHED หรือ ADMIN_REJECTED
-    else ผลตรวจ AUTO_REJECT
-        Ver-)Job: JobVerified(AUTO_REJECT)
-        Job->>Job: VERIFYING → AUTO_REJECTED
-        opt HR อุทธรณ์ (ได้ 1 ครั้งต่อประกาศ)
-            HR->>Ver: POST /verification/jobs/{id}/appeal
-            Ver-)Job: JobVerified(APPEAL_ACCEPTED)
-            Job->>Job: AUTO_REJECTED → PENDING_REVIEW (ป้าย APPEAL)
+        Job->>Job: PENDING_REVIEW → PUBLISHED หรือ ADMIN_REJECTED (เก็บ admin_reason)
+        opt Verification ไม่ตอบภายใน 5 นาที
+            Job->>Job: VERIFYING → PENDING_REVIEW (reason_code = VERIFY_TIMEOUT)
         end
-    end
-
-    opt Verification ไม่ตอบภายใน 5 นาที
-        Job->>Job: VERIFYING → PENDING_REVIEW (reason_code = VERIFY_TIMEOUT)
     end
 
     Note over Job,Ver: ทุกการเปลี่ยนสถานะ Job ส่ง JobStatusChanged ไป Lifecycle, Notification, Verification
@@ -329,7 +319,7 @@ sequenceDiagram
     L->>L: → COMPLETED
 ```
 
-### 2.4 รีวิวบริษัท: ตรวจเนื้อหา → เผยแพร่ / พักรอ Admin
+### 2.4 รีวิวบริษัท: เผยแพร่ทันที → ผู้ใช้รายงาน → Admin ตัดสิน
 
 ```mermaid
 sequenceDiagram
@@ -345,28 +335,12 @@ sequenceDiagram
     L->>L: สร้าง review status = SUBMITTED (1 รีวิวต่อการฝึก)
     L-->>S: 201 SUBMITTED
     L-)V: ReviewSubmitted
-    V->>V: สแกน Blacklist + ข้อมูลติดต่อส่วนตัว
-
-    alt ผ่านการตรวจ
-        V-)L: ReviewModerationResult(PUBLISH)
-        L->>L: SUBMITTED → PUBLISHED, อัปเดต company_review_stats
-        L-)I: ReviewPublished (count และ sum แบบ absolute)
-        I->>I: อัปเดต company_rating_stats (ข้ามถ้า entity_version เก่ากว่า)
-        Note over L,H: ReviewPublished ยังถูกส่งให้ Notification เพื่อแจ้ง HR ของบริษัท
-    else ถูกพัก
-        V->>V: สร้าง queue_item REVIEW_HELD
-        V-)L: ReviewModerationResult(HOLD)
-        L->>L: SUBMITTED → HELD
-        alt Admin เผยแพร่
-            AD->>V: POST /admin/queue/{id}/actions/publish-review
-            V-)L: ReviewModerationResult(ADMIN_PUBLISH)
-            L->>L: HELD → PUBLISHED
-        else Admin ลบ
-            AD->>V: POST /admin/queue/{id}/actions/remove-review
-            V-)L: ReviewModerationResult(ADMIN_REMOVE)
-            L->>L: HELD → REMOVED
-        end
-    end
+    Note over V: ปรับ 2026-11-21: ไม่สแกนคำต้องห้าม/ข้อมูลติดต่อ — ตอบ PUBLISH ทุกครั้ง
+    V-)L: ReviewModerationResult(PUBLISH)
+    L->>L: SUBMITTED → PUBLISHED, อัปเดต company_review_stats
+    L-)I: ReviewPublished (count และ sum แบบ absolute)
+    I->>I: อัปเดต company_rating_stats (ข้ามถ้า entity_version เก่ากว่า)
+    Note over L,H: ReviewPublished ยังถูกส่งให้ Notification เพื่อแจ้ง HR ของบริษัท
 
     opt รีวิวที่เผยแพร่แล้วถูกรายงาน (S หรือ H ของบริษัทนั้น)
         S->>V: POST /reviews/{id}/reports {reason}
@@ -479,6 +453,7 @@ classDiagram
         +date applicationDeadline
         +JobStatus status
         +bool featured
+        +string adminReason
         +submit()
         +close()
         +reopen()
@@ -497,17 +472,15 @@ classDiagram
         +QuotaReservationStatus status
         +string releaseReason
     }
-    class JobEvaluation {
-        +int riskScore
-        +RiskLevel riskLevel
-        +string decision
-        +json matchedKeywords
-        +bool negatedOnly
+    class Tag {
+        +string name
+        +string slug
+        +bool active
     }
-    class Appeal {
-        +string statement
-        +AppealStatus status
-        +decide(approve)
+    class JobSubmissionSnapshot {
+        +uuid submissionId
+        +json content
+        +bool fastTrack
     }
     class QueueItem {
         +QueueItemType type
@@ -530,10 +503,9 @@ classDiagram
 
     Job "1" *-- "*" JobSubmission : ส่งตรวจ
     Job "1" *-- "*" QuotaReservation : จองโควตา
-    JobSubmission "1" --> "0..1" JobEvaluation : ผลตรวจ
-    Job "1" --> "0..1" Appeal : อุทธรณ์ได้ 1 ครั้ง
-    JobEvaluation "1" ..> "0..1" QueueItem : ถ้า PENDING_REVIEW
-    Appeal "1" ..> "1" QueueItem : JOB_APPEAL
+    Job "*" --> "1..10" Tag : Tag ทักษะ (job_tags)
+    JobSubmission "1" ..> "0..1" JobSubmissionSnapshot : เฉพาะบริษัทที่ติดธง
+    JobSubmissionSnapshot "1" ..> "1" QueueItem : JOB_REVIEW
     Job "1" --> "*" JobReport : ถูกรายงาน (ครบ 3 → ระงับ)
     JobReport "*" ..> "0..1" QueueItem : JOB_REPORT
     CompanyFlag ..> Job : มีผลต่อ company_flag_under_review
@@ -733,7 +705,7 @@ erDiagram
     users {
         uuid id PK
         citext email UK
-        text password_hash "argon2id"
+        text password_hash "argon2id - ว่างจนนักศึกษาตั้งรหัสผ่านจากคำเชิญ"
         Role role
         UserStatus status
         uuid university_id FK
@@ -746,8 +718,8 @@ erDiagram
         text major
         int year_level
         uuid advisor_id FK
-        AdvisorLinkStatus advisor_link_status
-        uuid pending_advisor_id
+        AdvisorLinkStatus advisor_link_status "LINKED ตอนอาจารย์สร้าง"
+        uuid created_by_advisor_id FK
     }
     advisor_profiles {
         uuid user_id PK, FK
@@ -771,11 +743,13 @@ erDiagram
         uuid company_id FK
         uuid user_id FK, UK
         CompanyMemberRole member_role "1 OWNER ต่อบริษัท (partial unique)"
+        JobCategory_array categories "สายงานของ MEMBER 1-3 ค่า"
     }
     company_invitations {
         uuid id PK
         uuid company_id FK
         text email
+        JobCategory_array categories
         text token_hash
         timestamptz expires_at
     }
@@ -833,6 +807,8 @@ erDiagram
 erDiagram
     jobs ||--o{ job_submissions : "job_id"
     jobs ||--o{ quota_reservations : "job_id"
+    jobs ||--o{ job_tags : "job_id"
+    tags ||--o{ job_tags : "tag_id"
     company_snapshots ||..o{ jobs : "company_id (logical)"
     company_entitlements ||..o{ jobs : "company_id (logical)"
     company_flags ||..o{ jobs : "company_id (logical)"
@@ -855,7 +831,18 @@ erDiagram
         uuid current_submission_id
         timestamptz verifying_since "Fail-safe 5 นาที"
         int entity_version
+        text admin_reason "เหตุผลที่ Admin ปฏิเสธ"
         int version "optimistic lock"
+    }
+    tags {
+        uuid id PK
+        text name
+        text slug UK
+        bool active
+    }
+    job_tags {
+        uuid job_id PK, FK
+        uuid tag_id PK, FK
     }
     job_submissions {
         uuid id PK "= submission_id"
@@ -900,9 +887,7 @@ erDiagram
 
 ```mermaid
 erDiagram
-    evaluations ||..o| appeals : "job_id (unique)"
-    evaluations ||--o| queue_items : "ถ้า PENDING_REVIEW"
-    appeals ||--|| queue_items : "JOB_APPEAL"
+    job_submission_snapshots ||--o| queue_items : "JOB_REVIEW (บริษัทที่ติดธง)"
     job_reports }o..|| job_report_counters : "job_id"
     job_reports }o--o| queue_items : "JOB_REPORT"
     reporter_stats ||..o{ job_reports : "reporter_user_id"
@@ -910,41 +895,12 @@ erDiagram
     review_moderations ||..o{ review_reports : "review_id"
     company_flags ||..o{ company_rejection_events : "company_id"
 
-    blacklist_keywords {
-        uuid id PK
-        text keyword
-        text match_type "EXACT, CONTAINS, REGEX"
-        text severity "BLOCK, SCORE"
-        bool active
-    }
-    negation_patterns {
-        uuid id PK
-        text pattern "เช่น ไม่มี, ไม่เก็บ, without"
-        bool active
-    }
-    risk_rules {
-        uuid id PK
-        text code
-        int weight
-        bool active
-    }
-    evaluations {
+    job_submission_snapshots {
         uuid id PK
         uuid job_id "ref:job"
         uuid submission_id UK
-        int risk_score
-        RiskLevel risk_level
-        jsonb matched_keywords
-        bool negated_only
-        text decision
-    }
-    appeals {
-        uuid id PK
-        uuid job_id UK "1 ครั้ง/ประกาศ"
-        uuid submission_id FK
-        text statement
-        text status "OPEN, APPROVED, DENIED"
-        uuid decided_by
+        jsonb content "สำเนาให้ Admin อ่าน ห้าม log"
+        bool fast_track
     }
     queue_items {
         uuid id PK
@@ -953,8 +909,6 @@ erDiagram
         uuid target_id "polymorphic"
         uuid company_id
         text priority "NORMAL, FAST_TRACK"
-        RiskLevel risk_level
-        bool is_appeal
         timestamptz due_at "48 ชม. หรือ 12 ชม. ถ้า FAST_TRACK"
         QueueItemStatus status
         uuid assigned_to
@@ -980,7 +934,7 @@ erDiagram
         uuid id PK
         uuid company_id FK
         uuid job_id
-        text kind "AUTO_REJECTED, ADMIN_REJECTED, SUSPENDED, REMOVED"
+        text kind "ADMIN_REJECTED, SUSPENDED, REMOVED"
         timestamptz occurred_at "3 ครั้งใน 30 วัน → ติดธง"
     }
     company_flags {
@@ -994,7 +948,7 @@ erDiagram
         uuid id PK
         uuid review_id UK "ref:lifecycle"
         uuid company_id
-        text status "PASSED, HELD, ADMIN_PUBLISHED, ADMIN_REMOVED"
+        text status "PASSED, ADMIN_PUBLISHED, ADMIN_REMOVED (HELD เลิกใช้)"
         uuid queue_item_id FK
     }
     review_reports {
@@ -1041,6 +995,7 @@ erDiagram
         uuid company_id
         JobStatus status
         text_array target_majors
+        JobCategory category "ใช้ตรวจสิทธิ์ HR Member ตามสายงาน"
         int entity_version "จาก JobStatusChanged"
     }
     applications {

@@ -47,7 +47,10 @@ const COLUMNS: Record<string, string[]> = {
     'version',
     'created_at',
     'updated_at',
+    'admin_reason',
   ],
+  tags: ['id', 'name', 'slug', 'active', 'created_by', 'updated_by', 'created_at', 'updated_at'],
+  job_tags: ['job_id', 'tag_id'],
   job_submissions: [
     'id',
     'job_id',
@@ -263,6 +266,7 @@ describe('Job migrations (disposable PostgreSQL database)', function () {
       '20261115214500_init_job',
       '20261118120000_add_job_report_rounds',
       '20261118220000_add_job_search_trigram',
+      '20261121100000_add_tags',
     ]);
     for (const migration of migrations) expect(migration.finished_at).to.be.instanceOf(Date);
   });
@@ -407,13 +411,21 @@ describe('Job migrations (disposable PostgreSQL database)', function () {
     ).rows;
     expect(keys.map((r) => r.conname)).to.deep.equal([
       'job_submissions_job_id_fkey',
+      'job_tags_job_id_fkey',
+      'job_tags_tag_id_fkey',
       'quota_reservations_job_id_fkey',
       'report_rounds_job_id_fkey',
     ]);
-    for (const row of keys)
+    for (const row of keys.filter((r) => !r.conname.startsWith('job_tags_')))
       expect(row.definition).to.equal(
         'FOREIGN KEY (job_id) REFERENCES jobs(id) ON UPDATE CASCADE ON DELETE RESTRICT',
       );
+    expect(keys.find((r) => r.conname === 'job_tags_job_id_fkey')?.definition).to.equal(
+      'FOREIGN KEY (job_id) REFERENCES jobs(id) ON UPDATE CASCADE ON DELETE CASCADE',
+    );
+    expect(keys.find((r) => r.conname === 'job_tags_tag_id_fkey')?.definition).to.equal(
+      'FOREIGN KEY (tag_id) REFERENCES tags(id) ON UPDATE CASCADE ON DELETE RESTRICT',
+    );
   });
 
   it('enforces one active report round per Job and retains queue item identity after closure', async () => {

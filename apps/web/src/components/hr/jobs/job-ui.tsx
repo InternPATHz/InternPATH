@@ -11,8 +11,8 @@ export function JobStatusBadge({ status }: { status: JobStatus }) {
 }
 
 /** ประกาศที่แก้ได้ในสถานะนี้ (api-contract §5.1 `PATCH`) */
-export const EDITABLE_STATUSES: JobStatus[] = ['DRAFT', 'PUBLISHED', 'AUTO_REJECTED', 'ADMIN_REJECTED', 'CLOSED'];
-export const SUBMITTABLE_STATUSES: JobStatus[] = ['DRAFT', 'AUTO_REJECTED', 'ADMIN_REJECTED'];
+export const EDITABLE_STATUSES: JobStatus[] = ['DRAFT', 'PUBLISHED', 'ADMIN_REJECTED', 'CLOSED'];
+export const SUBMITTABLE_STATUSES: JobStatus[] = ['DRAFT', 'ADMIN_REJECTED'];
 
 /** ชื่อประกาศที่แสดงได้เสมอ — `DRAFT` ยังไม่ตั้งชื่อได้ (`null`) */
 export const jobTitleOf = (job: HrJobObject): string => job.job_title?.trim() || 'ประกาศที่ยังไม่ตั้งชื่อ';

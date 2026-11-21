@@ -149,6 +149,7 @@ describe('Internal API Clients (Unit)', () => {
       quota: 3,
       quota_available: 1,
       job_title: 'Backend Intern',
+      category: 'TECH_IT',
       target_majors: ['CS'],
       application_deadline: '2026-12-31T16:59:59.000Z',
       entity_version: 4,

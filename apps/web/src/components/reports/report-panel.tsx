@@ -101,8 +101,8 @@ export function ReportPanel({ kind, targetId, loginNext }: { kind: 'job' | 'revi
       </label>
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex gap-3">
-        <button type="submit" disabled={busy} className="rounded-lg bg-danger-text px-5 py-2 font-semibold text-white hover:opacity-90 disabled:opacity-60">{busy ? 'กำลังส่ง…' : 'ส่งรายงาน'}</button>
-        <button type="button" onClick={() => { setOpen(false); setError(null); }} className="rounded-lg border border-border px-5 py-2 font-semibold hover:bg-surface-muted">ยกเลิก</button>
+        <button type="submit" disabled={busy} className="rounded-full bg-danger-text px-5 py-2 font-semibold text-white hover:opacity-90 disabled:opacity-60">{busy ? 'กำลังส่ง…' : 'ส่งรายงาน'}</button>
+        <button type="button" onClick={() => { setOpen(false); setError(null); }} className="rounded-full border border-border px-5 py-2 font-semibold hover:bg-surface-muted">ยกเลิก</button>
       </div>
     </form>
   );

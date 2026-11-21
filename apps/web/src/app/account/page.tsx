@@ -46,7 +46,7 @@ function AccountContent() {
   return <AuthShell title="บัญชีของฉัน" subtitle="ข้อมูลบัญชีจาก Identity Service">
     {!profile && !error ? <p className="text-sm text-ink-soft">กำลังโหลดข้อมูลบัญชี…</p> : <div className="space-y-5">
       {error && <Notice error>{error}</Notice>}
-      {profile && <dl className="grid gap-4 rounded-xl border border-border bg-surface-muted p-5 text-sm sm:grid-cols-2">
+      {profile && <dl className="grid gap-4 rounded-xl bg-surface-muted p-5 text-sm sm:grid-cols-2">
         <div><dt className="text-ink-soft">ชื่อ</dt><dd className="mt-1 font-medium">{profile.full_name}</dd></div>
         <div><dt className="text-ink-soft">บทบาท</dt><dd className="mt-1 font-medium">{roleLabel[profile.role] || profile.role}</dd></div>
         <div><dt className="text-ink-soft">อีเมล</dt><dd className="mt-1 break-all font-medium">{profile.email}</dd></div>
@@ -56,7 +56,7 @@ function AccountContent() {
       </dl>}
       <div className="flex flex-wrap items-center gap-4">
         <button type="button" disabled={busy} onClick={signOut}
-          className="rounded-lg border border-border px-4 py-2.5 font-medium text-ink hover:bg-surface-muted disabled:opacity-50">
+          className="rounded-full border border-border px-4 py-2.5 font-medium text-ink hover:bg-surface-muted disabled:opacity-50">
           {busy ? 'กำลังออกจากระบบ…' : 'ออกจากระบบ'}
         </button>
         <Link href="/" className="text-sm text-primary hover:underline">กลับหน้าแรก</Link>

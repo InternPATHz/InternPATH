@@ -7,6 +7,7 @@ import { useAuth } from '@/auth/session';
 import { FilterSelect } from '@/components/admin/filter-fields';
 import { JobResultCard } from '@/components/jobs/job-result-card';
 import { CATEGORIES } from '@/lib/mock-landing';
+import { MOCK_TAG_NAMES } from '@/lib/mock-jobs';
 import { PAGE_SIZE, searchJobs } from '@/lib/job-search';
 import type { JobSearchResult } from '@/lib/job-search';
 
@@ -26,6 +27,8 @@ function readQuery(params: URLSearchParams): { query: SearchJobsQuery; page: num
       category: CATEGORY_IDS.includes(category as JobCategory) ? (category as JobCategory) : undefined,
       work_mode: WORK_MODES.includes(workMode as WorkMode) ? (workMode as WorkMode) : undefined,
       major: params.get('major')?.trim() || undefined,
+      // slug ของ Tag คั่นด้วยจุลภาค — กรองเฉพาะรูปแบบที่ปลอดภัย (URL เป็นข้อมูลจากภายนอก)
+      tags: (params.get('tags') ?? '').split(',').map((slug) => slug.trim().toLowerCase()).filter((slug) => /^[a-z0-9-]{1,50}$/.test(slug)).join(',') || undefined,
       allowance: params.get('allowance') === 'true' ? true : undefined,
       // ลิงก์จากหน้าบริษัท — ต้องเป็น UUID เท่านั้น (URL เป็นข้อมูลจากภายนอก)
       company_id: /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(params.get('company_id') ?? '') || /^mock-co-\d+$/.test(params.get('company_id') ?? '')
@@ -91,12 +94,12 @@ export function JobSearchPage() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
-  const hasFilters = Boolean(query.q || query.category || query.work_mode || query.major || query.allowance || query.company_id);
+  const hasFilters = Boolean(query.q || query.category || query.work_mode || query.major || query.tags || query.allowance || query.company_id);
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold">ค้นหางานฝึกงาน</h1>
+      <h1 className="text-3xl font-semibold">ค้นหางานฝึกงาน</h1>
       <p className="mt-2 text-sm text-ink-soft">เลือกจากประกาศที่ผ่านการตรวจสอบแล้ว กรองตามสายงาน รูปแบบการทำงาน และสาขาของคุณ</p>
       {/* MOCK: ข้อมูลจากไฟล์ตัวอย่าง จนกว่า GET /search/jobs จะเปิดให้เรียกโดยไม่ต้องล็อกอิน (ดู src/lib/job-search.ts) */}
       <p className="mt-1 text-xs text-warning-text">ข้อมูลในหน้านี้เป็นข้อมูลจำลอง</p>
@@ -104,7 +107,7 @@ export function JobSearchPage() {
       <form
         role="search"
         onSubmit={(event) => { event.preventDefault(); update({ q: text.trim() || undefined, major: major.trim() || undefined }); }}
-        className="mt-6 grid gap-3 rounded-xl border border-border bg-surface-muted p-4 md:grid-cols-[2fr_1fr_auto]"
+        className="mt-6 grid gap-3 rounded-xl bg-surface-muted p-4 md:grid-cols-[2fr_1fr_auto]"
       >
         <label className="text-sm">
           <span className="mb-1 block text-xs font-medium text-ink-soft">ตำแหน่งหรือชื่อบริษัท</span>
@@ -125,10 +128,27 @@ export function JobSearchPage() {
             {profileMajor ? 'ใช้สาขาจากโปรไฟล์ของคุณอยู่ พิมพ์ที่นี่เพื่อเปลี่ยน' : 'พิมพ์ชื่อสาขาให้ตรงกับที่ประกาศระบุ จึงจะเทียบได้ถูกต้อง'}
           </span>
         </label>
-        <button type="submit" className="self-end rounded-lg bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
+        <button type="submit" className="self-end rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
           ค้นหา
         </button>
       </form>
+
+      <div className="mt-4" role="group" aria-label="กรองตาม Tag ทักษะ">
+        <span className="mb-1 block text-xs font-medium text-ink-soft">Tag ทักษะ (เลือกได้หลายรายการ — แสดงประกาศที่มี Tag ใดก็ได้)</span>
+        <div className="flex flex-wrap gap-2">
+          {Object.entries(MOCK_TAG_NAMES).map(([slug, name]) => {
+            const selected = (query.tags ?? '').split(',').filter(Boolean);
+            const on = selected.includes(slug);
+            return (
+              <button key={slug} type="button" aria-pressed={on}
+                onClick={() => update({ tags: (on ? selected.filter((entry) => entry !== slug) : [...selected, slug]).join(',') || undefined })}
+                className={`rounded-full border px-3 py-1 text-sm ${on ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:bg-surface-muted'}`}>
+                {name}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="mt-4 flex flex-wrap items-end gap-4">
         <FilterSelect
@@ -190,14 +210,14 @@ export function JobSearchPage() {
           <nav aria-label="เลือกหน้า" className="mt-8 flex items-center justify-center gap-4 text-sm">
             <button
               type="button" disabled={page <= 1} onClick={() => update({ page: String(page - 1) }, true)}
-              className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40"
             >
               ก่อนหน้า
             </button>
             <span aria-live="polite">หน้า {page} จาก {totalPages}</span>
             <button
               type="button" disabled={page >= totalPages} onClick={() => update({ page: String(page + 1) }, true)}
-              className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40"
             >
               ถัดไป
             </button>

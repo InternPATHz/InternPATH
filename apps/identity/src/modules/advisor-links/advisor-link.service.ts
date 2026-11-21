@@ -1,9 +1,15 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException, OutboxWriter, asUuid } from '@internpath/common';
-import type { AdminAdvisorListItem, AdvisorLinkChangedPayload, AdvisorLinkRequestItem, AdvisorListItem, LinkedStudentItem } from '@internpath/contracts';
+import type { AdminAdvisorListItem, AdvisorLinkChangedPayload, AdvisorStudentItem, CreateStudentResponse } from '@internpath/contracts';
 import { Prisma, StudentProfileIdentity, User } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AdminAdvisorQueryDto, AdvisorSearchDto } from './advisor-link.dto';
+import { AuthMailer } from '../auth/auth.mailer';
+import { AuthService, STUDENT_INVITATION_TTL_MS } from '../auth/auth.service';
+import { AdminAdvisorQueryDto, AdvisorStudentsQueryDto, CreateStudentDto, UpdateStudentDto } from './advisor-link.dto';
+
+const normalizeEmail = (email: string): string => email.trim().toLowerCase();
+const isUniqueError = (error: unknown): boolean => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
 
 type Page<T> = { data: T[]; meta: { page: number; page_size: number; total: number } };
 
@@ -13,7 +19,8 @@ function page<T>(data: T[], total: number, query: { page: number; page_size: num
 
 @Injectable()
 export class AdvisorLinkService {
-  constructor(private readonly db: PrismaService, private readonly outbox: OutboxWriter) {}
+  constructor(private readonly db: PrismaService, private readonly outbox: OutboxWriter,
+    private readonly auth: AuthService, private readonly mailer: AuthMailer) {}
 
   private async actor(id: string, role?: User['role']): Promise<User> {
     const user = await this.db.user.findUnique({ where: { id } });
@@ -28,23 +35,6 @@ export class AdvisorLinkService {
     if (advisor.status !== 'ACTIVE' || !advisor.emailVerifiedAt) throw new AppException('STATE_CONFLICT', 'อาจารย์ยังไม่พร้อมรับคำขอ', 409);
     if (!universityId || advisor.universityId !== universityId) throw new AppException('FORBIDDEN_ROLE', 'อาจารย์ต้องอยู่สถาบันเดียวกัน', 403);
     return advisor;
-  }
-
-  async advisors(studentId: string, query: AdvisorSearchDto): Promise<Page<AdvisorListItem>> {
-    const student = await this.actor(studentId, 'STUDENT');
-    const q = query.q?.trim();
-    const where: Prisma.UserWhereInput = {
-      role: 'ADVISOR', status: 'ACTIVE', universityId: student.universityId, emailVerifiedAt: { not: null },
-      ...(q ? { OR: [
-        { fullName: { contains: q, mode: 'insensitive' } },
-        { advisorProfile: { is: { department: { contains: q, mode: 'insensitive' } } } },
-      ] } : {}),
-    };
-    const [users, total] = await Promise.all([
-      this.db.user.findMany({ where, include: { advisorProfile: true }, orderBy: { fullName: 'asc' }, skip: (query.page - 1) * query.page_size, take: query.page_size }),
-      this.db.user.count({ where }),
-    ]);
-    return page(users.map((user) => ({ id: user.id, full_name: user.fullName, ...(user.advisorProfile?.department ? { department: user.advisorProfile.department } : {}) })), total, query);
   }
 
   private async linkEvent(tx: Prisma.TransactionClient, args: {
@@ -69,90 +59,145 @@ export class AdvisorLinkService {
     await this.outbox.add(tx, { type: 'AdvisorLinkChanged', aggregateId: args.studentId, correlationId: args.correlationId, payload });
   }
 
-  async request(studentId: string, advisorId: string, correlationId: string): Promise<void> {
-    const student = await this.actor(studentId, 'STUDENT');
-    const cid = asUuid(correlationId);
-    await this.db.$transaction(async (tx) => {
-      await this.targetAdvisor(tx, advisorId, student.universityId);
-      const profile = await tx.studentProfileIdentity.findUnique({ where: { userId: studentId } });
-      if (!profile) throw new AppException('NOT_FOUND', 'ไม่พบข้อมูลนักศึกษา', 404);
-      if (profile.advisorLinkStatus === 'ADVISOR_LINK_PENDING' || profile.advisorId === advisorId) {
-        throw new AppException('STATE_CONFLICT', 'มีคำขอค้างอยู่หรือผูกอาจารย์คนนี้แล้ว', 409);
-      }
-      const now = new Date();
-      const changed = await tx.studentProfileIdentity.updateMany({
-        where: { userId: studentId, advisorLinkStatus: profile.advisorLinkStatus, advisorId: profile.advisorId, pendingAdvisorId: null },
-        data: { advisorLinkStatus: 'ADVISOR_LINK_PENDING', pendingAdvisorId: advisorId, advisorLinkUpdatedAt: now },
-      });
-      if (changed.count !== 1) throw new AppException('STATE_CONFLICT', 'คำขอถูกเปลี่ยนไปแล้ว', 409);
-      await this.linkEvent(tx, { studentId, before: profile, toStatus: 'ADVISOR_LINK_PENDING', newAdvisorId: advisorId, changedBy: 'STUDENT', actorId: studentId, correlationId: cid, now });
-    });
-  }
-
-  private async clearPending(studentId: string, expectedAdvisorId: string | undefined, changedBy: AdvisorLinkChangedPayload['changed_by'], actorId: string, correlationId: string): Promise<void> {
-    const cid = asUuid(correlationId);
-    await this.db.$transaction(async (tx) => {
-      const profile = await tx.studentProfileIdentity.findUnique({ where: { userId: studentId } });
-      if (!profile || profile.advisorLinkStatus !== 'ADVISOR_LINK_PENDING' || !profile.pendingAdvisorId ||
-          (expectedAdvisorId && profile.pendingAdvisorId !== expectedAdvisorId)) {
-        throw new AppException('STATE_CONFLICT', 'ไม่พบคำขอที่รอดำเนินการ', 409);
-      }
-      const toStatus = profile.advisorId ? 'LINKED' : 'NONE';
-      const now = new Date();
-      const changed = await tx.studentProfileIdentity.updateMany({
-        where: { userId: studentId, advisorLinkStatus: 'ADVISOR_LINK_PENDING', pendingAdvisorId: profile.pendingAdvisorId, advisorId: profile.advisorId },
-        data: { advisorLinkStatus: toStatus, pendingAdvisorId: null, advisorLinkUpdatedAt: now },
-      });
-      if (changed.count !== 1) throw new AppException('STATE_CONFLICT', 'คำขอถูกเปลี่ยนไปแล้ว', 409);
-      await this.linkEvent(tx, { studentId, before: profile, toStatus, newAdvisorId: profile.advisorId ?? undefined, changedBy, actorId, correlationId: cid, now });
-    });
-  }
-
-  async cancel(studentId: string, correlationId: string): Promise<void> {
-    await this.actor(studentId, 'STUDENT');
-    return this.clearPending(studentId, undefined, 'STUDENT', studentId, correlationId);
-  }
-
-  async requests(advisorId: string, query: AdvisorSearchDto): Promise<Page<AdvisorLinkRequestItem>> {
-    await this.actor(advisorId, 'ADVISOR');
-    const where: Prisma.StudentProfileIdentityWhereInput = { pendingAdvisorId: advisorId, advisorLinkStatus: 'ADVISOR_LINK_PENDING' };
-    const [profiles, total] = await Promise.all([
-      this.db.studentProfileIdentity.findMany({ where, include: { user: true }, orderBy: { advisorLinkUpdatedAt: 'desc' }, skip: (query.page - 1) * query.page_size, take: query.page_size }),
-      this.db.studentProfileIdentity.count({ where }),
-    ]);
-    return page(profiles.map((profile) => ({
-      student_user_id: profile.userId, full_name: profile.user.fullName, student_code: profile.studentCode,
-      major: profile.major, year_level: profile.yearLevel, requested_at: (profile.advisorLinkUpdatedAt ?? profile.updatedAt).toISOString(),
-    })), total, query);
-  }
-
-  async students(advisorId: string, query: AdvisorSearchDto): Promise<Page<LinkedStudentItem>> {
-    await this.actor(advisorId, 'ADVISOR');
-    const where: Prisma.StudentProfileIdentityWhereInput = { advisorId };
-    const [profiles, total] = await Promise.all([
-      this.db.studentProfileIdentity.findMany({ where, include: { user: true }, orderBy: { createdAt: 'asc' }, skip: (query.page - 1) * query.page_size, take: query.page_size }),
-      this.db.studentProfileIdentity.count({ where }),
-    ]);
-    return page(profiles.map((profile) => ({ student_user_id: profile.userId, full_name: profile.user.fullName, student_code: profile.studentCode, major: profile.major, year_level: profile.yearLevel })), total, query);
-  }
-
-  async action(advisorId: string, studentId: string, action: string, correlationId: string): Promise<void> {
+  /**
+   * อาจารย์เพิ่มนักศึกษา (ปรับ Requirement 2026-11-21): สร้างบัญชี `STUDENT` ที่ยังไม่มีรหัสผ่าน ผูกอาจารย์เป็น `LINKED` ทันที
+   * (ส่ง AdvisorLinkChanged) และส่งอีเมลคำเชิญอายุ 7 วัน — นักศึกษาตั้งรหัสผ่านผ่าน `POST /auth/student-invitations/accept`
+   */
+  async createStudent(advisorId: string, body: CreateStudentDto, correlationId: string): Promise<CreateStudentResponse> {
     const advisor = await this.actor(advisorId, 'ADVISOR');
-    if (action !== 'confirm' && action !== 'reject') throw new AppException('NOT_FOUND', 'ไม่พบ action นี้', 404);
-    if (action === 'reject') return this.clearPending(studentId, advisorId, 'ADVISOR', advisorId, correlationId);
+    if (!advisor.universityId) throw new AppException('FORBIDDEN_ROLE', 'อาจารย์ยังไม่ผูกสถาบัน', 403);
+    const university = await this.db.university.findUniqueOrThrow({ where: { id: advisor.universityId } });
+    const email = normalizeEmail(body.email);
+    if (email.split('@')[1] !== university.emailDomain.toLowerCase()) {
+      throw new AppException('VALIDATION_FAILED', 'อีเมลนักศึกษาต้องใช้โดเมนสถาบันเดียวกับอาจารย์', 400, [{ field: 'email', issue: 'EMAIL_DOMAIN_NOT_ALLOWED' }]);
+    }
+    const cid = asUuid(correlationId);
+    let token = '';
+    let studentId = '';
+    let expiresAt = new Date();
+    try {
+      await this.db.$transaction(async (tx) => {
+        if (await tx.user.findUnique({ where: { email } })) {
+          throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
+        }
+        const studentCode = body.student_code.trim();
+        const duplicate = await tx.studentProfileIdentity.findFirst({
+          where: { studentCode, user: { universityId: advisor.universityId, status: { not: 'DELETED' } } }, select: { userId: true } });
+        if (duplicate) throw new AppException('STATE_CONFLICT', 'รหัสนักศึกษานี้ถูกใช้แล้วในสถาบันเดียวกัน', 409, [{ field: 'student_code', issue: 'STUDENT_CODE_ALREADY_USED' }]);
+        const now = new Date();
+        const user = await tx.user.create({ data: {
+          email, passwordHash: null, fullName: body.full_name.trim(), role: 'STUDENT', status: 'PENDING_EMAIL', universityId: advisor.universityId,
+          studentProfile: { create: { studentCode, major: body.major.trim(), yearLevel: body.year_level, advisorId,
+            advisorLinkStatus: 'LINKED', createdByAdvisorId: advisorId, advisorLinkUpdatedAt: now } },
+        } });
+        studentId = user.id;
+        token = await this.auth.issueEmailToken(tx, user.id, 'STUDENT_INVITATION');
+        expiresAt = new Date(Date.now() + STUDENT_INVITATION_TTL_MS);
+        await tx.statusHistory.create({ data: { entity: 'USER', entityId: user.id, fromStatus: null, toStatus: 'PENDING_EMAIL',
+          actorId: advisorId, actorRole: 'ADVISOR', reason: 'STUDENT_CREATED_BY_ADVISOR', correlationId: cid, occurredAt: now } });
+        await this.linkEvent(tx, { studentId: user.id, before: { advisorId: null, advisorLinkStatus: 'NONE' } as StudentProfileIdentity,
+          toStatus: 'LINKED', newAdvisorId: advisorId, changedBy: 'ADVISOR', actorId: advisorId, correlationId: cid, now });
+      });
+    } catch (error) {
+      if (isUniqueError(error)) throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
+      throw error;
+    }
+    // บัญชีถูกสร้างแล้ว: ส่งอีเมลไม่สำเร็จไม่ทำให้คำขอล้ม — อาจารย์กดส่งคำเชิญใหม่ได้
+    try { await this.mailer.send(email, 'student-invitation', token); } catch { /* resend-invitation */ }
+    return { student_user_id: studentId, email, invitation_expires_at: expiresAt.toISOString() };
+  }
+
+  /** นักศึกษาในความดูแลของอาจารย์ (ไม่ใช่ของตน ⇒ 404) */
+  private async ownedStudent(tx: Prisma.TransactionClient, advisorId: string, studentId: string) {
+    const profile = await tx.studentProfileIdentity.findUnique({ where: { userId: studentId }, include: { user: true } });
+    if (!profile || profile.advisorId !== advisorId || profile.advisorLinkStatus !== 'LINKED' || profile.user.status === 'DELETED') {
+      throw new AppException('NOT_FOUND', 'ไม่พบนักศึกษาในความดูแล', 404);
+    }
+    return profile;
+  }
+
+  async updateStudent(advisorId: string, studentId: string, body: UpdateStudentDto): Promise<void> {
+    await this.actor(advisorId, 'ADVISOR');
+    await this.db.$transaction(async (tx) => {
+      const profile = await this.ownedStudent(tx, advisorId, studentId);
+      const fullName = body.full_name === undefined ? undefined : body.full_name.trim();
+      const major = body.major === undefined ? undefined : body.major.trim();
+      if (fullName === '' || major === '') throw new AppException('VALIDATION_FAILED', 'ค่าที่แก้ไขต้องไม่ว่าง', 400);
+      if (fullName !== undefined || body.year_level !== undefined || major !== undefined) {
+        await tx.user.update({ where: { id: studentId }, data: { ...(fullName === undefined ? {} : { fullName }), version: { increment: 1 } } });
+        await tx.studentProfileIdentity.update({ where: { userId: profile.userId },
+          data: { ...(major === undefined ? {} : { major }), ...(body.year_level === undefined ? {} : { yearLevel: body.year_level }) } });
+      }
+    });
+  }
+
+  /** ส่งคำเชิญใหม่ (ลิงก์เดิมใช้ไม่ได้) — ได้เฉพาะนักศึกษาที่ยังไม่ตั้งรหัสผ่าน */
+  async resendInvitation(advisorId: string, studentId: string): Promise<void> {
+    await this.actor(advisorId, 'ADVISOR');
+    const { token, email } = await this.db.$transaction(async (tx) => {
+      const profile = await this.ownedStudent(tx, advisorId, studentId);
+      if (profile.user.status !== 'PENDING_EMAIL' || profile.user.passwordHash !== null) {
+        throw new AppException('STATE_CONFLICT', 'นักศึกษาตั้งรหัสผ่านแล้ว', 409);
+      }
+      await tx.emailToken.updateMany({ where: { userId: studentId, purpose: 'STUDENT_INVITATION', usedAt: null }, data: { usedAt: new Date() } });
+      return { token: await this.auth.issueEmailToken(tx, studentId, 'STUDENT_INVITATION'), email: profile.user.email };
+    });
+    try { await this.mailer.send(email, 'student-invitation', token); }
+    catch { throw new AppException('MAIL_UNAVAILABLE', 'ส่งอีเมลคำเชิญไม่สำเร็จ กรุณาลองใหม่', 503); }
+  }
+
+  /** ยกเลิกบัญชีที่ยังไม่ตั้งรหัสผ่าน: ลบคำเชิญ + ทำให้บัญชีเป็น DELETED (คืนอีเมลให้ใช้สร้างใหม่ได้) และส่ง AdvisorLinkChanged(UNLINKED) */
+  async cancelInvitation(advisorId: string, studentId: string, correlationId: string): Promise<void> {
+    await this.actor(advisorId, 'ADVISOR');
     const cid = asUuid(correlationId);
     await this.db.$transaction(async (tx) => {
-      const profile = await tx.studentProfileIdentity.findUnique({ where: { userId: studentId }, include: { user: true } });
-      if (!profile || profile.advisorLinkStatus !== 'ADVISOR_LINK_PENDING' || profile.pendingAdvisorId !== advisorId) throw new AppException('STATE_CONFLICT', 'ไม่พบคำขอที่รอยืนยัน', 409);
-      if (profile.user.status !== 'ACTIVE' || profile.user.universityId !== advisor.universityId) throw new AppException('STATE_CONFLICT', 'นักศึกษาไม่พร้อมผูกอาจารย์', 409);
+      const profile = await this.ownedStudent(tx, advisorId, studentId);
+      if (profile.user.status !== 'PENDING_EMAIL' || profile.user.passwordHash !== null) {
+        throw new AppException('STATE_CONFLICT', 'นักศึกษาตั้งรหัสผ่านแล้ว', 409);
+      }
       const now = new Date();
-      const changed = await tx.studentProfileIdentity.updateMany({
-        where: { userId: studentId, advisorLinkStatus: 'ADVISOR_LINK_PENDING', pendingAdvisorId: advisorId, advisorId: profile.advisorId },
-        data: { advisorLinkStatus: 'LINKED', advisorId, pendingAdvisorId: null, advisorLinkUpdatedAt: now },
-      });
-      if (changed.count !== 1) throw new AppException('STATE_CONFLICT', 'คำขอถูกเปลี่ยนไปแล้ว', 409);
-      await this.linkEvent(tx, { studentId, before: profile, toStatus: 'LINKED', newAdvisorId: advisorId, changedBy: 'ADVISOR', actorId: advisorId, correlationId: cid, now });
+      await tx.emailToken.deleteMany({ where: { userId: studentId } });
+      await tx.studentProfileIdentity.delete({ where: { userId: studentId } });
+      const deleted = await tx.user.update({ where: { id: studentId }, data: {
+        email: `deleted-${randomUUID()}@invalid.example`, fullName: 'บัญชีที่ถูกยกเลิก', universityId: null, status: 'DELETED',
+        deletedAt: now, version: { increment: 1 } } });
+      await tx.statusHistory.create({ data: { entity: 'USER', entityId: studentId, fromStatus: 'PENDING_EMAIL', toStatus: 'DELETED',
+        actorId: advisorId, actorRole: 'ADVISOR', reason: 'STUDENT_INVITATION_CANCELLED', correlationId: cid, occurredAt: now } });
+      const payload: AdvisorLinkChangedPayload = { student_user_id: studentId, old_advisor_id: advisorId, link_status: 'UNLINKED',
+        changed_by: 'ADVISOR', entity_version: deleted.version, changed_at: now.toISOString() };
+      await this.outbox.add(tx, { type: 'AdvisorLinkChanged', aggregateId: studentId, correlationId: cid, payload });
     });
+  }
+
+  /** รายชื่อสำหรับจัดการบัญชี + ตัวกรองชั้นปี/สถานะเปิดใช้งาน (สถานะการฝึกงานอยู่ที่ Lifecycle `GET /advisor/students`) */
+  async students(advisorId: string, query: AdvisorStudentsQueryDto): Promise<Page<AdvisorStudentItem>> {
+    await this.actor(advisorId, 'ADVISOR');
+    const q = query.q?.trim();
+    const where: Prisma.StudentProfileIdentityWhereInput = {
+      advisorId, advisorLinkStatus: 'LINKED', user: { status: query.activation === 'PENDING' ? 'PENDING_EMAIL' : query.activation === 'ACTIVE' ? 'ACTIVE' : { not: 'DELETED' } },
+      ...(query.year_level === undefined ? {} : { yearLevel: query.year_level }),
+      ...(q ? { OR: [
+        { studentCode: { contains: q, mode: 'insensitive' } },
+        { user: { is: { fullName: { contains: q, mode: 'insensitive' } } } },
+        { user: { is: { email: { contains: q, mode: 'insensitive' } } } },
+      ] } : {}),
+    };
+    const [profiles, total] = await Promise.all([
+      this.db.studentProfileIdentity.findMany({ where, include: { user: true }, orderBy: [{ createdAt: 'asc' }, { userId: 'asc' }], skip: (query.page - 1) * query.page_size, take: query.page_size }),
+      this.db.studentProfileIdentity.count({ where }),
+    ]);
+    const pendingIds = profiles.filter((p) => p.user.status === 'PENDING_EMAIL').map((p) => p.userId);
+    const tokens = pendingIds.length ? await this.db.emailToken.findMany({ where: { userId: { in: pendingIds }, purpose: 'STUDENT_INVITATION', usedAt: null },
+      orderBy: { createdAt: 'desc' }, select: { userId: true, expiresAt: true } }) : [];
+    const expiry = new Map<string, Date>();
+    for (const token of tokens) if (!expiry.has(token.userId)) expiry.set(token.userId, token.expiresAt);
+    return page(profiles.map((profile): AdvisorStudentItem => {
+      const pending = profile.user.status === 'PENDING_EMAIL';
+      const expires = expiry.get(profile.userId);
+      return { user_id: profile.userId, full_name: profile.user.fullName, email: profile.user.email, student_code: profile.studentCode,
+        major: profile.major, year_level: profile.yearLevel, activation_status: pending ? 'PENDING' : 'ACTIVE',
+        ...(pending && expires ? { invitation_expires_at: expires.toISOString() } : {}) };
+    }), total, query);
   }
 
   async adminAdvisors(adminId: string, query: AdminAdvisorQueryDto): Promise<Page<AdminAdvisorListItem>> {
@@ -205,15 +250,15 @@ export class AdvisorLinkService {
       if (!profile || profile.user.role !== 'STUDENT') throw new AppException('NOT_FOUND', 'ไม่พบนักศึกษา', 404);
       if (profile.user.status !== 'ACTIVE') throw new AppException('STATE_CONFLICT', 'บัญชีนักศึกษาไม่พร้อมใช้งาน', 409);
       await this.targetAdvisor(tx, advisorId, profile.user.universityId);
-      if (profile.advisorId === advisorId && !profile.pendingAdvisorId) throw new AppException('STATE_CONFLICT', 'ผูกอาจารย์คนนี้อยู่แล้ว', 409);
+      if (profile.advisorId === advisorId) throw new AppException('STATE_CONFLICT', 'ผูกอาจารย์คนนี้อยู่แล้ว', 409);
       const now = new Date();
       const changed = await tx.studentProfileIdentity.updateMany({ where: {
-        userId: studentId, advisorLinkStatus: profile.advisorLinkStatus, advisorId: profile.advisorId, pendingAdvisorId: profile.pendingAdvisorId,
-      }, data: { advisorLinkStatus: 'LINKED', advisorId, pendingAdvisorId: null, advisorLinkUpdatedAt: now } });
+        userId: studentId, advisorLinkStatus: profile.advisorLinkStatus, advisorId: profile.advisorId,
+      }, data: { advisorLinkStatus: 'LINKED', advisorId, advisorLinkUpdatedAt: now } });
       if (changed.count !== 1) throw new AppException('STATE_CONFLICT', 'ข้อมูลนักศึกษาถูกเปลี่ยนไปแล้ว', 409);
       await this.linkEvent(tx, { studentId, before: profile, toStatus: 'LINKED', newAdvisorId: advisorId, changedBy: 'ADMIN', actorId: adminId, correlationId: cid, now });
       await tx.adminAuditLog.create({ data: { adminId, action: 'STUDENT_ADVISOR_MOVE', targetType: 'USER', targetId: studentId,
-        before: { advisor_id: profile.advisorId, pending_advisor_id: profile.pendingAdvisorId }, after: { advisor_id: advisorId }, correlationId: cid, occurredAt: now } });
+        before: { advisor_id: profile.advisorId }, after: { advisor_id: advisorId }, correlationId: cid, occurredAt: now } });
     });
   }
 }

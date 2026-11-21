@@ -28,7 +28,7 @@ export class ReviewActionsService {
   }
 
   /**
-   * ตัดสินรายการ REVIEW_HELD / REVIEW_REPORT ใน Transaction เดียว (สไลซ์ 3 §5.5): ล็อกรีวิว (ร่วมกับการรายงาน) →
+   * ตัดสินรายการ REVIEW_REPORT ใน Transaction เดียว (สไลซ์ 3 §5.5): ล็อกรีวิว (ร่วมกับการรายงาน) →
    * ปิดรายการด้วย `updateMany where status <> 'RESOLVED'` → เปลี่ยนสถานะรีวิวด้วยเงื่อนไขสถานะที่คาด → E10 → history → audit
    * ขั้นใดล้มเหลว (409) rollback ทั้งก้อน ห้าม log เนื้อรีวิว/เหตุผล
    */
@@ -37,7 +37,7 @@ export class ReviewActionsService {
     await this.prisma.$transaction(async (tx) => {
       const probe = await tx.queueItem.findUnique({ where: { id }, select: { type: true, targetId: true } });
       if (!probe) throw new AppException('NOT_FOUND', 'ไม่พบรายการคิว', 404);
-      if (probe.type !== 'REVIEW_HELD' && probe.type !== 'REVIEW_REPORT') {
+      if (probe.type !== 'REVIEW_REPORT') {
         throw new AppException('UNSUPPORTED_ITEM_TYPE', 'รายการชนิดนี้ไม่ใช่การตรวจรีวิว', 422);
       }
       await lockScope(tx, 'review', probe.targetId);
@@ -52,9 +52,9 @@ export class ReviewActionsService {
       });
       if (closed.count === 0) throw new AppException('STATE_CONFLICT', 'รายการนี้ถูกตัดสินไปแล้ว', 409);
 
-      const expected = item.type === 'REVIEW_HELD' ? ['HELD' as const] : ['PASSED' as const, 'ADMIN_PUBLISHED' as const];
+      const expected = ['PASSED' as const, 'ADMIN_PUBLISHED' as const];
       const reasons: ReviewModerationResultPayload['reasons'] = [
-        ...(item.type === 'REVIEW_REPORT' ? [{ code: 'REPORTED' as const }] : []),
+        { code: 'REPORTED' as const },
         { code: 'ADMIN' as const, ...(reason ? { detail: reason } : {}) },
       ];
       const moderated = await tx.reviewModeration.updateMany({

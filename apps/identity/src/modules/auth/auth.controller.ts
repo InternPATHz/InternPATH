@@ -1,15 +1,16 @@
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Public } from '@internpath/common';
 import { AuthService } from './auth.service';
-import { EmailDto, LoginDto, RefreshDto, RegisterAdvisorDto, RegisterCompanyDto, RegisterStudentDto, ResetPasswordDto, TokenDto } from './auth.dto';
+import { AcceptStudentInvitationDto, EmailDto, LoginDto, RefreshDto, RegisterAdvisorDto, RegisterCompanyDto, ResetPasswordDto, TokenDto } from './auth.dto';
 
 @Controller('auth')
 @UseGuards(JwtAuthGuard)
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
-  @Public() @Post('register/student')
-  registerStudent(@Body() body: RegisterStudentDto) { return this.auth.registerStudent(body); }
+  /** นักศึกษาไม่สมัครเอง: อาจารย์สร้างบัญชีและส่งคำเชิญ นักศึกษาตั้งรหัสผ่านที่นี่ */
+  @Public() @Post('student-invitations/accept') @HttpCode(204)
+  acceptStudentInvitation(@Body() body: AcceptStudentInvitationDto) { return this.auth.acceptStudentInvitation(body.token, body.password); }
 
   @Public() @Post('register/advisor')
   registerAdvisor(@Body() body: RegisterAdvisorDto) { return this.auth.registerAdvisor(body); }

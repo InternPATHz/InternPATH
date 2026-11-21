@@ -10,6 +10,7 @@ import type {
 import { Injectable, Logger } from '@nestjs/common';
 import type { Certificate } from '../../../generated/client';
 import { AUDIT_ACTIONS, recordAdminAudit } from '../../common/audit/admin-audit';
+import { CategoryScopeService } from '../../common/auth/category-scope.service';
 import { assertCompanyOwnership } from '../../common/auth/ownership';
 import { S3StorageService } from '../../common/storage/s3-storage.service';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
@@ -56,6 +57,7 @@ export class CertificatesService {
     private readonly outbox: OutboxWriter,
     private readonly history: StatusHistoryWriter,
     private readonly config: LifecycleConfigService,
+    private readonly scope: CategoryScopeService,
   ) {}
 
   // ---------- HR: ออกใบรับรอง ----------
@@ -70,6 +72,7 @@ export class CertificatesService {
     const app = await this.db.application.findUnique({ where: { id: applicationId } });
     if (!app) throw applicationNotFound();
     assertCompanyOwnership(user, app.companyId);
+    await this.scope.assertInScope(user, app, correlationId);
 
     const minDays = await this.minActualDays();
     const eligibility = checkCertificateIssuable(app, await this.lastEvaluationResult(this.db, app.id), minDays);

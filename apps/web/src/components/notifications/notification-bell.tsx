@@ -27,10 +27,10 @@ export function NotificationBell() {
 
   return (
     <Link href="/notifications" aria-label={count > 0 ? `การแจ้งเตือน ยังไม่อ่าน ${count} รายการ` : 'การแจ้งเตือน'}
-      className="relative inline-flex h-10 w-10 items-center justify-center rounded-full border border-border text-ink hover:border-primary hover:text-primary">
-      <Bell aria-hidden="true" className="h-5 w-5" strokeWidth={2} />
+      className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-ink/80 hover:bg-black/[0.05] hover:text-ink">
+      <Bell aria-hidden="true" className="h-[18px] w-[18px]" strokeWidth={1.75} />
       {count > 0 && (
-        <span aria-hidden="true" className="absolute -right-1 -top-1 min-w-5 rounded-full bg-danger-text px-1.5 text-center text-xs font-semibold leading-5 text-white">{count > 99 ? '99+' : count}</span>
+        <span aria-hidden="true" className="absolute -right-0.5 -top-0.5 min-w-[18px] rounded-full bg-danger-text px-1 text-center text-[11px] font-semibold leading-[18px] text-white">{count > 99 ? '99+' : count}</span>
       )}
     </Link>
   );

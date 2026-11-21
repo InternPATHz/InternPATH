@@ -1,0 +1,1 @@
+ALTER TYPE "email_token_purpose" ADD VALUE 'STUDENT_INVITATION';

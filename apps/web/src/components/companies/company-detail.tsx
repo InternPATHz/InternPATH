@@ -73,7 +73,7 @@ export function CompanyDetail() {
   if (missing || error) {
     return (
       <main className="mx-auto max-w-md px-4 py-16 text-center">
-        <h1 className="text-xl font-bold">{missing ? 'ไม่พบบริษัทนี้' : 'โหลดข้อมูลไม่สำเร็จ'}</h1>
+        <h1 className="text-xl font-semibold">{missing ? 'ไม่พบบริษัทนี้' : 'โหลดข้อมูลไม่สำเร็จ'}</h1>
         <p className="mt-2 text-sm text-ink-soft">{missing ? 'บริษัทอาจยังไม่ผ่านการรับรองหรือถูกระงับ' : error}</p>
         <Link href="/companies" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปรายชื่อบริษัท</Link>
       </main>
@@ -89,7 +89,7 @@ export function CompanyDetail() {
       <header className="mt-4 flex flex-wrap items-center gap-4">
         <Avatar name={company.name} src={company.logo_url} size="lg" />
         <div className="min-w-0">
-          <h1 className="text-3xl font-bold">{company.name}</h1>
+          <h1 className="text-3xl font-semibold">{company.name}</h1>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             <span className="inline-block rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success-text">Verified by Platform</span>
             {company.university_partner && <span className="inline-block rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success-text">University Partner</span>}
@@ -104,7 +104,7 @@ export function CompanyDetail() {
       </div>
 
       <section aria-labelledby="reviews-title" className="mt-10">
-        <h2 id="reviews-title" className="text-xl font-bold">รีวิวจากผู้ฝึกงาน</h2>
+        <h2 id="reviews-title" className="text-xl font-semibold">รีวิวจากผู้ฝึกงาน</h2>
         <p className="mt-1 text-sm text-ink-soft">รีวิวทุกรายการแสดงผลการฝึกของผู้เขียนคู่กันเสมอ</p>
 
         {reviewError && <div className="mt-4"><Notice tone="error">{reviewError}</Notice></div>}
@@ -117,7 +117,7 @@ export function CompanyDetail() {
             {reviews.data.map((review) => {
               const outcome = OUTCOME[review.outcome_label];
               return (
-                <li key={review.id} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+                <li key={review.id} className="rounded-xl border border-border bg-surface p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <Stars value={review.rating} />
                     <StatusBadge tone={outcome.tone} icon={outcome.icon}>{outcome.label}</StatusBadge>
@@ -139,9 +139,9 @@ export function CompanyDetail() {
         )}
         {reviews && reviews.meta.total > PAGE_SIZE && (
           <nav aria-label="เลือกหน้ารีวิว" className="mt-6 flex items-center justify-center gap-4 text-sm">
-            <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
+            <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
             <span aria-live="polite">หน้า {page} จาก {totalPages}</span>
-            <button type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
+            <button type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
           </nav>
         )}
       </section>

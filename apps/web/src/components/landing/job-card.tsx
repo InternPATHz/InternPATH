@@ -9,7 +9,7 @@ const workModeLabel: Record<WorkMode, string> = { ONSITE: 'On-Site', HYBRID: 'Hy
 function Badge({ children, tone }: { children: React.ReactNode; tone: 'success' | 'accent' | 'neutral' }) {
   const styles = {
     success: 'bg-success-soft text-success-text',
-    accent: 'bg-accent-soft text-accent',
+    accent: 'bg-accent-soft text-accent-text',
     neutral: 'bg-surface-muted text-ink-soft',
   }[tone];
   return <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${styles}`}>{children}</span>;
@@ -19,7 +19,7 @@ export function JobCard({ item }: { item: LandingJob }) {
   const { job, rating } = item;
   const category = CATEGORIES.find((entry) => entry.id === job.category)?.label ?? job.category;
   return (
-    <article className="flex flex-col rounded-xl border border-border bg-surface p-5 shadow-sm">
+    <article className="flex flex-col rounded-xl border border-border bg-surface p-5">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="neutral">{category}</Badge>
         {job.featured && <Badge tone="accent">Featured</Badge>}
@@ -39,9 +39,9 @@ export function JobCard({ item }: { item: LandingJob }) {
       </dl>
       <Link
         href={`/jobs/item?id=${job.id}`}
-        className="mt-5 inline-block self-start rounded-lg bg-primary-soft px-4 py-2 text-sm font-semibold text-primary hover:bg-primary hover:text-white"
+        className="mt-auto inline-block self-start pt-5 text-sm text-primary hover:underline"
       >
-        ดูรายละเอียด
+        ดูรายละเอียด ›
       </Link>
     </article>
   );

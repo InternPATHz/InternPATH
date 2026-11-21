@@ -62,7 +62,7 @@ export function ApplicantList() {
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold">ผู้สมัครของบริษัท</h1>
+      <h1 className="text-3xl font-semibold">ผู้สมัครของบริษัท</h1>
       <p className="mt-2 text-sm text-ink-soft">พิจารณาใบสมัคร ส่งข้อเสนอ และติดตามผู้ฝึกงาน</p>
 
       <div className="mt-6 flex flex-wrap items-end gap-4">
@@ -96,7 +96,7 @@ export function ApplicantList() {
         {result && result.data.length > 0 && (
           <ul className="space-y-3">
             {result.data.map((application) => (
-              <li key={application.id} className="rounded-xl border border-border bg-surface p-5 shadow-sm">
+              <li key={application.id} className="rounded-xl border border-border bg-surface p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold">{application.job_title}</h2>
@@ -118,10 +118,10 @@ export function ApplicantList() {
         {result && result.meta.total > PAGE_SIZE && (
           <nav aria-label="เลือกหน้า" className="mt-8 flex items-center justify-center gap-4 text-sm">
             <button type="button" disabled={page <= 1} onClick={() => update({ page: String(page - 1) }, true)}
-              className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
+              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
             <span aria-live="polite">หน้า {page} จาก {totalPages}</span>
             <button type="button" disabled={page >= totalPages} onClick={() => update({ page: String(page + 1) }, true)}
-              className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
+              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
           </nav>
         )}
       </section>

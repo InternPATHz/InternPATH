@@ -1,52 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import type { EventEnvelope, JobSubmittedPayload } from '@internpath/contracts';
-import { Logger } from '@nestjs/common';
 import { expect } from 'chai';
-import sinon from 'sinon';
 import { EvaluationModule } from '../../src/evaluation/evaluation.module';
 import { EvaluationService } from '../../src/evaluation/evaluation.service';
-import { RulesRepository } from '../../src/rules/rules.repository';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
+import { envelope, statusChanged, submitted, submittedEnv } from '../support/events';
 
-const LONG = 'พัฒนาเว็บแอปพลิเคชันร่วมกับทีมวิศวกรอาวุโสและเรียนรู้กระบวนการทำงานจริงของบริษัท '.repeat(2);
-
-function submitted(over: Partial<JobSubmittedPayload> = {}, content: Partial<JobSubmittedPayload['content']> = {}): JobSubmittedPayload {
-  return {
-    job_id: randomUUID(),
-    company_id: randomUUID(),
-    submission_id: randomUUID(),
-    submission_kind: 'NEW',
-    content: {
-      job_title: 'นักศึกษาฝึกงานด้านพัฒนาซอฟต์แวร์',
-      description: LONG,
-      responsibilities: 'เขียนโค้ดและทดสอบ',
-      qualifications: 'กำลังศึกษาด้านคอมพิวเตอร์',
-      allowance_text: 'เบี้ยเลี้ยงรายเดือน',
-      location: 'กรุงเทพฯ',
-      ...content,
-    },
-    work_mode: 'HYBRID',
-    hours_per_week: 35,
-    allowance: { type: 'AMOUNT', amount_thb: 5000 },
-    company_flag_under_review: false,
-    fast_track: false,
-    submitted_at: new Date().toISOString(),
-    ...over,
-  };
-}
-
-const envelope = (payload: JobSubmittedPayload): EventEnvelope<'JobSubmitted', JobSubmittedPayload> => ({
-  event_id: randomUUID(),
-  type: 'JobSubmitted',
-  version: 1,
-  occurred_at: new Date().toISOString(),
-  correlation_id: randomUUID(),
-  producer: 'job',
-  payload,
-});
-
-describe('EvaluationService.handleJobSubmitted (Postgres จริง)', function () {
+describe('EvaluationService: คัดกรองประกาศของบริษัทที่ติดธง (Postgres จริง — ไม่มีคะแนน/คำต้องห้ามแล้ว)', function () {
   this.timeout(60000);
   let db: TestDatabase;
   let t: TestApp;
@@ -63,174 +23,163 @@ describe('EvaluationService.handleJobSubmitted (Postgres จริง)', functio
     await db?.drop();
   });
   afterEach(async () => {
-    sinon.restore();
-    await t.prisma.$executeRawUnsafe('TRUNCATE evaluations, queue_items, outbox_events');
+    await t.prisma.$executeRawUnsafe('TRUNCATE job_submission_snapshots, queue_items, outbox_events');
   });
 
-  const handle = (env: EventEnvelope<'JobSubmitted', JobSubmittedPayload>) =>
-    t.prisma.$transaction((tx) => svc.handleJobSubmitted(env, tx));
-  const outboxRows = () => t.prisma.outboxEvent.findMany({ orderBy: { createdAt: 'asc' } });
+  const submit = (p: ReturnType<typeof submitted>) => t.prisma.$transaction((tx) => svc.handleJobSubmitted(submittedEnv(p), tx));
+  const timeout = (p: ReturnType<typeof statusChanged>) =>
+    t.prisma.$transaction((tx) => svc.handleJobStatusChanged(envelope('JobStatusChanged', p), tx));
+  const items = () => t.prisma.queueItem.findMany({ orderBy: { createdAt: 'asc' } });
+  const outbox = () => t.prisma.outboxEvent.findMany({ orderBy: { createdAt: 'asc' } });
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 
-  it('ประกาศสะอาด → evaluations 1 แถว (APPROVE, LOW), outbox JobVerified APPROVE, ไม่มีรายการคิว', async () => {
-    const p = submitted({ fast_track: true });
-    const env = envelope(p);
-    await handle(env);
+  describe('E01 JobSubmitted', () => {
+    it('เก็บสำเนาเนื้อหา, สร้างรายการ JOB_REVIEW (FLAGGED_COMPANY, NORMAL, due +48 ชม.), ส่ง JobVerified PENDING_REVIEW และไม่มีคะแนน', async () => {
+      const p = submitted();
+      await submit(p);
 
-    const evals = await t.prisma.evaluation.findMany();
-    expect(evals).to.have.length(1);
-    expect(evals[0]).to.include({
-      jobId: p.job_id,
-      companyId: p.company_id,
-      submissionId: p.submission_id,
-      submissionKind: 'NEW',
-      riskScore: 0,
-      riskLevel: 'LOW',
-      decision: 'APPROVE',
-      negatedOnly: false,
-      companyFlagUnderReview: false,
-      fastTrack: true,
+      const snaps = await t.prisma.jobSubmissionSnapshot.findMany();
+      expect(snaps).to.have.length(1);
+      expect(snaps[0]).to.include({ submissionId: p.submission_id, jobId: p.job_id, fastTrack: false });
+
+      const all = await items();
+      expect(all).to.have.length(1);
+      expect(all[0]).to.include({
+        type: 'JOB_REVIEW',
+        targetId: p.job_id,
+        companyId: p.company_id,
+        submissionId: p.submission_id,
+        origin: 'FLAGGED_COMPANY',
+        priority: 'NORMAL',
+        status: 'OPEN',
+      });
+      expect(all[0].dueAt.getTime() - all[0].createdAt.getTime()).to.equal(48 * 3600_000);
+      expect(await t.prisma.statusHistory.count({ where: { entityId: all[0].id } })).to.equal(1);
+
+      const out = await outbox();
+      expect(out).to.have.length(1);
+      const payload = out[0].payload as any;
+      expect(out[0].type).to.equal('JobVerified');
+      expect(payload).to.include({ job_id: p.job_id, submission_id: p.submission_id, decision: 'PENDING_REVIEW', decided_by: 'SYSTEM' });
+      expect(payload).to.not.have.any.keys('risk_score', 'risk_level', 'is_appeal');
     });
-    expect(evals[0].submittedAt.toISOString()).to.equal(p.submitted_at);
 
-    const out = await outboxRows();
-    expect(out).to.have.length(1);
-    expect(out[0]).to.include({ type: 'JobVerified', aggregateId: p.job_id, correlationId: env.correlation_id });
-    expect(out[0].payload).to.deep.include({
-      job_id: p.job_id,
-      submission_id: p.submission_id,
-      decision: 'APPROVE',
-      risk_score: 0,
-      risk_level: 'LOW',
-      is_appeal: false,
-      decided_by: 'SYSTEM',
+    it('เนื้อหาที่เก็บผ่าน normalizeText (ไม่มีอักขระความกว้างศูนย์) และไม่ตัดสินจากเนื้อหา (มีเบอร์โทร/คำต้องห้ามก็เข้าคิวเหมือนกัน)', async () => {
+      const p = submitted({}, { description: 'ต้องจ่าย\u200bค่ามัดจำ โทร 081-234-5678' });
+      await submit(p);
+      const snap = await t.prisma.jobSubmissionSnapshot.findFirstOrThrow();
+      expect((snap.content as any).description).to.equal('ต้องจ่ายค่ามัดจำ โทร 081-234-5678');
+      expect((await outbox())[0].payload).to.include({ decision: 'PENDING_REVIEW' });
     });
-    expect((out[0].payload as any).reasons).to.deep.equal([]);
-    expect(new Date((out[0].payload as any).decided_at).getTime()).to.be.greaterThan(Date.now() - 60_000);
-    expect(await t.prisma.queueItem.count()).to.equal(0);
-  });
 
-  it('เก็บ content ที่ผ่าน normalizeText (ไม่มีอักขระความกว้างศูนย์)', async () => {
-    await handle(envelope(submitted({}, { description: LONG + ' ทดสอบ​คำ' })));
-    const e = (await t.prisma.evaluation.findFirst())!;
-    expect((e.content as any).description).to.include('ทดสอบคำ');
-    expect((e.content as any).description).to.not.include('​');
-  });
-
-  it('ประกาศมีเบอร์โทร → PENDING_REVIEW, คิว JOB_REVIEW (MEDIUM, NORMAL, due_at +48 ชม.), status_history 1 แถว, outbox PENDING_REVIEW', async () => {
-    const p = submitted({}, { description: LONG + ' โทร 081-234-5678' });
-    await handle(envelope(p));
-
-    const items = await t.prisma.queueItem.findMany();
-    expect(items).to.have.length(1);
-    expect(items[0]).to.include({
-      type: 'JOB_REVIEW',
-      targetType: 'job',
-      targetId: p.job_id,
-      companyId: p.company_id,
-      submissionId: p.submission_id,
-      priority: 'NORMAL',
-      riskLevel: 'MEDIUM',
-      isAppeal: false,
-      origin: 'EVALUATION',
-      status: 'OPEN',
+    it('fast_track=true → priority FAST_TRACK, due_at +12 ชม.', async () => {
+      await submit(submitted({ fast_track: true }));
+      const [item] = await items();
+      expect(item.priority).to.equal('FAST_TRACK');
+      expect(item.dueAt.getTime() - item.createdAt.getTime()).to.equal(12 * 3600_000);
     });
-    expect(items[0].dueAt.getTime() - items[0].createdAt.getTime()).to.equal(48 * 3600_000);
 
-    const hist = await t.prisma.statusHistory.findMany({ where: { entityId: items[0].id } });
-    expect(hist).to.have.length(1);
-    expect(hist[0]).to.include({ entity: 'QUEUE_ITEM', fromStatus: null, toStatus: 'OPEN', actorRole: 'SYSTEM', actorId: null });
+    it('ส่ง submission_id เดิมซ้ำ → ยังสำเนา/คิว/outbox อย่างละหนึ่งแถว', async () => {
+      const p = submitted();
+      await submit(p);
+      await submit(p);
+      expect(await t.prisma.jobSubmissionSnapshot.count()).to.equal(1);
+      expect(await items()).to.have.length(1);
+      expect(await outbox()).to.have.length(1);
+    });
 
-    const out = await outboxRows();
-    expect(out).to.have.length(1);
-    expect((out[0].payload as any).decision).to.equal('PENDING_REVIEW');
-    expect((out[0].payload as any).reasons.map((r: any) => r.code)).to.include('CONTACT_IN_TEXT');
+    it('เรียกพร้อมกัน 2 ครั้งด้วย submission_id เดียวกัน → ไม่เกิน 1 แถวและไม่ reject', async () => {
+      const p = submitted();
+      await Promise.all([submit(p), submit(p)]);
+      expect(await t.prisma.jobSubmissionSnapshot.count()).to.equal(1);
+      expect(await items()).to.have.length(1);
+      expect(await outbox()).to.have.length(1);
+    });
+
+    it('E01 EDIT ใหม่ขณะมีรายการเปิดอยู่ → รายการเดิม RESOLVED(SUPERSEDED) ไม่ส่ง Event จากการปิด; รอบใหม่สร้างรายการใหม่ได้', async () => {
+      const first = submitted();
+      await submit(first);
+      const second = submitted({ job_id: first.job_id, company_id: first.company_id, submission_kind: 'EDIT', submitted_at: new Date(Date.now() + 1000).toISOString() });
+      await submit(second);
+
+      const all = await items();
+      expect(all).to.have.length(2);
+      expect(all[0]).to.include({ status: 'RESOLVED', resolution: 'SUPERSEDED', submissionId: first.submission_id });
+      expect(all[1]).to.include({ status: 'OPEN', submissionId: second.submission_id, origin: 'FLAGGED_COMPANY' });
+      expect((await outbox()).map((o) => (o.payload as any).submission_id)).to.deep.equal([first.submission_id, second.submission_id]);
+    });
+
+    it('E01 ของรอบเก่าที่มาถึงช้ากว่ารอบใหม่ → เก็บสำเนาไว้ แต่ไม่ปิดรายการของรอบใหม่และไม่ส่ง JobVerified', async () => {
+      const fresh = submitted({ submission_kind: 'EDIT' });
+      await submit(fresh);
+      const stale = submitted({ job_id: fresh.job_id, company_id: fresh.company_id, submitted_at: ago(60_000) });
+      await submit(stale);
+
+      expect(await t.prisma.jobSubmissionSnapshot.count()).to.equal(2);
+      const all = await items();
+      expect(all).to.have.length(1);
+      expect(all[0]).to.include({ status: 'OPEN', submissionId: fresh.submission_id });
+      expect(await outbox()).to.have.length(1);
+    });
   });
 
-  it('fast_track=true → priority FAST_TRACK, due_at +12 ชม.', async () => {
-    await handle(envelope(submitted({ fast_track: true }, { description: LONG + ' โทร 081-234-5678' })));
-    const item = (await t.prisma.queueItem.findFirst())!;
-    expect(item.priority).to.equal('FAST_TRACK');
-    expect(item.dueAt.getTime() - item.createdAt.getTime()).to.equal(12 * 3600_000);
-  });
+  describe('E03 VERIFY_TIMEOUT', () => {
+    it('สร้างรายการ JOB_REVIEW origin VERIFY_TIMEOUT ผูก submission_id จาก E03, SLA +48 ชม., ไม่ส่ง Event', async () => {
+      const p = statusChanged({ submission_id: randomUUID() });
+      await timeout(p);
+      const all = await items();
+      expect(all).to.have.length(1);
+      expect(all[0]).to.include({ type: 'JOB_REVIEW', targetId: p.job_id, submissionId: p.submission_id!, origin: 'VERIFY_TIMEOUT', priority: 'NORMAL' });
+      expect(all[0].dueAt.getTime() - all[0].createdAt.getTime()).to.equal(48 * 3600_000);
+      expect(await outbox()).to.have.length(0);
+    });
 
-  it('ธง UNDER_REVIEW + คะแนนต่ำ → PENDING_REVIEW เข้าคิว (LOW)', async () => {
-    await handle(envelope(submitted({ company_flag_under_review: true })));
-    const item = (await t.prisma.queueItem.findFirst())!;
-    expect(item.riskLevel).to.equal('LOW');
-    expect((await outboxRows())[0].payload).to.deep.include({ decision: 'PENDING_REVIEW', risk_level: 'LOW' });
-  });
+    it('Event ซ้ำ → ยังรายการเดียว; E03 อื่น (to_status/reason_code อื่น) → ไม่มีผล', async () => {
+      const p = statusChanged({ submission_id: randomUUID() });
+      await timeout(p);
+      await timeout(p);
+      await timeout(statusChanged({ to_status: 'PUBLISHED', from_status: 'VERIFYING', reason_code: undefined }));
+      await timeout(statusChanged({ reason_code: 'REPORT_THRESHOLD' }));
+      expect(await items()).to.have.length(1);
+    });
 
-  it('คำต้องห้าม → AUTO_REJECT, ไม่มีรายการคิว, outbox มี reasons ที่มี matched_text', async () => {
-    await handle(envelope(submitted({}, { description: LONG + ' ต้องจ่ายค่ามัดจำ' })));
-    expect(await t.prisma.queueItem.count()).to.equal(0);
-    const payload = (await outboxRows())[0].payload as any;
-    expect(payload).to.deep.include({ decision: 'AUTO_REJECT', risk_level: 'HIGH' });
-    expect(payload.risk_score).to.be.at.least(70);
-    expect(payload.reasons.find((r: any) => r.code === 'BLACKLIST_HARD').matched_text).to.equal('ค่ามัดจำ');
-  });
+    it('E01 มาหลัง VERIFY_TIMEOUT ของ submission เดียวกัน → ผูกกับรายการเดิม ไม่ส่ง JobVerified และไม่เพิ่มรายการ', async () => {
+      const p = submitted({ submitted_at: ago(6 * 60_000) });
+      await timeout(statusChanged({ job_id: p.job_id, company_id: p.company_id, submission_id: p.submission_id }));
+      await submit(p);
+      const all = await items();
+      expect(all).to.have.length(1);
+      expect(all[0]).to.include({ origin: 'VERIFY_TIMEOUT', status: 'OPEN', submissionId: p.submission_id });
+      expect(await outbox()).to.have.length(0);
+    });
 
-  it('ส่ง E01 submission_id เดิมซ้ำ (คนละ event_id) → evaluations และ outbox ยังอย่างละแถว', async () => {
-    const p = submitted({}, { description: LONG + ' โทร 081-234-5678' });
-    await handle(envelope(p));
-    await handle(envelope(p));
-    expect(await t.prisma.evaluation.count()).to.equal(1);
-    expect(await t.prisma.outboxEvent.count()).to.equal(1);
-    expect(await t.prisma.queueItem.count()).to.equal(1);
-  });
+    it('E03 ไม่มี submission_id: E01 ที่ส่งก่อนหมดเวลา → แนบและเติม submission_id; E03 ไม่เดา submission จากรอบเก่า', async () => {
+      const p = submitted({ submitted_at: ago(6 * 60_000) });
+      await timeout(statusChanged({ job_id: p.job_id, company_id: p.company_id }));
+      expect((await items())[0].submissionId).to.equal(null);
+      await submit(p);
+      expect((await items())[0].submissionId).to.equal(p.submission_id);
 
-  it('เรียกพร้อมกัน 2 ครั้ง (Promise.all) ด้วย submission_id เดียวกัน → ไม่เกิน 1 แถว/1 outbox/1 คิว และไม่ reject', async () => {
-    const p = submitted({}, { description: LONG + ' โทร 081-234-5678' });
-    const results = await Promise.allSettled([handle(envelope(p)), handle(envelope(p))]);
-    expect(results.map((r) => (r.status === 'rejected' ? `rejected: ${String(r.reason)}` : 'fulfilled'))).to.deep.equal([
-      'fulfilled',
-      'fulfilled',
-    ]);
-    expect(await t.prisma.evaluation.count()).to.equal(1);
-    expect(await t.prisma.outboxEvent.count()).to.equal(1);
-    expect(await t.prisma.queueItem.count()).to.equal(1);
-  });
+      const other = submitted({ fast_track: true });
+      await submit(other);
+      await t.prisma.queueItem.updateMany({ where: { targetId: other.job_id }, data: { status: 'RESOLVED' } });
+      await timeout(statusChanged({ job_id: other.job_id, company_id: other.company_id }));
+      const last = (await items()).find((i) => i.targetId === other.job_id && i.status === 'OPEN')!;
+      expect(last).to.include({ submissionId: null, priority: 'NORMAL' });
+    });
 
-  it('ตัวตัดสินขัดข้อง (โหลดกฎไม่ได้ / กฎเสีย) → handler reject, rollback ทั้งก้อน, ไม่มี evaluations และไม่มี outbox', async () => {
-    const repo = t.app.get(RulesRepository);
-    const stub = sinon.stub(repo, 'load');
+    it('E01 คนละ submission (ส่งใหม่หลังหมดเวลา) → รายการ timeout ถูก SUPERSEDED และส่ง JobVerified ตามปกติ', async () => {
+      const old = submitted({ submitted_at: ago(6 * 60_000) });
+      await timeout(statusChanged({ job_id: old.job_id, company_id: old.company_id, submission_id: old.submission_id }));
+      const fresh = submitted({ job_id: old.job_id, company_id: old.company_id, submission_kind: 'EDIT' });
+      await submit(fresh);
 
-    stub.rejects(new Error('db hiccup'));
-    let err: Error | undefined;
-    try {
-      await handle(envelope(submitted()));
-    } catch (e) {
-      err = e as Error;
-    }
-    expect(err?.message).to.equal('db hiccup');
-
-    stub.resolves({ blacklist: null, negationCues: null, riskRules: null } as never); // evaluateJob โยน TypeError
-    err = undefined;
-    try {
-      await handle(envelope(submitted()));
-    } catch (e) {
-      err = e as Error;
-    }
-    expect(err).to.be.instanceOf(Error);
-
-    expect(await t.prisma.evaluation.count()).to.equal(0);
-    expect(await t.prisma.outboxEvent.count()).to.equal(0);
-    expect(await t.prisma.queueItem.count()).to.equal(0);
-  });
-
-  it('ฟิลด์ที่ไม่รู้จักใน payload/content ไม่ทำให้ล้ม', async () => {
-    const p = { ...submitted(), future_field: { a: 1 } } as JobSubmittedPayload;
-    (p.content as any).extra = 'x';
-    await handle(envelope(p));
-    expect(await t.prisma.evaluation.count()).to.equal(1);
-  });
-
-  it('ไม่มี log ใดที่มีเนื้อหาประกาศหรือช่องทางติดต่อ', async () => {
-    const spies = (['log', 'warn', 'error', 'debug', 'verbose'] as const).map((m) => sinon.spy(Logger.prototype, m));
-    const secret = 'ความลับของประกาศ-xyz';
-    await handle(envelope(submitted({}, { description: LONG + ` ${secret} โทร 081-234-5678`, contact_notes: 'line id: secretid123' })));
-    const logged = spies.flatMap((s) => s.getCalls().map((c) => c.args.map(String).join(' '))).join('\n');
-    expect(logged).to.not.include(secret);
-    expect(logged).to.not.include('081-234-5678');
-    expect(logged).to.not.include('secretid123');
+      const all = await items();
+      expect(all.filter((i) => i.status === 'RESOLVED')).to.have.length(1);
+      expect(all.find((i) => i.status === 'OPEN')).to.include({ submissionId: fresh.submission_id });
+      const out = await outbox();
+      expect(out).to.have.length(1);
+      expect((out[0].payload as any).submission_id).to.equal(fresh.submission_id);
+    });
   });
 });

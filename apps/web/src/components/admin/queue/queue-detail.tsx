@@ -7,9 +7,8 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import type { QueueActionRequest, QueueItemDetail } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { ApiError } from '@/lib/api';
-import { HighlightedText } from './highlighted-text';
 import { ACTIONS_BY_TYPE, REASON_MAX } from './queue-actions';
-import { Badge, ItemBadges, STATUS_LABEL, TYPE_LABEL, formatDateTime, riskStyle } from './queue-ui';
+import { Badge, ItemBadges, STATUS_LABEL, TYPE_LABEL, formatDateTime } from './queue-ui';
 
 const FIELD_LABEL: Record<string, string> = {
   job_title: 'ตำแหน่ง', description: 'รายละเอียดงาน', responsibilities: 'หน้าที่', qualifications: 'คุณสมบัติ',
@@ -80,7 +79,6 @@ export function QueueDetail() {
   }
   if (!item) return <p className="text-sm text-ink-soft">กำลังโหลด…</p>;
 
-  const risk = riskStyle(item.risk_level);
   const open = item.status !== 'RESOLVED';
   const actions = ACTIONS_BY_TYPE[item.type] ?? [];
   // เรียงตามลำดับในฟอร์มประกาศ (ฟิลด์ที่ไม่รู้จักไปท้ายสุด) ไม่ใช่ลำดับของฐานข้อมูล
@@ -94,9 +92,9 @@ export function QueueDetail() {
     <div className="space-y-5">
       <Link href="/admin/queue" className="text-sm text-primary hover:underline">← กลับไปคิว</Link>
 
-      <header className={`rounded-xl border border-border border-l-4 bg-surface p-5 ${risk.stripe}`}>
+      <header className="rounded-xl border border-border bg-surface p-5">
         <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-xl font-bold">{TYPE_LABEL[item.type]}</h1>
+          <h1 className="text-xl font-semibold">{TYPE_LABEL[item.type]}</h1>
           <Badge className="bg-surface-muted text-ink-soft">{STATUS_LABEL[item.status]}</Badge>
           <ItemBadges item={item} />
         </div>
@@ -105,37 +103,20 @@ export function QueueDetail() {
           <div><dt className="inline text-ink-soft">ครบกำหนด: </dt><dd className="inline">{formatDateTime(item.due_at)}</dd></div>
           <div><dt className="inline text-ink-soft">ที่มา: </dt><dd className="inline">{item.origin}</dd></div>
           <div><dt className="inline text-ink-soft">สร้างเมื่อ: </dt><dd className="inline">{formatDateTime(item.created_at)}</dd></div>
-          {item.risk_score !== null && <div><dt className="inline text-ink-soft">คะแนนความเสี่ยง: </dt><dd className="inline">{item.risk_score}</dd></div>}
           {!open && <div><dt className="inline text-ink-soft">ผลการตัดสิน: </dt><dd className="inline">{item.resolution ?? '—'} ({formatDateTime(item.resolved_at)})</dd></div>}
         </dl>
       </header>
 
-      {item.appeal_statement && <Section title="คำชี้แจงอุทธรณ์ของ HR"><p className="whitespace-pre-wrap text-sm leading-thai">{item.appeal_statement}</p></Section>}
-
-      {item.reasons.length > 0 && (
-        <Section title="เหตุผลที่ระบบประเมิน">
-          <ul className="space-y-1.5 text-sm">
-            {item.reasons.map((reasonItem, index) => (
-              <li key={`${reasonItem.code}-${index}`}>
-                <span className="font-mono text-xs text-ink-soft">{reasonItem.code}</span>{' '}
-                {reasonItem.detail}
-                {reasonItem.matched_text && <> — <mark className="rounded bg-danger-soft px-1 text-danger-text">{reasonItem.matched_text}</mark></>}
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
-
       {item.content === null && item.type.startsWith('JOB_') && item.type !== 'JOB_REPORT' && (
-        <Section title="เนื้อหาประกาศ"><p className="text-sm text-ink-soft">ยังไม่มีผลตรวจของรายการนี้ (Fail-safe) จึงไม่มีเนื้อหาให้แสดง</p></Section>
+        <Section title="เนื้อหาประกาศ"><p className="text-sm text-ink-soft">รายการนี้เกิดจาก Fail-safe หมดเวลาและยังไม่ได้รับสำเนาเนื้อหาประกาศ</p></Section>
       )}
       {contentFields.length > 0 && (
-        <Section title="เนื้อหาประกาศ (ข้อความที่ใช้สแกน)">
+        <Section title="เนื้อหาประกาศ">
           <div className="space-y-4">
             {contentFields.map(([field, text]) => (
               <div key={field}>
                 <p className="text-xs font-medium text-ink-soft">{FIELD_LABEL[field] ?? field}</p>
-                <HighlightedText text={text} highlights={item.highlights.filter((h) => h.field === field)} />
+                <p className="mt-1 whitespace-pre-wrap text-sm leading-thai">{text}</p>
               </div>
             ))}
           </div>
@@ -145,7 +126,7 @@ export function QueueDetail() {
       {review && (
         <Section title={`รีวิว · ${review.rating}/5 · ${review.outcome_label}`}>
           <div className="mb-2 flex gap-2"><Badge className="bg-surface-muted text-ink-soft">{review.moderation_status}</Badge></div>
-          <HighlightedText text={reviewText} highlights={review.highlights} />
+          <p className="whitespace-pre-wrap text-sm leading-thai">{reviewText}</p>
         </Section>
       )}
 
@@ -190,7 +171,7 @@ export function QueueDetail() {
           <div className="mt-4 flex flex-wrap gap-3">
             {actions.map((spec) => (
               <button key={spec.action} type="button" disabled={busy} onClick={() => void decide(spec.action, spec.reasonRequired)}
-                className={`rounded-lg px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${spec.tone === 'primary' ? 'bg-primary text-white hover:bg-primary-hover' : spec.tone === 'danger' ? 'bg-danger text-white hover:opacity-90' : 'border border-border text-ink hover:bg-surface-muted'}`}>
+                className={`rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${spec.tone === 'primary' ? 'bg-primary text-white hover:bg-primary-hover' : spec.tone === 'danger' ? 'bg-danger text-white hover:opacity-90' : 'border border-border text-ink hover:bg-surface-muted'}`}>
                 {spec.label}
               </button>
             ))}

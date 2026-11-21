@@ -17,6 +17,8 @@ interface Transition {
   reasonCode?: string;
   applicationEffect?: ApplicationEffect;
   suspendedFromStatus?: JobStatus | null;
+  /** เหตุผลที่ Admin ปฏิเสธ (`null` = ล้างค่า) — ไม่ระบุ = ไม่แตะ */
+  adminReason?: string | null;
 }
 
 /** Called only with the EventConsumer transaction: never opens or commits its own transaction. */
@@ -58,6 +60,7 @@ export class JobStatusTransitionService {
         ...(transition.suspendedFromStatus === undefined
           ? {}
           : { suspendedFromStatus: transition.suspendedFromStatus }),
+        ...(transition.adminReason === undefined ? {} : { adminReason: transition.adminReason }),
       },
     });
     if (updated.count === 0) {

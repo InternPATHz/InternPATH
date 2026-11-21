@@ -17,7 +17,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import { addDays, bangkokToday } from '../../src/state-machine/dates';
 import { FakeJobClient } from '../support/application-fakes';
 import { createTestDatabase, type TestDatabase } from '../support/db';
-import { TEST_JWT, bearer } from '../support/jwt';
+import { ALL_CATEGORIES, TEST_JWT, bearer } from '../support/jwt';
 import { FakeIdentity } from '../support/profile-resume-fakes';
 
 /** OutboxWriter มาจาก MessagingModule (Global) ในแอปจริง — เทสต์ไม่ต่อ RabbitMQ จึงให้ตัวเขียนตรง */
@@ -47,7 +47,7 @@ describe('Lifecycle 1.6 — ฝั่งอาจารย์ที่ปรึ�
 
   const asAdvisor = (sub = advisor) => bearer({ role: 'ADVISOR', sub });
   const asAdmin = () => bearer({ role: 'PLATFORM_ADMIN', sub: randomUUID() });
-  const asHr = () => bearer({ role: 'COMPANY_HR', sub: randomUUID(), company_id: companyId, company_role: 'MEMBER' });
+  const asHr = () => bearer({ role: 'COMPANY_HR', sub: randomUUID(), company_id: companyId, company_role: 'MEMBER', company_categories: ALL_CATEGORIES });
   const asStudent = () => bearer({ role: 'STUDENT', sub: student });
 
   before(async function () {
@@ -91,6 +91,8 @@ describe('Lifecycle 1.6 — ฝั่งอาจารย์ที่ปรึ�
     companyId = randomUUID();
     identity.students.clear();
     identity.nameCalls = [];
+    identity.summaries.clear();
+    identity.summaryCalls = [];
     identity.unavailable = false;
     identity.setStudent(student, { advisor_id: advisor, advisor_link_status: 'LINKED' });
   });
@@ -471,6 +473,93 @@ describe('Lifecycle 1.6 — ฝั่งอาจารย์ที่ปรึ�
 
       const other = await http().get(`/v1/advisor/students/${student}/overview`).set('Authorization', asAdvisor(randomUUID())).expect(403);
       expect(other.body.error.code).to.equal('NOT_OWNER_OF_RESOURCE');
+    });
+
+    describe('GET /advisor/students — ตัวกรองชั้นปี / กำลังฝึกงาน / ฝึกงานเสร็จแล้ว (ปรับ 2026-11-21)', () => {
+      const addStudent = async (code: string, over: { year?: number; name?: string; linked?: boolean; advisorId?: string } = {}) => {
+        const id = randomUUID();
+        identity.setStudent(id, { full_name: over.name ?? `นักศึกษา ${code}`, year_level: over.year ?? 3, major: 'วิทยาการคอมพิวเตอร์' });
+        identity.summaries.set(id, { student_code: code });
+        await prisma.studentAdvisorLink.create({
+          data: { studentUserId: id, advisorUserId: over.advisorId ?? advisor, linkStatus: over.linked === false ? 'NONE' : 'LINKED' },
+        });
+        return id;
+      };
+      const apply = (studentUserId: string, status: ApplicationStatus) =>
+        prisma.application.create({ data: { jobId: randomUUID(), companyId, studentUserId, advisorUserId: advisor, status } });
+      const list = (qs = '', token = asAdvisor()) => http().get(`/v1/advisor/students${qs}`).set('Authorization', token);
+
+      it('คืนเฉพาะนักศึกษาที่ LINKED กับอาจารย์ พร้อมสถานะฝึกงาน/จำนวนใบที่ดำเนินอยู่ และไม่เก็บชื่อลงฐานข้อมูล', async () => {
+        const training = await addStudent('B001', { year: 3 });
+        const done = await addStudent('B002', { year: 4 });
+        const none = await addStudent('B003', { year: 3 });
+        const both = await addStudent('B004', { year: 4 });
+        await addStudent('B999', { advisorId: randomUUID() }); // ของอาจารย์คนอื่น
+        await addStudent('B998', { linked: false }); // ยังไม่ผูก
+        await apply(training, 'IN_PROGRESS');
+        await apply(training, 'PENDING');
+        await apply(training, 'WITHDRAWN'); // ไม่นับเป็นใบที่ดำเนินอยู่
+        await apply(done, 'COMPLETED');
+        await apply(both, 'COMPLETED');
+        await apply(both, 'IN_PROGRESS');
+        await apply(none, 'CANCELLED');
+
+        const res = await list().expect(200);
+        expect(res.body.meta).to.deep.equal({ page: 1, page_size: 20, total: 4 });
+        expect(res.body.data.map((s: { student_code: string }) => s.student_code)).to.deep.equal(['B001', 'B002', 'B003', 'B004']);
+        const byCode = Object.fromEntries(res.body.data.map((s: { student_code: string }) => [s.student_code, s]));
+        expect(byCode.B001).to.deep.include({ student_user_id: training, full_name: 'นักศึกษา B001', year_level: 3, training_status: 'IN_TRAINING', active_application_count: 2 });
+        expect(byCode.B002).to.deep.include({ training_status: 'COMPLETED', active_application_count: 0 });
+        expect(byCode.B003).to.deep.include({ training_status: 'NONE', active_application_count: 0 });
+        expect(byCode.B004).to.deep.include({ training_status: 'IN_TRAINING', active_application_count: 1 }); // กำลังฝึกมาก่อน COMPLETED
+        expect(res.body.data[0]).to.have.all.keys('student_user_id', 'full_name', 'student_code', 'major', 'year_level', 'training_status', 'active_application_count');
+        // ดึงสดจาก Identity: ชื่อไม่อยู่ในตารางใดของ Lifecycle
+        expect(JSON.stringify(await prisma.application.findMany())).to.not.include('นักศึกษา B00');
+        expect(JSON.stringify(await prisma.studentAdvisorLink.findMany())).to.not.include('นักศึกษา B00');
+      });
+
+      it('ตัวกรอง year_level, training_status=IN_TRAINING|COMPLETED, q และรวมกันได้ + Pagination', async () => {
+        const a = await addStudent('C001', { year: 3, name: 'สมศรี ใจดี' });
+        const b = await addStudent('C002', { year: 4, name: 'สมศักดิ์ มั่นคง' });
+        const c = await addStudent('C003', { year: 4, name: 'วีระ ขยัน' });
+        await apply(a, 'IN_PROGRESS');
+        await apply(b, 'IN_PROGRESS');
+        await apply(c, 'COMPLETED');
+        const codes = async (qs: string) => (await list(qs).expect(200)).body.data.map((s: { student_code: string }) => s.student_code);
+
+        expect(await codes('?year_level=4')).to.deep.equal(['C002', 'C003']);
+        expect(await codes('?training_status=IN_TRAINING')).to.deep.equal(['C001', 'C002']);
+        expect(await codes('?training_status=COMPLETED')).to.deep.equal(['C003']);
+        expect(await codes('?training_status=IN_TRAINING&year_level=4')).to.deep.equal(['C002']);
+        expect(await codes('?q=สมศักดิ์')).to.deep.equal(['C002']);
+        expect(await codes('?q=c003')).to.deep.equal(['C003']);
+        expect(await codes('?year_level=9')).to.deep.equal([]);
+        const second = await list('?page=2&page_size=2').expect(200);
+        expect(second.body.meta).to.deep.equal({ page: 2, page_size: 2, total: 3 });
+        expect(second.body.data.map((s: { student_code: string }) => s.student_code)).to.deep.equal(['C003']);
+      });
+
+      it('ตัวกรองไม่ถูกต้อง ⇒ 400; Identity ล่ม ⇒ 502; บัญชีที่ Identity ไม่คืน (ลบแล้ว) ถูกข้าม; role อื่น 403; ไม่ล็อกอิน 401', async () => {
+        const kept = await addStudent('D001');
+        const gone = await addStudent('D002');
+        identity.summaries.delete(gone);
+        expect((await list().expect(200)).body.data.map((s: { student_user_id: string }) => s.student_user_id)).to.deep.equal([kept]);
+        for (const bad of ['?training_status=NONE', '?training_status=x', '?year_level=0', '?year_level=11', '?page_size=101']) await list(bad).expect(400);
+        identity.unavailable = true;
+        await list().expect(502);
+        identity.unavailable = false;
+        await list('', asHr()).expect(403);
+        await list('', asStudent()).expect(403);
+        await http().get('/v1/advisor/students').expect(401);
+      });
+
+      it('Batch ไปที่ Identity ไม่เกิน 100 id ต่อครั้ง', async () => {
+        identity.summaryCalls = [];
+        for (let i = 0; i < 101; i++) await addStudent(`E${String(i).padStart(3, '0')}`);
+        const res = await list('?page_size=100').expect(200);
+        expect(res.body.meta.total).to.equal(101);
+        expect(identity.summaryCalls.map((ids) => ids.length)).to.deep.equal([100, 1]);
+      });
     });
 
     it('ผูกกันแล้วแต่ยังไม่มีใบสมัคร ⇒ 200 รายการว่าง • ผูกค้าง (ADVISOR_LINK_PENDING) ⇒ 403', async () => {

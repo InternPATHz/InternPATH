@@ -1,11 +1,10 @@
 // ต้องตรงกับ docs/api-contract.md §6 (Verification) — เฉพาะที่เอกสารระบุไว้
-import type { QueueItemStatus, QueueItemType, RiskLevel } from '../enums';
+import type { QueueItemStatus, QueueItemType } from '../enums';
 
 // ---- 6.1 Admin Queue ----
 export interface AdminQueueQuery {
   type?: QueueItemType;
   priority?: 'NORMAL' | 'FAST_TRACK';
-  risk_level?: RiskLevel;
   overdue?: boolean;
   status?: QueueItemStatus;
   page?: number;
@@ -20,21 +19,10 @@ export interface QueueItemSummary {
   company_id: string | null;
   company_name: string | null;
   priority: 'NORMAL' | 'FAST_TRACK';
-  risk_level: RiskLevel | null;
-  is_appeal: boolean;
   due_at: string;
   overdue: boolean;
   status: QueueItemStatus;
   created_at: string;
-}
-
-export interface QueueHighlight {
-  field: string;
-  start: number;
-  end: number;
-  keyword: string;
-  /** true = คำอยู่ในประโยคปฏิเสธ */
-  negated: boolean;
 }
 
 /** รายงานหนึ่งฉบับในรายการ JOB_REPORT — ตัวตนผู้รายงานและ `detail` เห็นได้เฉพาะ Admin ผ่าน GET /admin/queue/{id} */
@@ -49,16 +37,15 @@ export interface QueueReportEntry {
   created_at: string;
 }
 
-/** รีวิวในรายการ REVIEW_HELD/REVIEW_REPORT — `highlights` อ้างออฟเซ็ตของข้อความ `title\nbody` (หัวข้อว่าง = เฉพาะ body) ที่ผ่าน normalizeText แล้ว */
+/** รีวิวในรายการ REVIEW_REPORT */
 export interface QueueReviewView {
   review_id: string;
   rating: number;
   outcome_label: string;
   title: string | null;
   body: string;
-  /** PASSED | HELD | ADMIN_PUBLISHED | ADMIN_REMOVED */
+  /** PASSED | ADMIN_PUBLISHED | ADMIN_REMOVED (HELD เลิกใช้) */
   moderation_status: string;
-  highlights: QueueHighlight[];
 }
 
 /** รายงานหนึ่งฉบับในรายการ REVIEW_REPORT — ตัวตนผู้รายงานและเหตุผลเห็นได้เฉพาะ Admin ผ่าน GET /admin/queue/{id} */
@@ -71,21 +58,17 @@ export interface QueueReviewReportEntry {
 
 /** รายละเอียดจาก GET /admin/queue/{id} (ตรงกับ `QueueDetail` ใน apps/verification) */
 export interface QueueItemDetail extends QueueItemSummary {
-  /** ที่มาของรายการ เช่น EVALUATION, VERIFY_TIMEOUT, APPEAL, REPORT_THRESHOLD, REPORT_UNCOUNTED, REJECTION_THRESHOLD */
+  /** ที่มาของรายการ เช่น FLAGGED_COMPANY, VERIFY_TIMEOUT, REPORT_THRESHOLD, REPORT_UNCOUNTED, REJECTION_THRESHOLD, ADMIN_FLAG, REVIEW_REPORT */
   origin: string;
   submission_id: string | null;
   assigned_to: string | null;
   resolution: string | null;
   resolved_at: string | null;
-  risk_score: number | null;
-  reasons: Array<{ code: string; detail: string; matched_text?: string }>;
-  /** ข้อความที่สแกนหลัง normalize; Fail-safe ที่ยังไม่มีผลตรวจ = null */
+  /** เนื้อหาประกาศที่ส่งมากับ E01 (หลัง normalize); Fail-safe ที่ยังไม่มี submission = null */
   content: Record<string, string> | null;
-  highlights: QueueHighlight[];
-  appeal_statement: string | null;
   /** เฉพาะ JOB_REPORT — ชนิดอื่นเป็น [] */
   reports: QueueReportEntry[];
-  /** เฉพาะ REVIEW_HELD/REVIEW_REPORT — ชนิดอื่นเป็น null */
+  /** เฉพาะ REVIEW_REPORT — ชนิดอื่นเป็น null */
   review: QueueReviewView | null;
   /** เฉพาะ REVIEW_REPORT — ชนิดอื่นเป็น [] */
   review_reports: QueueReviewReportEntry[];
@@ -134,88 +117,6 @@ export interface CompanyFlagsQuery {
   page_size?: number;
 }
 
-// ---- 6.3 Blacklist & กฎ ----
-export type BlacklistSeverity = 'HARD' | 'SOFT';
-
-export interface BlacklistListQuery {
-  severity?: BlacklistSeverity;
-  enabled?: boolean;
-  q?: string;
-  page?: number;
-  page_size?: number;
-}
-
-/** `HARD` ห้ามมี weight; `SOFT` ต้องมี weight เป็นจำนวนเต็ม ≥ 0; term ซ้ำ (ไม่สนตัวพิมพ์) ⇒ 409 TERM_EXISTS */
-export interface CreateBlacklistTermRequest {
-  term: string;
-  severity: BlacklistSeverity;
-  weight?: number;
-  category?: string;
-}
-
-export interface UpdateBlacklistTermRequest {
-  enabled?: boolean;
-  weight?: number;
-  category?: string;
-}
-
-/** รายการจาก GET /admin/blacklist และผลของ POST/PATCH /admin/blacklist — `HARD` ⇒ `weight = null`; `term` เก็บเป็นตัวพิมพ์เล็กหลัง normalize */
-export interface BlacklistTermItem {
-  id: string;
-  term: string;
-  severity: BlacklistSeverity;
-  weight: number | null;
-  category: string;
-  enabled: boolean;
-  created_at: string;
-}
-
-/** คำที่จับได้ในข้อความ (ออฟเซ็ตอ้างอิงข้อความหลัง normalize ซึ่งไม่ส่งกลับมา) */
-export interface BlacklistMatchedKeyword {
-  term: string;
-  field: string;
-  /** อยู่ในประโยคปฏิเสธ (ไม่นับเป็นคำต้องห้าม) */
-  negated: boolean;
-  start: number;
-  end: number;
-}
-
-export interface BlacklistTestRequest {
-  text: string;
-}
-
-export interface BlacklistTestResponse {
-  decision: string;
-  risk_level: RiskLevel;
-  risk_score: number;
-  matched_keywords: BlacklistMatchedKeyword[];
-  reasons: Array<{ code: string; detail: string; matched_text?: string }>;
-}
-
-export interface RiskRule {
-  code: string;
-  weight: number;
-  params: Record<string, unknown>;
-  enabled: boolean;
-}
-
-export interface NegationCue {
-  id: string;
-  cue: string;
-  enabled: boolean;
-}
-
-export interface RiskRulesResponse {
-  rules: RiskRule[];
-  negation_cues: NegationCue[];
-}
-
-/** ตรวจทุกรายการก่อนแก้ (ผิดข้อเดียว = ไม่เปลี่ยนเลย 400); `NEGATION_WINDOW.params.max_gap` 0–100 */
-export interface UpdateRiskRulesRequest {
-  rules?: Array<{ code: string; weight?: number; params?: Record<string, unknown>; enabled?: boolean }>;
-  negation_cues?: Array<{ cue: string; enabled: boolean }>;
-}
-
 // ---- 6.4 การรายงาน ----
 /** หมวดรายงานประกาศ (R5-G01: enum — PM ตัดสินค่า 2026-11-14; เพิ่มค่าต้องแก้เอกสาร) */
 export type JobReportCategory =
@@ -242,28 +143,6 @@ export interface ReportCreatedResponse {
   status: 'OPEN';
 }
 
-// ---- 6.5 ผลตรวจสำหรับ HR ----
-export interface VerificationResultResponse {
-  risk_level: RiskLevel;
-  risk_score: number;
-  reasons: Array<{ code: string; detail: string; matched_text?: string }>;
-  matched_keywords: Array<{ term: string; field: string; negated: boolean }>;
-  is_appeal: boolean;
-  can_appeal: boolean;
-  /** เมื่อ Admin เป็นผู้ปฏิเสธ */
-  admin_reason?: string;
-}
-
-/** `statement` 20–2000 ตัวอักษร */
-export interface AppealRequest {
-  statement: string;
-}
-
-export interface AppealResponse {
-  id: string;
-  status: 'OPEN';
-}
-
 // ---- 6.6 Audit ----
 export interface AuditQuery {
   actor?: string;
@@ -278,7 +157,7 @@ export interface AuditQuery {
 export interface AuditLogEntry {
   id: string;
   admin_id: string;
-  /** เช่น QUEUE_APPROVE, QUEUE_REJECT, BLACKLIST_CREATE|UPDATE|DELETE, RISK_RULES_UPDATE */
+  /** เช่น QUEUE_APPROVE, QUEUE_REJECT, REVIEW_PUBLISH|REMOVE, FLAG_SET|CLEAR */
   action: string;
   target_type: string;
   target_id: string;

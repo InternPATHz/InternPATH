@@ -1,3 +1,4 @@
+import type { CategoryScopeService } from '../../src/common/auth/category-scope.service';
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -81,7 +82,7 @@ describe('Lifecycle 1.3 — โปรไฟล์/เรซูเม่บน Po
     const db = prisma as unknown as PrismaService;
     const config = { getNumber: async () => 600 } as unknown as LifecycleConfigService;
     profiles = new ProfilesService(db, identity as unknown as IdentityInternalClient, storage as unknown as S3StorageService, config);
-    resumes = new ResumesService(db, storage as unknown as S3StorageService, config, identity as unknown as IdentityInternalClient);
+    resumes = new ResumesService(db, storage as unknown as S3StorageService, config, identity as unknown as IdentityInternalClient, { assertInScope: async () => undefined } as unknown as CategoryScopeService);
   });
 
   it('สร้าง/แก้โปรไฟล์ (text[] skills, ล้างค่า) และรีเฟรชสำเนาจาก Identity', async () => {

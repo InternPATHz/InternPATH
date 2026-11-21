@@ -1,4 +1,4 @@
-# 🧭 Developer Guide — เพิ่ง clone มา แล้วจะทำต่ออย่างไร
+# Developer Guide — เพิ่ง clone มา แล้วจะทำต่ออย่างไร
 
 คู่มือสำหรับคนที่เพิ่งเข้าโปรเจกต์และต้องเขียนโค้ดต่อ
 ติดตั้ง/รันโปรเจกต์ดูที่ [getting-started.md](getting-started.md) — ไฟล์นี้เน้น **อ่านอะไร ทำงานตรงไหน เพิ่มของใหม่อย่างไร**
@@ -129,7 +129,7 @@ git push -u origin <branch>                 # เปิด Pull Request
 
 - CI (GitHub Actions) รัน lint → test → build เฉพาะแพ็กเกจที่เปลี่ยน
 - ชื่อ commit สั้นๆ บอกว่าทำอะไร ใน Service ไหน เช่น `identity: add student registration`
-- ทุก PR ต้องมีเทสต์ของสิ่งที่เพิ่ม โดยเฉพาะ State Machine, โควตา (รวมกรณียิงพร้อมกัน), Idempotency ของ Consumer, Risk Score (README หัวข้อ 6)
+- ทุก PR ต้องมีเทสต์ของสิ่งที่เพิ่ม โดยเฉพาะ State Machine, โควตา (รวมกรณียิงพร้อมกัน), Idempotency ของ Consumer, สิทธิ์ตามสายงานของ HR Member, การกรองนักศึกษาของอาจารย์ (README หัวข้อ 5)
 
 ## 6. สูตรงานที่ต้องทำบ่อย
 
@@ -299,7 +299,7 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 2. **ฟิลด์ที่บังคับก่อน `submit`** (ใช้เป็นเงื่อนไข `CHECK` และ `MISSING_REQUIRED_JOB_FIELDS`): `category`, `job_title`, `description`, `responsibilities`, `qualifications`, `location`, `work_mode`, `hours_per_week`, `allowance_type` (`AMOUNT` ต้องมีจำนวนเงิน > 0), `internship_period_start/_end`, `target_majors` (≥ 1), `quota` (≥ 1), `application_deadline`; ไม่บังคับ: `allowance_text`, `contact_notes` ([data-schema.md](data-schema.md) §4)
 3. **ฟิลด์ที่แก้แล้วต้องตรวจซ้ำ** (`PUBLISHED → VERIFYING` + `JobSubmitted(kind=EDIT)`): ทุกฟิลด์ที่ Verification ใช้ตัดสิน = `job_title`, `description`, `responsibilities`, `qualifications`, `allowance_*`, `location`, `contact_notes`, `work_mode`, `hours_per_week` — ฟิลด์ที่ **ไม่ตรวจซ้ำ**: `quota`, `application_deadline`, `target_majors`, `internship_period_*`, `category`, `featured`
 4. **`allowance_text` ใน E01 เป็น string เสมอ** ส่ง `''` เมื่อใน DB เป็น NULL
-5. **`PATCH /hr/jobs/{id}` แก้ได้เมื่อสถานะ** `DRAFT`/`PUBLISHED`/`AUTO_REJECTED`/`ADMIN_REJECTED` (และ `CLOSED` เฉพาะ `quota`, `application_deadline`, `target_majors`, ช่วงฝึก) สถานะอื่นตอบ `409 STATE_CONFLICT`; `submit` ทำได้จาก `DRAFT`/`AUTO_REJECTED`/`ADMIN_REJECTED` และคืน Job Object ที่ `status=VERIFYING`; body ของ `POST`/`PATCH` คือ `CreateJobRequest`/`UpdateJobRequest` ใน `@internpath/contracts` ([api-contract.md](api-contract.md) §5.1)
+5. **`PATCH /hr/jobs/{id}` แก้ได้เมื่อสถานะ**`DRAFT`/`PUBLISHED`/`ADMIN_REJECTED` (และ `CLOSED` เฉพาะ `quota`, `application_deadline`, `target_majors`, ช่วงฝึก) สถานะอื่นตอบ `409 STATE_CONFLICT`; `submit` ทำได้จาก `DRAFT`/`ADMIN_REJECTED` และคืน Job Object ที่ `status=PUBLISHED` (บริษัทติดธง `UNDER_REVIEW` = `VERIFYING`); ต้องมี Tag 1–10 รายการ; body ของ `POST`/`PATCH` คือ `CreateJobRequest`/`UpdateJobRequest` ใน `@internpath/contracts` ([api-contract.md](api-contract.md) §5.1)
 6. **ชนิดใน `libs/contracts` เข้มขึ้น:** `JobStatusChangedPayload.from_status/to_status` เป็น `JobStatus` (ไม่ใช่ `string`) และ `application_effect` เป็น `ApplicationEffect` — ถ้าโค้ดของ JR ส่งสตริงทั่วไป TypeScript จะ error ให้ใช้ค่าจาก enum
 7. **ผู้รับ E06 (`CompanyEntitlementChanged`) มีแค่ Job** — Verification ไม่รับแล้ว เพราะใช้ `fast_track` ที่ Job ใส่ใน E01 เป็น snapshot ณ ตอนส่งตรวจ ดังนั้น Job ต้องใส่ `fast_track` จากสิทธิ์ล่าสุดทุกครั้งที่ส่ง `JobSubmitted` (มีเทสต์เทียบแคตตาล็อกกับเอกสาร ตอนนี้ 32 คิว)
 8. **Enum กลางตรวจอัตโนมัติ:** `libs/common/test/repo/contracts-docs.spec.ts` เทียบ `enums.ts` กับ data-schema §2.1 ถ้าเพิ่มค่า enum ต้องแก้ทั้งสองที่

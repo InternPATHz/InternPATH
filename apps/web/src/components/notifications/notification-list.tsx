@@ -55,10 +55,10 @@ export function NotificationList() {
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">การแจ้งเตือน</h1>
+          <h1 className="text-3xl font-semibold">การแจ้งเตือน</h1>
           {NOTIFICATIONS_MOCK && <p className="mt-1 text-xs text-warning-text">ข้อมูลในหน้านี้เป็นข้อมูลจำลอง</p>}
         </div>
-        <button type="button" disabled={busy || !hasUnread} onClick={() => void readAll()} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" disabled={busy || !hasUnread} onClick={() => void readAll()} className="rounded-full border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50">
           ทำเครื่องหมายว่าอ่านทั้งหมด
         </button>
       </div>
@@ -88,7 +88,7 @@ export function NotificationList() {
                   <span aria-hidden="true" className={`mt-2 h-2.5 w-2.5 shrink-0 rounded-full ${item.read ? 'bg-transparent' : 'bg-primary'}`} />
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-baseline justify-between gap-2">
-                      <span className={`text-sm ${item.read ? 'font-medium' : 'font-bold'}`}>{item.title}{!item.read && <span className="sr-only"> (ยังไม่อ่าน)</span>}</span>
+                      <span className={`text-sm ${item.read ? 'font-medium' : 'font-semibold'}`}>{item.title}{!item.read && <span className="sr-only"> (ยังไม่อ่าน)</span>}</span>
                       <span className="text-xs text-ink-soft">{dateTimeFormat.format(new Date(item.created_at))}</span>
                     </span>
                     <span className="mt-1 block text-sm text-ink-soft">{item.body}</span>
@@ -100,9 +100,9 @@ export function NotificationList() {
         )}
         {result && result.meta.total > PAGE_SIZE && (
           <nav aria-label="เลือกหน้า" className="mt-6 flex items-center justify-center gap-4 text-sm">
-            <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
+            <button type="button" disabled={page <= 1} onClick={() => setPage(page - 1)} className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
             <span aria-live="polite">หน้า {page} จาก {totalPages}</span>
-            <button type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
+            <button type="button" disabled={page >= totalPages} onClick={() => setPage(page + 1)} className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
           </nav>
         )}
       </section>

@@ -7,6 +7,7 @@ import type {
   InternalCompanyMembersResponse,
   InternalStudentNamesResponse,
   InternalStudentResponse,
+  InternalStudentSummariesResponse,
 } from '@internpath/contracts';
 import { fetchInternal } from './internal-http.client';
 
@@ -49,6 +50,16 @@ export class IdentityInternalClient {
   async getStudentNames(userIds: readonly string[], correlationId?: string): Promise<InternalStudentNamesResponse> {
     const url = `${this.baseUrl}/internal/v1/students/names?ids=${userIds.map(encodeURIComponent).join(',')}`;
     return fetchInternal<InternalStudentNamesResponse>(url, {
+      method: 'GET',
+      serviceToken: this.getServiceToken(),
+      correlationId,
+    });
+  }
+
+  /** สรุปนักศึกษาแบบ Batch (≤ 100 ต่อครั้ง) สำหรับหน้ารายการของอาจารย์ — ดึงสดทุกครั้ง ห้ามเก็บ full_name */
+  async getStudentSummaries(userIds: readonly string[], correlationId?: string): Promise<InternalStudentSummariesResponse> {
+    const url = `${this.baseUrl}/internal/v1/students/summaries?ids=${userIds.map(encodeURIComponent).join(',')}`;
+    return fetchInternal<InternalStudentSummariesResponse>(url, {
       method: 'GET',
       serviceToken: this.getServiceToken(),
       correlationId,

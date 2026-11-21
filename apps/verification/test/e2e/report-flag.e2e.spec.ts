@@ -100,12 +100,12 @@ describe('e2e: รายงานประกาศ, ระงับอัตโ
     await http().post(`/v1/admin/queue/${item.id}/actions/dismiss-report`).set(admin()).send({ reason: 'ประกาศปกติ' }).expect(204);
     await waitFor(() => msgs('JobVerified', (x) => x.job_id === p.job_id && x.decision === 'RESTORE').length === 1, 'RESTORE');
     // กันเหตุการณ์ข้ามรอบ: RESTORE ต้องอ้างรายการคิวเดียวกับ E04 ที่ระงับประกาศ
-    expect(msgs('JobVerified', (x) => x.decision === 'RESTORE')[0]).to.include({ decided_by: 'ADMIN', is_appeal: false, queue_item_id: e04.queue_item_id });
+    expect(msgs('JobVerified', (x) => x.decision === 'RESTORE')[0]).to.include({ decided_by: 'ADMIN', queue_item_id: e04.queue_item_id });
   });
 
-  it('บริษัทถูกตีกลับ 3 ครั้ง → E18 active → E01 ถัดไปคะแนนต่ำได้ผลเหลือง → Admin เคลียร์ธง → E18 inactive', async () => {
+  it('บริษัทถูกตีกลับ 3 ครั้ง → E18 active → E01 ถัดไปเข้าคิว PENDING_REVIEW → Admin เคลียร์ธง → E18 inactive', async () => {
     const company = randomUUID();
-    await jobStatus(randomUUID(), company, 'AUTO_REJECTED', 'VERIFYING');
+    await jobStatus(randomUUID(), company, 'REMOVED', 'PUBLISHED');
     await jobStatus(randomUUID(), company, 'ADMIN_REJECTED', 'PENDING_REVIEW');
     await jobStatus(randomUUID(), company, 'SUSPENDED', 'PUBLISHED');
     await waitFor(() => msgs('CompanyFlagChanged', (x) => x.company_id === company && x.active === true).length === 1, 'E18 active');
@@ -115,8 +115,8 @@ describe('e2e: รายงานประกาศ, ระงับอัตโ
     await send('JobSubmitted', envelope('JobSubmitted', next));
     await waitFor(() => msgs('JobVerified', (x) => x.job_id === next.job_id).length === 1, 'ผลตรวจบริษัทติดธง');
     const verdict = msgs('JobVerified', (x) => x.job_id === next.job_id)[0];
-    expect(verdict).to.include({ decision: 'PENDING_REVIEW', risk_level: 'LOW' });
-    expect(verdict.reasons.map((r: any) => r.code)).to.include('COMPANY_UNDER_REVIEW');
+    expect(verdict).to.include({ decision: 'PENDING_REVIEW' });
+    expect(verdict.reasons.map((r: any) => r.code)).to.include('FLAGGED_COMPANY');
 
     const list = await http().get('/v1/admin/queue?type=COMPANY_ACCOUNT').set(admin()).expect(200);
     const item = list.body.data.find((x: any) => x.target_id === company);

@@ -13,7 +13,7 @@ const UPDATED = '17 พฤศจิกายน 2569';
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
     <section aria-labelledby={id} className="mt-8">
-      <h2 id={id} className="text-lg font-bold">{title}</h2>
+      <h2 id={id} className="text-lg font-semibold">{title}</h2>
       <div className="mt-2 space-y-3 text-sm leading-thai text-ink-soft">{children}</div>
     </section>
   );
@@ -26,14 +26,14 @@ function List({ items }: { items: ReactNode[] }) {
 export default function PrivacyPage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold">นโยบายความเป็นส่วนตัว</h1>
+      <h1 className="text-3xl font-semibold">นโยบายความเป็นส่วนตัว</h1>
       <p className="mt-2 text-sm text-ink-soft">ฉบับร่าง 1.0 · ปรับปรุงล่าสุด {UPDATED}</p>
       <p className="mt-4 text-sm leading-thai text-ink-soft">
         InternPath เป็นแพลตฟอร์มตัวกลางเชื่อมนักศึกษา อาจารย์ที่ปรึกษา และบริษัทสำหรับการฝึกงาน นโยบายนี้อธิบายว่าเราเก็บข้อมูลอะไร ใช้อย่างไร ใครมองเห็นได้
         และคุณมีสิทธิ์อะไรบ้าง ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 (PDPA)
       </p>
 
-      <nav aria-label="สารบัญ" className="mt-6 rounded-xl border border-border bg-surface-muted p-4 text-sm">
+      <nav aria-label="สารบัญ" className="mt-6 rounded-xl bg-surface-muted p-4 text-sm">
         <ol className="grid gap-1 sm:grid-cols-2">
           {[
             ['collect', '1. ข้อมูลที่เราเก็บ'], ['purpose', '2. วัตถุประสงค์การใช้'], ['visible', '3. ใครมองเห็นข้อมูลของคุณ'],

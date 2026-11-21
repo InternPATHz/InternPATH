@@ -79,46 +79,35 @@ describe('e2e: ตรวจประกาศงานผ่าน RabbitMQ จ�
   const verifiedFor = (jobId: string) => collector.messages.filter((m) => m.type === 'JobVerified' && m.payload.job_id === jobId);
   const http = () => request(app.getHttpServer());
 
-  it('demo สามสี: สะอาด → APPROVE, มีเบอร์โทร → PENDING_REVIEW (เข้าคิว), คำต้องห้าม → AUTO_REJECT พร้อมเหตุผล', async () => {
-    const green = submitted();
-    const yellow = submitted({}, { description: LONG + PHONE });
-    const red = submitted({}, { description: LONG + ' ต้องจ่ายค่ามัดจำ' });
-    for (const p of [green, yellow, red]) await send('JobSubmitted', 'job', envelope('JobSubmitted', p));
+  it('E01 ของบริษัทที่ติดธง: ทุกฉบับ (ข้อความสะอาด/มีเบอร์โทร/มีคำที่เคยต้องห้าม) → PENDING_REVIEW เข้าคิว ไม่มีคะแนนและไม่มี AUTO_REJECT', async () => {
+    const clean = submitted();
+    const phone = submitted({}, { description: LONG + PHONE });
+    const wording = submitted({}, { description: LONG + ' ต้องจ่ายค่ามัดจำ' });
+    for (const p of [clean, phone, wording]) await send('JobSubmitted', 'job', envelope('JobSubmitted', p));
 
-    await waitFor(() => [green, yellow, red].every((p) => verifiedFor(p.job_id).length === 1), 'JobVerified ครบสามฉบับ');
-    const decision = (p: typeof green) => verifiedFor(p.job_id)[0].payload;
-    expect(decision(green)).to.deep.include({ decision: 'APPROVE', risk_level: 'LOW', decided_by: 'SYSTEM' });
-    expect(decision(green), 'queue_item_id ส่งเฉพาะ REMOVE/RESTORE').to.not.have.property('queue_item_id');
-    expect(decision(yellow)).to.deep.include({ decision: 'PENDING_REVIEW', risk_level: 'MEDIUM' });
-    expect(decision(red)).to.deep.include({ decision: 'AUTO_REJECT', risk_level: 'HIGH' });
-    expect(decision(red).reasons.find((r: any) => r.code === 'BLACKLIST_HARD').matched_text).to.equal('ค่ามัดจำ');
-    expect(verifiedFor(green.job_id)[0].producer).to.equal('verification');
+    await waitFor(() => [clean, phone, wording].every((p) => verifiedFor(p.job_id).length === 1), 'JobVerified ครบสามฉบับ');
+    for (const p of [clean, phone, wording]) {
+      const payload = verifiedFor(p.job_id)[0].payload;
+      expect(payload).to.deep.include({ decision: 'PENDING_REVIEW', decided_by: 'SYSTEM', submission_id: p.submission_id });
+      expect(payload).to.not.have.any.keys('risk_score', 'risk_level', 'is_appeal', 'queue_item_id');
+      expect(verifiedFor(p.job_id)[0].producer).to.equal('verification');
+    }
 
     const queue = await http().get('/v1/admin/queue?type=JOB_REVIEW').set(admin()).expect(200);
-    expect(queue.body.data.map((x: any) => x.target_id)).to.include(yellow.job_id);
-    expect(queue.body.data.map((x: any) => x.target_id)).to.not.include(green.job_id);
-    expect(queue.body.data.map((x: any) => x.target_id)).to.not.include(red.job_id);
+    const targets = queue.body.data.map((x: any) => x.target_id);
+    expect(targets).to.include.members([clean.job_id, phone.job_id, wording.job_id]);
   });
 
-  it('อุทธรณ์ครบวงจร: ประกาศแดง → HR อุทธรณ์ → APPEAL_ACCEPTED → Admin อนุมัติรายการ JOB_APPEAL → ADMIN_APPROVE', async () => {
-    const red = submitted({}, { description: LONG + ' ลงทุนกับเรา' });
-    await send('JobSubmitted', 'job', envelope('JobSubmitted', red));
-    await waitFor(() => verifiedFor(red.job_id).length === 1, 'AUTO_REJECT');
-
-    await http()
-      .post(`/v1/verification/jobs/${red.job_id}/appeal`)
-      .set(hr(red.company_id))
-      .send({ statement: 'ขออุทธรณ์เนื่องจากข้อความถูกตีความผิดพลาด ไม่มีการเรียกเก็บเงินใดๆ' })
-      .expect(201);
-    await waitFor(() => verifiedFor(red.job_id).length === 2, 'APPEAL_ACCEPTED');
-    expect(verifiedFor(red.job_id)[1].payload).to.deep.include({ decision: 'APPEAL_ACCEPTED', is_appeal: true });
-
-    const items = await http().get('/v1/admin/queue?type=JOB_APPEAL').set(admin()).expect(200);
-    const item = items.body.data.find((x: any) => x.target_id === red.job_id);
-    expect(item).to.include({ is_appeal: true, status: 'OPEN' });
+  it('Admin อนุมัติรายการของบริษัทที่ติดธง → JobVerified ADMIN_APPROVE (decided_by ADMIN) พร้อม submission_id เดิม', async () => {
+    const p = submitted();
+    await send('JobSubmitted', 'job', envelope('JobSubmitted', p));
+    await waitFor(() => verifiedFor(p.job_id).length === 1, 'PENDING_REVIEW');
+    const items = await http().get('/v1/admin/queue?type=JOB_REVIEW&page_size=100').set(admin()).expect(200);
+    const item = items.body.data.find((x: any) => x.target_id === p.job_id);
+    expect(item).to.include({ status: 'OPEN' });
     await http().post(`/v1/admin/queue/${item.id}/actions/approve`).set(admin()).expect(204);
-    await waitFor(() => verifiedFor(red.job_id).length === 3, 'ADMIN_APPROVE');
-    expect(verifiedFor(red.job_id)[2].payload).to.deep.include({ decision: 'ADMIN_APPROVE', decided_by: 'ADMIN', is_appeal: true });
+    await waitFor(() => verifiedFor(p.job_id).length === 2, 'ADMIN_APPROVE');
+    expect(verifiedFor(p.job_id)[1].payload).to.deep.include({ decision: 'ADMIN_APPROVE', decided_by: 'ADMIN', submission_id: p.submission_id });
   });
 
   it('แก้ประกาศแล้วตรวจซ้ำ: E01 EDIT ใหม่ของประกาศที่ยังเปิดคิวอยู่ → รายการเก่า SUPERSEDED และผลใหม่ออกตามปกติ', async () => {
@@ -145,7 +134,7 @@ describe('e2e: ตรวจประกาศงานผ่าน RabbitMQ จ�
     await waitFor(async () => (await prisma.queueItem.count({ where: { targetId: s.job_id } })) === 1, 'รายการ timeout');
     const items = await http().get('/v1/admin/queue?page_size=100').set(admin()).expect(200);
     const item = items.body.data.find((x: any) => x.target_id === s.job_id);
-    expect(item).to.include({ company_name: 'บริษัท อีทูอี จำกัด', risk_level: null });
+    expect(item).to.include({ company_name: 'บริษัท อีทูอี จำกัด' });
     const detail = await http().get(`/v1/admin/queue/${item.id}`).set(admin()).expect(200);
     expect(detail.body).to.include({ origin: 'VERIFY_TIMEOUT' });
   });

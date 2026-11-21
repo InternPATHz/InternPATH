@@ -8,7 +8,7 @@ import { QueueService } from '../../src/queue/queue.service';
 import { createTestApp, type TestApp } from '../support/app';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
 import { LONG, PHONE, envelope, statusChanged, submitted, submittedEnv } from '../support/events';
-import { PAGE_META, QUEUE_HIGHLIGHT, QUEUE_ITEM_DETAIL, QUEUE_ITEM_SUMMARY, expectShape } from '../support/contract-shapes';
+import { PAGE_META, QUEUE_ITEM_DETAIL, QUEUE_ITEM_SUMMARY, expectShape } from '../support/contract-shapes';
 
 describe('Admin queue API (Postgres จริง)', function () {
   this.timeout(60000);
@@ -33,7 +33,7 @@ describe('Admin queue API (Postgres จริง)', function () {
     await db?.drop();
   });
   afterEach(async () => {
-    await t.prisma.$executeRawUnsafe('TRUNCATE evaluations, queue_items, outbox_events, appeals, company_snapshots, admin_audit_log, status_history');
+    await t.prisma.$executeRawUnsafe('TRUNCATE job_submission_snapshots, queue_items, outbox_events, company_snapshots, admin_audit_log, status_history');
   });
 
   const http = () => request(t.app.getHttpServer());
@@ -72,15 +72,14 @@ describe('Admin queue API (Postgres จริง)', function () {
       const mk = (over: Partial<Parameters<QueueService['createItem']>[1]>) =>
         t.prisma.$transaction((tx) =>
           queue.createItem(tx, {
-            type: 'JOB_REVIEW', jobId: randomUUID(), companyId, submissionId: randomUUID(), riskLevel: 'MEDIUM',
-            fastTrack: false, origin: 'EVALUATION', ...over,
+            type: 'JOB_REVIEW', jobId: randomUUID(), companyId, submissionId: randomUUID(), fastTrack: false, origin: 'FLAGGED_COMPANY', ...over,
           }),
         );
       const now = Date.now();
       const a = await mk({ now: new Date(now) });
-      const b = await mk({ fastTrack: true, riskLevel: 'HIGH', now: new Date(now) });
-      const c = await mk({ riskLevel: 'LOW', now: new Date(now - 3 * 24 * 3600_000) }); // เลยกำหนด
-      const d = await mk({ type: 'JOB_APPEAL', origin: 'APPEAL', now: new Date(now + 1000) });
+      const b = await mk({ fastTrack: true, now: new Date(now) });
+      const c = await mk({ now: new Date(now - 3 * 24 * 3600_000) }); // เลยกำหนด
+      const d = await mk({ now: new Date(now + 1000) });
       await t.prisma.queueItem.update({ where: { id: d.id }, data: { status: 'RESOLVED', resolvedAt: new Date() } });
 
       const list = (qs = '') => http().get(`/v1/admin/queue${qs}`).set(admin).expect(200).then((r) => r.body);
@@ -89,15 +88,15 @@ describe('Admin queue API (Postgres จริง)', function () {
       expect(all.meta).to.deep.equal({ page: 1, page_size: 20, total: 3 });
       expect(all.data.map((x: any) => x.id)).to.deep.equal([b.id, c.id, a.id]);
       expect(all.data[0]).to.include({ priority: 'FAST_TRACK', company_name: 'บริษัท ทดสอบ จำกัด', type: 'JOB_REVIEW' });
-      expect(all.data[0]).to.have.all.keys('id', 'type', 'target_id', 'company_id', 'company_name', 'priority', 'risk_level', 'is_appeal', 'due_at', 'overdue', 'status', 'created_at');
+      expect(all.data[0]).to.have.all.keys('id', 'type', 'target_id', 'company_id', 'company_name', 'priority', 'due_at', 'overdue', 'status', 'created_at');
       for (const row of all.data) expectShape(row, QUEUE_ITEM_SUMMARY, 'GET /admin/queue[]');
       expectShape(all.meta, PAGE_META, 'GET /admin/queue meta');
 
-      expect((await list('?type=JOB_APPEAL')).data.map((x: any) => x.id)).to.deep.equal([]);
-      expect((await list('?type=JOB_APPEAL&status=RESOLVED')).data.map((x: any) => x.id)).to.deep.equal([d.id]);
+      expect((await list('?type=JOB_REPORT')).data.map((x: any) => x.id)).to.deep.equal([]);
+      expect((await list('?type=JOB_REVIEW&status=RESOLVED')).data.map((x: any) => x.id)).to.deep.equal([d.id]);
       expect((await list('?status=OPEN')).meta.total).to.equal(3);
       expect((await list('?priority=FAST_TRACK')).data.map((x: any) => x.id)).to.deep.equal([b.id]);
-      expect((await list('?risk_level=LOW')).data.map((x: any) => x.id)).to.deep.equal([c.id]);
+
       expect((await list('?status=RESOLVED')).data.map((x: any) => x.id)).to.deep.equal([d.id]);
       const overdue = await list('?overdue=true');
       expect(overdue.data.map((x: any) => x.id)).to.deep.equal([c.id]);
@@ -117,39 +116,31 @@ describe('Admin queue API (Postgres จริง)', function () {
   });
 
   describe('GET /admin/queue/:id', () => {
-    it('รายละเอียด + reasons + content + highlights (คำที่ปฏิเสธมี negated=true) + company_name', async () => {
+    it('รายละเอียด + content ของ submission + company_name (ไม่มี reasons/highlights/risk_score แล้ว)', async () => {
       const companyId = randomUUID();
       await t.prisma.companySnapshot.create({ data: { companyId, name: 'บริษัท ตัวอย่าง', status: 'VERIFIED', entityVersion: 1 } });
-      const { p, item } = await pendingJob({ description: LONG + ' ไม่มีค่ามัดจำ' }, { company_id: companyId });
+      const { p, item } = await pendingJob({ description: LONG }, { company_id: companyId });
 
       const res = await http().get(`/v1/admin/queue/${item.id}`).set(admin).expect(200);
-      expect(res.body).to.include({ id: item.id, type: 'JOB_REVIEW', company_name: 'บริษัท ตัวอย่าง', submission_id: p.submission_id, status: 'OPEN', origin: 'EVALUATION' });
+      expect(res.body).to.include({ id: item.id, type: 'JOB_REVIEW', company_name: 'บริษัท ตัวอย่าง', submission_id: p.submission_id, status: 'OPEN', origin: 'FLAGGED_COMPANY' });
       expectShape(res.body, QUEUE_ITEM_DETAIL, 'GET /admin/queue/{id}');
-      for (const h of res.body.highlights) expectShape(h, QUEUE_HIGHLIGHT, 'highlight');
       expect(res.body.review).to.equal(null);
-      expect(res.body.reasons.map((r: any) => r.code)).to.include('BLACKLIST_NEGATED');
-      expect(res.body.highlights).to.have.length(1);
-      expect(res.body.highlights[0]).to.include({ field: 'description', keyword: 'ค่ามัดจำ', negated: true });
-      const h = res.body.highlights[0];
-      expect(res.body.content.description.slice(h.start, h.end)).to.equal('ค่ามัดจำ');
+      expect(res.body.content.description).to.equal(LONG);
+      expect(res.body).to.not.have.any.keys('risk_score', 'highlights', 'appeal_statement', 'reasons');
     });
 
-    it('ข้อความที่มีอักขระความกว้างศูนย์: ไฮไลต์ตรงกับ content ที่ API คืน', async () => {
-      const { item } = await pendingJob({ description: LONG + ' ไม่มี ค่า​มัดจำ' });
+    it('ข้อความที่มีอักขระความกว้างศูนย์: content ที่ API คืนผ่าน normalizeText แล้ว', async () => {
+      const { item } = await pendingJob({ description: LONG + ' ค่า​มัดจำ' });
       const res = await http().get(`/v1/admin/queue/${item.id}`).set(admin).expect(200);
       expect(res.body.content.description).to.not.include('​');
-      const h = res.body.highlights[0];
-      expect(res.body.content.description.slice(h.start, h.end).toLowerCase()).to.equal('ค่ามัดจำ');
     });
 
-    it('รายการ timeout ที่ยังไม่มีผลตรวจ: reasons/highlights ว่าง, content เป็น null', async () => {
+    it('รายการ timeout ที่ยังไม่มีสำเนา submission: content เป็น null', async () => {
       const s = statusChanged({ submission_id: randomUUID() });
       await t.prisma.$transaction((tx) => evaluation.handleJobStatusChanged(envelope('JobStatusChanged', s), tx));
       const item = await itemFor(s.job_id);
       const res = await http().get(`/v1/admin/queue/${item.id}`).set(admin).expect(200);
-      expect(res.body).to.include({ origin: 'VERIFY_TIMEOUT', risk_level: null });
-      expect(res.body.reasons).to.deep.equal([]);
-      expect(res.body.highlights).to.deep.equal([]);
+      expect(res.body).to.include({ origin: 'VERIFY_TIMEOUT' });
       expect(res.body.content).to.equal(null);
     });
 
@@ -170,8 +161,8 @@ describe('Admin queue API (Postgres จริง)', function () {
 
       const out = await verifiedOut();
       expect(out).to.have.length(2);
-      expect(out[1]).to.deep.include({ job_id: p.job_id, submission_id: p.submission_id, decision: 'ADMIN_APPROVE', is_appeal: false, decided_by: 'ADMIN', risk_level: 'MEDIUM' });
-      expect(out[1].reasons.map((r: any) => r.code)).to.include('CONTACT_IN_TEXT');
+      expect(out[1]).to.deep.include({ job_id: p.job_id, submission_id: p.submission_id, decision: 'ADMIN_APPROVE', decided_by: 'ADMIN' });
+      expect(out[1]).to.not.have.any.keys('risk_score', 'risk_level', 'is_appeal');
 
       const hist = await t.prisma.statusHistory.findMany({ where: { entityId: item.id }, orderBy: { occurredAt: 'asc' } });
       expect(hist).to.have.length(2);
@@ -230,27 +221,10 @@ describe('Admin queue API (Postgres จริง)', function () {
       expect(await t.prisma.adminAuditLog.count()).to.equal(0);
     });
 
-    it('JOB_APPEAL: approve → appeals APPROVED + ADMIN_APPROVE is_appeal=true; reject → DENIED + ADMIN_REJECT', async () => {
-      for (const action of ['approve', 'reject'] as const) {
-        const jobId = randomUUID();
-        const submissionId = randomUUID();
-        await t.prisma.appeal.create({ data: { jobId, submissionId, statement: 'ขออุทธรณ์เพราะข้อความถูกตีความผิดพลาด' } });
-        const item = await t.prisma.$transaction((tx) =>
-          queue.createItem(tx, { type: 'JOB_APPEAL', jobId, companyId: randomUUID(), submissionId, riskLevel: 'HIGH', fastTrack: false, origin: 'APPEAL' }),
-        );
-        expect(item.isAppeal).to.equal(true);
-        await http().post(`/v1/admin/queue/${item.id}/actions/${action}`).set(admin).send(action === 'reject' ? { reason: 'ไม่ผ่าน' } : {}).expect(204);
-        const appeal = await t.prisma.appeal.findUniqueOrThrow({ where: { jobId } });
-        expect(appeal).to.include({ status: action === 'approve' ? 'APPROVED' : 'DENIED', decidedBy: adminId });
-        expect(appeal.decidedAt).to.be.instanceOf(Date);
-        const last = (await verifiedOut()).pop();
-        expect(last).to.deep.include({ job_id: jobId, is_appeal: true, decision: action === 'approve' ? 'ADMIN_APPROVE' : 'ADMIN_REJECT' });
-      }
-    });
 
     it('รายการชนิดที่สไลซ์นี้ยังไม่รองรับ → 422 UNSUPPORTED_ITEM_TYPE; id ที่ไม่มี → 404', async () => {
       const item = await t.prisma.queueItem.create({
-        data: { type: 'REVIEW_HELD', targetType: 'review', targetId: randomUUID(), origin: 'EVALUATION', dueAt: new Date(Date.now() + 1000), submissionId: randomUUID() },
+        data: { type: 'COMPANY_ACCOUNT', targetType: 'company', targetId: randomUUID(), origin: 'ADMIN_FLAG', dueAt: new Date(Date.now() + 1000), submissionId: randomUUID() },
       });
       const r = await http().post(`/v1/admin/queue/${item.id}/actions/approve`).set(admin).expect(422);
       expect(r.body.error.code).to.equal('UNSUPPORTED_ITEM_TYPE');

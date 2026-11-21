@@ -28,7 +28,6 @@ export class UsersService {
         student_code: user.studentProfile.studentCode, major: user.studentProfile.major,
         year_level: user.studentProfile.yearLevel, advisor_link_status: user.studentProfile.advisorLinkStatus,
         ...(user.studentProfile.advisorId ? { advisor_id: user.studentProfile.advisorId } : {}),
-        ...(user.studentProfile.pendingAdvisorId ? { pending_advisor_id: user.studentProfile.pendingAdvisorId } : {}),
       } } : {}),
       ...(user.role === 'ADVISOR' && user.advisorProfile ? { advisor: {
         ...(user.advisorProfile.department ? { department: user.advisorProfile.department } : {}),

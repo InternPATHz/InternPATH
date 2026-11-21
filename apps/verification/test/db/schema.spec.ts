@@ -7,23 +7,19 @@ import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../sup
 
 const EXPECTED_TABLES = [
   'admin_audit_log',
-  'appeals',
-  'blacklist_terms',
   'company_flags',
   'company_rejection_events',
   'company_snapshots',
-  'evaluations',
   'job_report_counters',
   'job_reports',
   'job_snapshots',
-  'negation_cues',
+  'job_submission_snapshots',
   'outbox_events',
   'processed_events',
   'queue_items',
   'reporter_stats',
   'review_moderations',
   'review_reports',
-  'risk_rules',
   'status_history',
 ];
 
@@ -47,7 +43,7 @@ describe('verification_db schema (Postgres จริง)', function () {
   const count = async (table: string, where = 'true'): Promise<number> =>
     Number((await pg.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${where}`)).rows[0].n);
 
-  it('migrate deploy ผ่านบนฐานข้อมูลเปล่า และตารางครบ 19 ตาราง', async () => {
+  it('migrate deploy ผ่านบนฐานข้อมูลเปล่า และตารางครบ 15 ตาราง (ไม่มีตารางคำต้องห้าม/กฎคะแนน/อุทธรณ์แล้ว)', async () => {
     const rows = (
       await pg.query(
         `SELECT table_name FROM information_schema.tables
@@ -57,33 +53,20 @@ describe('verification_db schema (Postgres จริง)', function () {
     expect(rows).to.deep.equal(EXPECTED_TABLES);
   });
 
-  it('seed: 17 HARD + 6 SOFT, negation_cues 8, risk_rules 8 แถว', async () => {
-    expect(await count('blacklist_terms', "severity = 'HARD'")).to.equal(17);
-    expect(await count('blacklist_terms', "severity = 'SOFT'")).to.equal(6);
-    expect(await count('negation_cues')).to.equal(8);
-    expect(await count('risk_rules')).to.equal(8);
-  });
-
-  it('seed ซ้ำ (รัน SQL seed อีกรอบ) ไม่เพิ่มแถวและไม่ทับค่าที่แก้', async () => {
-    await pg.query("UPDATE risk_rules SET weight = 99 WHERE code = 'CONTACT_IN_TEXT'");
-    await pg.query("UPDATE blacklist_terms SET enabled = false WHERE term = 'ลงทุน'");
-    const dir = path.resolve(__dirname, '../../prisma/migrations');
-    const seed = readdirSync(dir).find((d) => d.endsWith('_seed_defaults'));
-    expect(seed, 'ต้องมี migration *_seed_defaults').to.be.a('string');
-    await pg.query(readFileSync(path.join(dir, seed!, 'migration.sql'), 'utf8'));
-    expect(await count('blacklist_terms')).to.equal(23);
-    expect(await count('negation_cues')).to.equal(8);
-    expect(await count('risk_rules')).to.equal(8);
-    expect(await count('risk_rules', "code = 'CONTACT_IN_TEXT' AND weight = 99")).to.equal(1);
-    expect(await count('blacklist_terms', "term = 'ลงทุน' AND enabled = false")).to.equal(1);
+  it('ตารางของระบบคำต้องห้าม/คะแนน/อุทธรณ์ถูกถอด และ queue_items ไม่มีคอลัมน์ risk_level/is_appeal', async () => {
+    for (const gone of ['appeals', 'blacklist_terms', 'negation_cues', 'risk_rules', 'evaluations']) {
+      expect(await count('information_schema.tables', `table_schema = 'public' AND table_name = '${gone}'`), gone).to.equal(0);
+    }
+    expect(await count('information_schema.columns', "table_name = 'queue_items' AND column_name IN ('risk_level', 'is_appeal')")).to.equal(0);
+    expect(await count('pg_type', "typname IN ('risk_level', 'evaluation_decision', 'appeal_status', 'term_severity')")).to.equal(0);
   });
 
   it('partial unique index: เปิดรายการ type/target_id เดียวกันซ้อนไม่ได้ แต่ได้เมื่อรายการเดิม RESOLVED', async () => {
     const target = randomUUID();
     const insert = () =>
       pg.query(
-        `INSERT INTO queue_items (type, target_type, target_id, priority, is_appeal, origin, due_at, status)
-         VALUES ('JOB_REVIEW', 'job', $1, 'NORMAL', false, 'EVALUATION', now(), 'OPEN')`,
+        `INSERT INTO queue_items (type, target_type, target_id, priority, origin, due_at, status)
+         VALUES ('JOB_REVIEW', 'job', $1, 'NORMAL', 'FLAGGED_COMPANY', now(), 'OPEN')`,
         [target],
       );
     await insert();
@@ -225,7 +208,7 @@ describe('verification_db schema (Postgres จริง)', function () {
     });
   });
 
-  it('สไลซ์ 3: review_moderations.review_id UNIQUE, review_reports (review_id, reporter_user_id) UNIQUE, queue_items รับ origin REVIEW_SCAN/REVIEW_REPORT และ type REVIEW_HELD/REVIEW_REPORT', async () => {
+  it('สไลซ์ 3: review_moderations.review_id UNIQUE, review_reports (review_id, reporter_user_id) UNIQUE, queue_items รับ origin/type REVIEW_REPORT', async () => {
     const review = randomUUID();
     const insertModeration = () =>
       pg.query(
@@ -251,7 +234,6 @@ describe('verification_db schema (Postgres จริง)', function () {
     expect(await messageOf(insertReport)).to.match(/duplicate key/i);
 
     for (const [type, origin] of [
-      ['REVIEW_HELD', 'REVIEW_SCAN'],
       ['REVIEW_REPORT', 'REVIEW_REPORT'],
     ]) {
       await pg.query(
@@ -262,15 +244,14 @@ describe('verification_db schema (Postgres จริง)', function () {
     }
   });
 
-  it('evaluations.submission_id และ appeals.job_id เป็น UNIQUE', async () => {
+  it('job_submission_snapshots.submission_id เป็น UNIQUE', async () => {
     const defs = (
       await pg.query(
         `SELECT tablename, indexdef FROM pg_indexes
-          WHERE tablename IN ('evaluations','appeals') AND indexdef ILIKE '%UNIQUE%'`,
+          WHERE tablename = 'job_submission_snapshots' AND indexdef ILIKE '%UNIQUE%'`,
       )
     ).rows.map((r) => `${r.tablename}: ${r.indexdef}`);
-    expect(defs.some((d) => d.startsWith('evaluations:') && d.includes('(submission_id)'))).to.equal(true);
-    expect(defs.some((d) => d.startsWith('appeals:') && d.includes('(job_id)'))).to.equal(true);
+    expect(defs.some((d) => d.includes('(submission_id)'))).to.equal(true);
   });
 
   it('สไลซ์ 2: job_reports ซ้ำ (job_id, reporter_user_id) ⇒ unique; company_rejection_events.source_event_id ซ้ำ ⇒ unique', async () => {
@@ -308,11 +289,11 @@ describe('verification_db schema (Postgres จริง)', function () {
     expect(err?.code).to.equal('23505');
   });
 
-  it('สไลซ์ 2: queue_items รับ origin REPORT_THRESHOLD/REPORT_UNCOUNTED/REJECTION_THRESHOLD/ADMIN_FLAG', async () => {
+  it('สไลซ์ 2: queue_items รับ origin REPORT_THRESHOLD/REPORT_UNCOUNTED/REJECTION_THRESHOLD/ADMIN_FLAG/FLAGGED_COMPANY', async () => {
     for (const origin of ['REPORT_THRESHOLD', 'REPORT_UNCOUNTED', 'REJECTION_THRESHOLD', 'ADMIN_FLAG']) {
       await pg.query(
-        `INSERT INTO queue_items (type, target_type, target_id, priority, is_appeal, origin, due_at, status)
-         VALUES ('JOB_REPORT', 'job', $1, 'NORMAL', false, $2::queue_origin, now(), 'OPEN')`,
+        `INSERT INTO queue_items (type, target_type, target_id, priority, origin, due_at, status)
+         VALUES ('JOB_REPORT', 'job', $1, 'NORMAL', $2::queue_origin, now(), 'OPEN')`,
         [randomUUID(), origin],
       );
     }

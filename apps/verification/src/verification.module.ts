@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MessagingModule } from '@internpath/common';
-import { AppealModule } from './appeal/appeal.module';
+
 import { AuditModule } from './audit/audit.module';
 import { ConsumersModule } from './consumers/consumers.module';
 import { EvaluationModule } from './evaluation/evaluation.module';
@@ -11,7 +11,7 @@ import { PrismaService } from './prisma/prisma.service';
 import type { Tx } from './prisma/types';
 import { ReportModule } from './report/report.module';
 import { ReviewModule } from './review/review.module';
-import { RulesModule } from './rules/rules.module';
+
 
 /**
  * โมดูลรวมของ Service (โหลดเมื่อไม่ได้ตั้ง DISABLE_INFRA=true) — ฟีเจอร์ที่ตามมาใน Task 5-10 เพิ่มใน imports
@@ -21,9 +21,7 @@ import { RulesModule } from './rules/rules.module';
   imports: [
     PrismaModule,
     AuditModule,
-    RulesModule,
     EvaluationModule,
-    AppealModule,
     FlagModule,
     JobModule,
     ReportModule,

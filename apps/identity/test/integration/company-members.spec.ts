@@ -94,13 +94,40 @@ describe('Identity company members and Owner workflow (Postgres จริง)', 
     for (const name of ['IDENTITY_DATABASE_URL', 'IDENTITY_DIRECT_URL', 'JWT_PUBLIC_KEY']) delete process.env[name];
   });
 
+  it('invitation requires 1-3 unique valid categories; Owner sets member categories (Owner target 400); listings show categories', async () => {
+    const server = app.getHttpServer();
+    const owner = headers(ownerId, 'COMPANY_HR');
+    const invite = (categories: unknown) => request(server).post('/v1/companies/me/invitations').set(owner).send({ email: `cat${randomBytes(3).toString('hex')}@company.test`, categories });
+    for (const bad of [undefined, [], ['NOPE'], ['TECH_IT', 'TECH_IT'], ['TECH_IT', 'BUSINESS_MARKETING', 'CORPORATE_SERVICES', 'TECH_IT'], 'TECH_IT']) {
+      await invite(bad).expect(400);
+    }
+    await invite(['TECH_IT', 'BUSINESS_MARKETING', 'CORPORATE_SERVICES']).expect(201);
+    const listed = await request(server).get('/v1/companies/me/invitations').set(owner).expect(200);
+    const created = listed.body.data.find((row: { email: string }) => row.email.startsWith('cat'));
+    expect(created.categories).to.deep.equal(['TECH_IT', 'BUSINESS_MARKETING', 'CORPORATE_SERVICES']);
+    await db.companyInvitation.delete({ where: { id: created.id } }); // ไม่ทิ้งคำเชิญค้างให้เทสต์ถัดไป (ไม่ผ่าน API เพื่อไม่เพิ่ม audit)
+
+    const url = (id: string) => `/v1/companies/me/members/${id}/categories`;
+    await request(server).put(url(memberId)).set(headers(memberId, 'COMPANY_HR')).send({ categories: ['TECH_IT'] }).expect(403); // เฉพาะ Owner
+    for (const bad of [undefined, [], ['X'], ['TECH_IT', 'TECH_IT']]) await request(server).put(url(memberId)).set(owner).send({ categories: bad }).expect(400);
+    await request(server).put(url(ownerId)).set(owner).send({ categories: ['TECH_IT'] }).expect(400);
+    await request(server).put(url(randomUUID())).set(owner).send({ categories: ['TECH_IT'] }).expect(404);
+    await request(server).put(url(memberId)).set(owner).send({ categories: ['BUSINESS_MARKETING'] }).expect(204);
+    expect((await db.companyMember.findUniqueOrThrow({ where: { userId: memberId } })).categories).to.deep.equal(['BUSINESS_MARKETING']);
+    expect(await db.adminAuditLog.count({ where: { action: 'COMPANY_MEMBER_CATEGORIES', adminId: ownerId } })).to.equal(1);
+    const members = await request(server).get('/v1/companies/me/members').set(owner).expect(200);
+    const byId = new Map(members.body.data.map((m: { user_id: string; categories: string[] }) => [m.user_id, m.categories]));
+    expect(byId.get(memberId)).to.deep.equal(['BUSINESS_MARKETING']);
+    expect(byId.get(ownerId)).to.deep.equal([]); // Owner = ทุกสายงาน
+  });
+
   it('limits invitations to the active Owner and company email domain; consumes the token once', async () => {
     await request(app.getHttpServer()).post('/v1/companies/me/invitations')
-      .set(headers(memberId, 'COMPANY_HR')).send({ email: 'new@company.test' }).expect(403);
+      .set(headers(memberId, 'COMPANY_HR')).send({ email: 'new@company.test', categories: ['TECH_IT'] }).expect(403);
     await request(app.getHttpServer()).post('/v1/companies/me/invitations')
-      .set(headers(ownerId, 'COMPANY_HR')).send({ email: 'new@outside.test' }).expect(400);
+      .set(headers(ownerId, 'COMPANY_HR')).send({ email: 'new@outside.test', categories: ['TECH_IT'] }).expect(400);
     await request(app.getHttpServer()).post('/v1/companies/me/invitations')
-      .set(headers(ownerId, 'COMPANY_HR')).send({ email: 'new@company.test' }).expect(201);
+      .set(headers(ownerId, 'COMPANY_HR')).send({ email: 'new@company.test', categories: ['TECH_IT'] }).expect(201);
     expect(invitedToken.length).to.be.greaterThan(20);
     expect(await db.companyInvitation.findFirst({ where: { email: 'new@company.test' }, select: { tokenHash: true } }))
       .not.to.have.property('token', invitedToken);
@@ -112,8 +139,9 @@ describe('Identity company members and Owner workflow (Postgres จริง)', 
       .send({ token: invitedToken, password: 'long-password-123', full_name: 'New Member' }).expect(400);
     const created = await db.user.findUniqueOrThrow({ where: { email: 'new@company.test' }, include: { companyMember: true } });
     expect(created.companyMember?.memberRole).to.equal('MEMBER');
+    expect(created.companyMember?.categories).to.deep.equal(['TECH_IT']); // สายงานตามที่ระบุในคำเชิญ
     expect(created.emailVerifiedAt).not.to.equal(null);
-    expect(await verifyPassword(created.passwordHash, 'long-password-123')).to.equal(true);
+    expect(await verifyPassword(created.passwordHash!, 'long-password-123')).to.equal(true);
     const members = await request(app.getHttpServer()).get('/v1/companies/me/members')
       .set(headers(ownerId, 'COMPANY_HR')).expect(200);
     expect(members.body.data.map((item: { user_id: string }) => item.user_id)).to.include(created.id);
@@ -131,7 +159,7 @@ describe('Identity company members and Owner workflow (Postgres จริง)', 
   it('lists pending invitations to the Owner only (no token) and cancels them so the link stops working', async () => {
     const server = app.getHttpServer();
     const invite = async (email: string) => {
-      await request(server).post('/v1/companies/me/invitations').set(headers(ownerId, 'COMPANY_HR')).send({ email }).expect(201);
+      await request(server).post('/v1/companies/me/invitations').set(headers(ownerId, 'COMPANY_HR')).send({ email, categories: ['TECH_IT', 'CORPORATE_SERVICES'] }).expect(201);
       return { token: invitedToken, row: await db.companyInvitation.findFirstOrThrow({ where: { email } }) };
     };
     const first = await invite('first@company.test');
@@ -147,7 +175,7 @@ describe('Identity company members and Owner workflow (Postgres จริง)', 
     await request(server).get('/v1/companies/me/invitations').set(headers(memberId, 'COMPANY_HR')).expect(403);
     const listed = await request(server).get('/v1/companies/me/invitations').set(headers(ownerId, 'COMPANY_HR')).expect(200);
     expect(listed.body).to.deep.equal({ data: [second.row, first.row].map((row) => ({ id: row.id, email: row.email,
-      invited_at: row.createdAt.toISOString(), expires_at: row.expiresAt.toISOString() })) });
+      categories: row.categories, invited_at: row.createdAt.toISOString(), expires_at: row.expiresAt.toISOString() })) });
 
     await request(server).delete(`/v1/companies/me/invitations/${first.row.id}`).set(headers(memberId, 'COMPANY_HR')).expect(403);
     for (const id of [foreign.id, accepted.id, randomUUID()]) {

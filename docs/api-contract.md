@@ -1,4 +1,4 @@
-# 🔌 API Contract (InternPath)
+# API Contract (InternPath)
 
 > ที่เก็บหลักของ **REST Endpoint** — path, สิทธิ์, ข้อกำหนดของ Request/Response และรูปแบบ Error
 > กฎธุรกิจดู [README.md](../README.md) | Enum/ฟิลด์ดู [data-schema.md](data-schema.md) | Event ดู [event-contract.md](event-contract.md)
@@ -40,10 +40,10 @@
 | :-: | :--- | :--- |
 | 400 | `VALIDATION_FAILED`, `REASON_REQUIRED`, `FILE_TYPE_NOT_ALLOWED`, `FILE_TOO_LARGE`, `MISSING_REQUIRED_JOB_FIELDS` | Input ไม่ถูกต้อง |
 | 401 | `UNAUTHENTICATED`, `TOKEN_EXPIRED`, `ACCOUNT_SUSPENDED`, `EMAIL_NOT_VERIFIED` | ไม่ได้ล็อกอิน/Token เสีย |
-| 403 | `FORBIDDEN_ROLE` (รวม HR รายงานรีวิวของบริษัทอื่น), `NOT_OWNER_OF_RESOURCE`, `COMPANY_NOT_VERIFIED`, `ADVISOR_NOT_LINKED`, `REAPPLY_BLOCKED`, `CONSENT_REQUIRED`, `ALREADY_CONFIRMED_ELSEWHERE` | สิทธิ์/เงื่อนไขธุรกิจไม่ผ่าน |
+| 403 | `FORBIDDEN_ROLE` (รวม HR รายงานรีวิวของบริษัทอื่น และ HR Member นอกสายงาน — `details[].issue` = `FORBIDDEN_CATEGORY`), `NOT_OWNER_OF_RESOURCE`, `COMPANY_NOT_VERIFIED`, `ADVISOR_NOT_LINKED`, `REAPPLY_BLOCKED`, `CONSENT_REQUIRED`, `ALREADY_CONFIRMED_ELSEWHERE` | สิทธิ์/เงื่อนไขธุรกิจไม่ผ่าน |
 | 404 | `NOT_FOUND` | ไม่มีทรัพยากร หรือไม่มีสิทธิ์เห็น (ใช้ 404 แทน 403 สำหรับทรัพยากรที่ไม่ควรรู้ว่ามีอยู่) |
-| 409 | `STATE_CONFLICT`, `QUOTA_FULL`, `ALREADY_APPLIED`, `APPEAL_ALREADY_USED`, `ALREADY_REPORTED`, `ALREADY_REVIEWED`, `ALREADY_REPLIED` | ขัดกับสถานะปัจจุบัน |
-| 422 | `JOB_NOT_REPORTABLE`, `REVIEW_NOT_REPORTABLE`, `UNSUPPORTED_ITEM_TYPE`, `INVALID_PERIOD_MIN_30_DAYS`, `EVALUATION_NOT_OPEN`, `CERT_MIN_ACTUAL_DAYS`, `DISPUTE_WINDOW_CLOSED`, `DELETION_BLOCKED`, `RATE_LIMIT_SUBMISSIONS_PER_DAY`, `QUOTA_BELOW_COMMITTED` | กฎธุรกิจไม่ผ่าน |
+| 409 | `STATE_CONFLICT`, `QUOTA_FULL`, `ALREADY_APPLIED`, `ALREADY_REPORTED`, `ALREADY_REVIEWED`, `ALREADY_REPLIED` | ขัดกับสถานะปัจจุบัน |
+| 422 | `JOB_NOT_REPORTABLE`, `REVIEW_NOT_REPORTABLE`, `UNSUPPORTED_ITEM_TYPE`, `INVALID_PERIOD_MIN_30_DAYS`, `EVALUATION_NOT_OPEN`, `CERT_MIN_ACTUAL_DAYS`, `DISPUTE_WINDOW_CLOSED`, `DELETION_BLOCKED`, `QUOTA_BELOW_COMMITTED` | กฎธุรกิจไม่ผ่าน |
 | 429 | `RATE_LIMITED` | Rate limit (มี `Retry-After`) |
 
 **รหัส error ใหม่:** ใช้เฉพาะ `code` ในตารางนี้ รายละเอียดเฉพาะเหตุการณ์ใส่ใน `details[].issue` (เช่น `STATE_CONFLICT` + `JOB_FROZEN`, `EVALUATION_NOT_OPEN` + `BEFORE_END_DATE`, `NOT_FOUND` + `RESUME_DELETED_BY_STUDENT`) — ถ้าจำเป็นต้องมี `code` ใหม่ ให้เพิ่มในตารางนี้ก่อน (PM ตัดสิน 2026-11-18)
@@ -53,9 +53,9 @@
 
 | Path prefix | Service |
 | :--- | :--- |
-| `/auth/**`, `/.well-known/**`, `/users/**`, `/advisors`, `/advisor-links/**`, `/companies/me/**`, `/directory/**`, `/admin/companies/**`, `/admin/advisors/**`, `/admin/students/**`, `/admin/users/**`, `/admin/audit-logs` | identity |
-| `/hr/jobs/**`, `/jobs/**`, `/search/**`, `/admin/jobs/**` | job |
-| `/verification/**`, `/admin/queue/**`, `/admin/blacklist/**`, `/admin/risk-rules`, `/admin/flags/**`, `/admin/audit`, `/jobs/{id}/reports`, `/reviews/{id}/reports` | verification |
+| `/auth/**`, `/.well-known/**`, `/users/**`, `/advisor-links/**`, `/companies/me/**`, `/directory/**`, `/admin/companies/**`, `/admin/advisors/**`, `/admin/students/**`, `/admin/users/**`, `/admin/audit-logs` | identity |
+| `/hr/jobs/**`, `/jobs/**`, `/search/**`, `/tags`, `/admin/jobs/**`, `/admin/tags/**` | job |
+| `/verification/**`, `/admin/queue/**`, `/admin/flags/**`, `/admin/audit`, `/jobs/{id}/reports`, `/reviews/{id}/reports` | verification |
 | `/applications/**`, `/me/**`, `/hr/applications/**`, `/hr/certificates/**`, `/hr/reviews/**`, `/advisor/**`, `/me/certificates/**`, `/companies/{id}/reviews`, `/problem-reports/**`, `/admin/lifecycle/**`, `/public/**` | lifecycle |
 | `/notifications/**` | notification |
 | `/internal/**` | **ไม่ Route** |
@@ -73,7 +73,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 4.1 Auth
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| POST | `/auth/register/student` | Public | `{email(@ac.th), password, full_name, student_code, major, year_level, accept_privacy:true}` → 201; ส่งอีเมลยืนยัน |
+| POST | `/auth/student-invitations/accept` | Public | `{token, password, accept_privacy:true}` → `204`; ตั้งรหัสผ่านและยืนยันอีเมลของนักศึกษาที่อาจารย์สร้างให้ (บัญชีเป็น `ACTIVE`) — token ใช้ได้ครั้งเดียว อายุ 7 วัน; ผิด/หมดอายุ/ใช้แล้ว ⇒ `400 VALIDATION_FAILED` (`INVALID_TOKEN`) **ไม่มี `POST /auth/register/student`** (นักศึกษาไม่สมัครเอง — ปรับ Requirement 2026-11-21 เรียกเส้นทางเดิมได้ `404`) |
 | POST | `/auth/register/advisor` | Public | `@ac.th`, สถานะ `PENDING_EMAIL` → (ยืนยัน) → `PENDING_APPROVAL` |
 | POST | `/auth/register/company` | Public | `{company:{name, registration_no (ตัวเลข 13 หลัก), website?, phone?}, user:{email(domain องค์กร), password, full_name}, accept_privacy:true}` — ปฏิเสธอีเมลสาธารณะ (`PUBLIC_EMAIL_NOT_ALLOWED`); คนแรก = Owner |
 | POST | `/auth/verify-email` | Public | `{token}` |
@@ -94,12 +94,11 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | GET | `/users/me` | Any | ข้อมูลตนเอง + สถานะ advisor link / บริษัท |
 | PATCH | `/users/me` | Any | แก้ชื่อ/โทร |
 | POST | `/users/me/deletion-request` | Any | คำขอลบบัญชี (PM ตัดสิน 2026-11-17: **ซิงโครนัส** — Identity ตรวจสิทธิ์แล้วลบในคำขอเดียว) สำเร็จ `204` ไม่มี body และ token ของบัญชีถูกเพิกถอนทันที; `422 DELETION_BLOCKED` ถ้ามีใบสมัครที่ยังดำเนินอยู่ (ตรวจกับ Lifecycle: `ADVISOR_PENDING`, `ADVISOR_APPROVED`, `IN_PROGRESS`, `FAIL_DISPUTED`, `REEVALUATION_REQUESTED`) หรือเป็น Owner ที่ยังไม่โอน; `503 UPSTREAM_UNAVAILABLE` ถ้าตรวจกับ Lifecycle ไม่ได้ (ปฏิเสธไว้ก่อน ไม่ปล่อยผ่าน); สิ่งที่แต่ละ Service ทำหลังลบ ดู data-schema §2.3 |
-| GET | `/advisors` | S | รายชื่ออาจารย์ที่ `ACTIVE` ใน `university_id` เดียวกัน (`?q=`) |
-| POST | `/users/me/advisor-link` | S | `{advisor_id}` → `ADVISOR_LINK_PENDING` (ขอผูก/เปลี่ยน) |
-| DELETE | `/users/me/advisor-link` | S | ยกเลิกคำขอที่ยังรออยู่ |
-| GET | `/advisor-links/requests` | A | คำขอผูกนักศึกษาที่รออยู่ |
-| POST | `/advisor-links/requests/{student_id}/actions/{confirm\|reject}` | A | ยืนยัน/ปฏิเสธ |
-| GET | `/advisor-links/students` | A | นักศึกษาที่ `LINKED` กับตน |
+| POST | `/advisor-links/students` | A | **อาจารย์เพิ่มนักศึกษา** (อาจารย์ต้อง `ACTIVE`): `{email(@ac.th ของมหาวิทยาลัยเดียวกับอาจารย์), full_name, student_code, major, year_level}` → `201 {student_user_id, email, invitation_expires_at}` สร้างบัญชี `STUDENT` ที่ยังไม่ตั้งรหัสผ่าน ผูก `advisor_id` เป็น `LINKED` ทันที (ส่ง `AdvisorLinkChanged`) และส่งอีเมลคำเชิญ; `409 STATE_CONFLICT` (`EMAIL_ALREADY_REGISTERED`), `409 STATE_CONFLICT` (`STUDENT_CODE_ALREADY_USED`) (รหัสนักศึกษาซ้ำในมหาวิทยาลัยเดียวกัน), `400 VALIDATION_FAILED` (`EMAIL_DOMAIN_NOT_ALLOWED`); rate limit ที่ Gateway |
+| GET | `/advisor-links/students` | A | นักศึกษาที่ `LINKED` กับตน (รายชื่อพื้นฐานสำหรับจัดการบัญชี): `?q=&year_level=&activation=PENDING\|ACTIVE` + Pagination → `{user_id, full_name, email, student_code, major, year_level, activation_status, invitation_expires_at?}` (รายชื่อพร้อมสถานะการฝึกงานและตัวกรองกำลังฝึก/ฝึกเสร็จแล้ว ดู `GET /advisor/students` §7.4) |
+| PATCH | `/advisor-links/students/{student_id}` | A | `{full_name?, major?, year_level?}` แก้ข้อมูลนักศึกษาในความดูแล (ไม่ใช่ของตน ⇒ `404 NOT_FOUND`); เปลี่ยน `major`/`year_level` มีผลกับใบสมัครถัดไป ไม่ย้อนใบเดิม |
+| POST | `/advisor-links/students/{student_id}/actions/resend-invitation` | A | ส่งคำเชิญใหม่ (ลิงก์เดิมใช้ไม่ได้) → `204`; นักศึกษาตั้งรหัสผ่านแล้ว ⇒ `409 STATE_CONFLICT` |
+| DELETE | `/advisor-links/students/{student_id}/invitation` | A | ยกเลิกบัญชีที่ยังไม่ได้ตั้งรหัสผ่าน (ลบบัญชีและคำเชิญ) → `204`; ตั้งรหัสผ่านแล้ว ⇒ `409 STATE_CONFLICT` |
 | POST | `/users/me/consents` | S | บันทึก Consent: `{type:'RESUME_SHARE', application_id?, target_company_id}` |
 
 ### 4.3 บริษัทและทีม HR
@@ -111,12 +110,13 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/companies/me/documents` | HO | multipart `file` (PDF ≤ 5 MB), `doc_type` |
 | GET | `/companies/me/documents` | H | รายการ + Signed URL |
 | POST | `/companies/me/resubmit` | HO | ส่งเอกสารเพิ่มเมื่อ `NEED_MORE_INFO` → `PENDING` |
-| GET | `/companies/me/members` | H | Pagination มาตรฐาน `{ data, meta }`; เรียง Owner ก่อน แล้วตามวันที่เข้าร่วม; คืน `user_id, full_name, email, member_role, joined_at` |
-| POST | `/companies/me/invitations` | HO | `{email}` (โดเมนองค์กรเท่านั้น) |
-| GET | `/companies/me/invitations` | HO | คำเชิญที่ยังรอรับ (ยังไม่ถูกใช้/ยกเลิก/หมดอายุ) → `{data: [{id, email, invited_at, expires_at}]}` ไม่คืนโทเคน (PM ตัดสิน 2026-11-18) |
+| GET | `/companies/me/members` | H | Pagination มาตรฐาน `{ data, meta }`; เรียง Owner ก่อน แล้วตามวันที่เข้าร่วม; คืน `user_id, full_name, email, member_role, categories[], joined_at` (Owner = ทุกสายงาน) |
+| POST | `/companies/me/invitations` | HO | `{email, categories[]}` (โดเมนองค์กรเท่านั้น; `categories` 1–3 ค่าของ `JobCategory` = สายงานของสมาชิกใหม่ — README 5.6) |
+| GET | `/companies/me/invitations` | HO | คำเชิญที่ยังรอรับ (ยังไม่ถูกใช้/ยกเลิก/หมดอายุ) → `{data: [{id, email, categories[], invited_at, expires_at}]}` ไม่คืนโทเคน (PM ตัดสิน 2026-11-18) |
 | DELETE | `/companies/me/invitations/{id}` | HO | ยกเลิกคำเชิญที่ยังรอรับ → `204` (ลิงก์เดิมใช้ไม่ได้ทันที); ไม่พบ/ไม่ใช่ของบริษัทนี้/ถูกใช้แล้ว ⇒ `404 NOT_FOUND` (PM ตัดสิน 2026-11-18) |
 | POST | `/auth/invitations/accept` | Public | `{token, password, full_name}` |
 | DELETE | `/companies/me/members/{user_id}` | HO | |
+| PUT | `/companies/me/members/{user_id}/categories` | HO | `{categories: JobCategory[]}` (1–3 ค่า) กำหนดสายงานของสมาชิก → `204`; เป้าหมายเป็น Owner ⇒ `400 VALIDATION_FAILED` (Owner เห็นทุกสายงาน); มีผลกับ JWT (`company_categories`) หลัง refresh/ล็อกอินใหม่ |
 | GET | `/companies/me/owner-transfer` | H | คำขอโอนสิทธิ์ Owner ที่ค้างอยู่ของผู้เรียก → `{direction: 'OUTGOING'\|'INCOMING', other_user: {user_id, full_name}, requested_at}` (`OUTGOING` = ผู้เรียกเป็น Owner ที่ขอโอน, `INCOMING` = ผู้เรียกเป็นผู้รับ); ไม่มีคำขอที่เกี่ยวกับผู้เรียก ⇒ `404 NOT_FOUND` (PM ตัดสิน 2026-11-18) |
 | POST | `/companies/me/owner-transfer` | HO | `{to_user_id}` |
 | POST | `/companies/me/owner-transfer/actions/{accept\|decline\|cancel}` | H/HO | ผู้รับกดยืนยัน |
@@ -149,23 +149,23 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 5.1 ฝั่ง HR
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/hr/jobs` | H | งานของบริษัท `?status=` — รายการอาจมี `JobDraftObject` (`status=DRAFT`, ฟิลด์ `null` ได้) ปนกับ Job Object ปกติ แยกด้วย `status` |
-| POST | `/hr/jobs` | H | สร้าง `DRAFT` (ต้องเป็นบริษัท `VERIFIED` มิฉะนั้น 403 `COMPANY_NOT_VERIFIED` — UAT-01) — body = ฟิลด์ที่แก้ได้ของ Job Object **ทุกฟิลด์ไม่บังคับ** (DRAFT ไม่ครบได้; ครบตอน `submit`) → `201` Job Object — เป็น `JobDraftObject` (ฟิลด์เนื้อหา/โครงสร้างเป็น `null` ได้) เพราะ `status=DRAFT` (`CreateJobRequest`) |
-| GET | `/hr/jobs/{id}` | H | `status=DRAFT` ⇒ `JobDraftObject` (ไม่ครบได้) • **ไม่มี `reasons[]`** — เหตุผลการตีกลับ/ผลตรวจอยู่ที่ `GET /verification/jobs/{job_id}/result` (§6.5) ที่ Verification เป็นเจ้าของ หน้าเว็บเรียกแยก (PM ตัดสิน 2026-11-18 — ไม่เก็บ Reasons ซ้ำใน Job) |
-| PATCH | `/hr/jobs/{id}` | H | แก้ไขบางฟิลด์ (`UpdateJobRequest`) — แก้ได้เมื่อ `DRAFT`/`PUBLISHED`/`AUTO_REJECTED`/`ADMIN_REJECTED` (และ `CLOSED` เฉพาะ `quota`, `application_deadline`, `target_majors`, `internship period` ฟิลด์อื่น ⇒ `409 STATE_CONFLICT`); สถานะอื่น ⇒ `409 STATE_CONFLICT`. เมื่อ `PUBLISHED` แก้ฟิลด์ที่ Verification ใช้ตัดสิน (data-schema §4 "ฟิลด์ที่ต้องตรวจซ้ำ") ⇒ `PUBLISHED`→`VERIFYING` และส่ง `JobSubmitted(kind=EDIT)`; ฟิลด์อื่น ⇒ ไม่ตรวจซ้ำ (README 5.1.2); สถานะ `AUTO_REJECTED`/`ADMIN_REJECTED` แก้แล้วคงสถานะเดิมจนกว่าจะ `submit` • Response: Job Object (มุมมอง HR) + `requires_reverification: bool` (`UpdateJobResponse`) |
-| POST | `/hr/jobs/{id}/actions/submit` | H | ส่งตรวจจาก `DRAFT`/`AUTO_REJECTED`/`ADMIN_REJECTED` (สถานะอื่น ⇒ `409 STATE_CONFLICT`) → `200` Job Object ที่ `status=VERIFYING` — `400 MISSING_REQUIRED_JOB_FIELDS` (+ `details[]` ระบุฟิลด์ที่ขาด; รายการฟิลด์บังคับใน data-schema §4), `422 RATE_LIMIT_SUBMISSIONS_PER_DAY` (5/วัน/บริษัท) |
+| GET | `/hr/jobs` | H | งานของบริษัท `?status=&category=` (HR Member เห็นเฉพาะประกาศของสายงานตน — README 5.6) — รายการอาจมี `JobDraftObject` (`status=DRAFT`, ฟิลด์ `null` ได้) ปนกับ Job Object ปกติ แยกด้วย `status` |
+| POST | `/hr/jobs` | H | สร้าง `DRAFT` (ต้องเป็นบริษัท `VERIFIED` มิฉะนั้น 403 `COMPANY_NOT_VERIFIED` — UAT-01) — body = ฟิลด์ที่แก้ได้ของ Job Object **ทุกฟิลด์ไม่บังคับ** (DRAFT ไม่ครบได้; ครบตอน `submit`) → `201` Job Object — เป็น `JobDraftObject` (ฟิลด์เนื้อหา/โครงสร้างเป็น `null` ได้) เพราะ `status=DRAFT` (`CreateJobRequest`) • `category` (สายงาน — บังคับตอน `submit`) และ `tag_ids[]` (Tag ทักษะ 1–10 จากรายการกลาง §5.4); HR Member สร้างได้เฉพาะสายงานของตน ⇒ `403 FORBIDDEN_ROLE` (`details[].issue` = `FORBIDDEN_CATEGORY`) |
+| GET | `/hr/jobs/{id}` | H | `status=DRAFT` ⇒ `JobDraftObject` (ไม่ครบได้) • ประกาศ `ADMIN_REJECTED` มี `admin_reason` (เหตุผลที่ Admin ระบุตอนปฏิเสธ — Job เก็บจาก `reasons[]` ของ `JobVerified.ADMIN_REJECT`; ปรับ 2026-11-21 เพราะถอด `GET /verification/jobs/{job_id}/result`) • Job Object มี `tags[]` (`{id,name,slug}`) |
+| PATCH | `/hr/jobs/{id}` | H | แก้ไขบางฟิลด์ (`UpdateJobRequest`) — แก้ได้เมื่อ `DRAFT`/`PUBLISHED`/`ADMIN_REJECTED` (และ `CLOSED` เฉพาะ `quota`, `application_deadline`, `target_majors`, `internship period` ฟิลด์อื่น ⇒ `409 STATE_CONFLICT`); สถานะอื่น ⇒ `409 STATE_CONFLICT`. เมื่อ `PUBLISHED` แก้ได้ทุกฟิลด์รวม `tag_ids` โดยงานคง `PUBLISHED` ไม่ตรวจซ้ำ (README 5.1.2) **ยกเว้นบริษัทที่ติดธง `UNDER_REVIEW`:** แก้ข้อความอิสระ (data-schema §4 "ฟิลด์ที่ต้องตรวจซ้ำ") ⇒ `PUBLISHED`→`VERIFYING` และส่ง `JobSubmitted(kind=EDIT)`; สถานะ `ADMIN_REJECTED` แก้แล้วคงสถานะเดิมจนกว่าจะ `submit`; HR Member แก้ได้เฉพาะประกาศของสายงานตน ⇒ `403 FORBIDDEN_ROLE` (`details[].issue` = `FORBIDDEN_CATEGORY`) • Response: Job Object (มุมมอง HR) + `requires_reverification: bool` (`UpdateJobResponse`) |
+| POST | `/hr/jobs/{id}/actions/submit` | H | เผยแพร่/ส่งจาก `DRAFT`/`ADMIN_REJECTED` (สถานะอื่น ⇒ `409 STATE_CONFLICT`) • **บริษัทไม่ติดธง ⇒ `200` Job Object ที่ `status=PUBLISHED` ทันที** (Job เปลี่ยนสถานะเองและส่ง `JobStatusChanged`) • **บริษัทติดธง `UNDER_REVIEW` ⇒ `200` Job Object ที่ `status=VERIFYING`** และส่ง `JobSubmitted` (Verification ตอบ `JobVerified` → `PENDING_REVIEW`) — `400 MISSING_REQUIRED_JOB_FIELDS` (+ `details[]` ระบุฟิลด์ที่ขาด รวม `category` และ `tag_ids` 1–10 รายการ; รายการฟิลด์บังคับใน data-schema §4), `403 FORBIDDEN_ROLE` (`details[].issue` = `FORBIDDEN_CATEGORY`) (HR Member นอกสายงานของตน) • ไม่มี rate limit การส่งต่อวันอีกแล้ว |
 | POST | `/hr/jobs/{id}/actions/close` | H | → `CLOSED` |
 | POST | `/hr/jobs/{id}/actions/reopen` | H | `CLOSED`→`PUBLISHED` (ต้องยังไม่เลย deadline และโควตาเหลือ) |
 | PUT | `/hr/jobs/{id}/featured` | H | `{enabled}` — ต้องมี `featured_enabled` และงานเป็น `PUBLISHED` |
 
-**Job Object (ย่อ):** `id, company{id,name,logo_url,badges[]}, category, job_title, description, responsibilities, qualifications, allowance{type,amount_thb,text}, location, work_mode, hours_per_week, period{start,end}, target_majors[], quota, quota_available, application_deadline, status, featured, published_at` — มุมมอง HR/Admin (`/hr/jobs/**`, `/admin/jobs`) เพิ่ม `contact_notes` และ `suspended_from_status` ไม่แสดงในหน้าสาธารณะ (`/jobs/{id}`, `/search/jobs`)
+**Job Object (ย่อ):** `id, company{id,name,logo_url,badges[]}, category, job_title, description, responsibilities, qualifications, allowance{type,amount_thb,text}, location, work_mode, hours_per_week, period{start,end}, target_majors[], tags[{id,name,slug}], quota, quota_available, application_deadline, status, featured, published_at` — มุมมอง HR/Admin (`/hr/jobs/**`, `/admin/jobs`) เพิ่ม `contact_notes` และ `suspended_from_status` ไม่แสดงในหน้าสาธารณะ (`/jobs/{id}`, `/search/jobs`)
 
 **`JobDraftObject` (`status=DRAFT`):** รูปแบบเดียวกับ Job Object แต่ `category, job_title, description, responsibilities, qualifications, allowance, location, work_mode, hours_per_week, period.start/end, target_majors, quota, quota_available, application_deadline` เป็น `null` ได้ (HR สร้าง DRAFT ไม่ครบได้ — data-schema §4); Job Object ปกติ (ทุกสถานะที่ไม่ใช่ `DRAFT`) ฟิลด์เหล่านี้ครบเสมอ; `DRAFT` ปรากฏเฉพาะมุมมอง HR ไม่ปรากฏใน `/jobs/{id}`, `/search/jobs`, Internal; ชนิดใน `@internpath/contracts`: `JobDraftObject`, `HrJobObject` = `JobObject | JobDraftObject`
 
 ### 5.2 Job Search (สาธารณะ — ไม่ต้องล็อกอิน)
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/search/jobs` | **Public** | `?q=&category=&work_mode=&major=&allowance=true&company_id=&sort=newest\|deadline` + Pagination มาตรฐาน — เฉพาะ `PUBLISHED` **และบริษัทเจ้าของประกาศเป็น `VERIFIED`** (จาก `company_snapshots` — data-schema §8.2.2; `meta.total` นับด้วยเงื่อนไขเดียวกัน บริษัทถูกระงับ ⇒ ประกาศหายจากผลและจากจำนวน กลับเป็น `VERIFIED` ⇒ กลับมาเห็นเอง) (PM ตัดสิน 2026-11-18); `featured` ขึ้นก่อนเสมอ แล้วเรียงตาม `sort` (ค่าเริ่มต้น `newest` = `published_at` ใหม่ก่อน; `deadline` = `application_deadline` ใกล้ก่อน); คืน `major_mismatch` เมื่อ client ส่ง `major` มา (คำนวณจากพารามิเตอร์ ไม่พึ่งตัวตนผู้เรียก) **ด้วยกฎเดียวกับ `POST /applications` (§7.2):** ตัดช่องว่างหัวท้าย ยุบช่องว่างซ้อน ไม่สนตัวพิมพ์ แล้วเทียบ **ตรงทั้งค่า** กับสาขาใน `target_majors` (ไม่ใช้ substring เช่น `computer sci` ไม่ตรงกับ `Computer Science`); ประกาศที่ไม่ระบุสาขา ⇒ `false`; `major` ที่ว่างหรือมีแต่ช่องว่างถือว่าไม่ส่ง (ไม่คืนฟิลด์) (PM ตัดสิน 2026-11-18); หน้าแรกใช้ `?page_size=3` ขอ "งานเด่น" ไม่มี endpoint เฉพาะ |
+| GET | `/search/jobs` | **Public** | `?q=&category=&tags=&work_mode=&major=&allowance=true&company_id=&sort=newest\|deadline` (`tags` = slug คั่นด้วย `,` ตรงกับ Tag ใดก็ได้ที่ระบุ) + Pagination มาตรฐาน — เฉพาะ `PUBLISHED` **และบริษัทเจ้าของประกาศเป็น `VERIFIED`** (จาก `company_snapshots` — data-schema §8.2.2; `meta.total` นับด้วยเงื่อนไขเดียวกัน บริษัทถูกระงับ ⇒ ประกาศหายจากผลและจากจำนวน กลับเป็น `VERIFIED` ⇒ กลับมาเห็นเอง) (PM ตัดสิน 2026-11-18); `featured` ขึ้นก่อนเสมอ แล้วเรียงตาม `sort` (ค่าเริ่มต้น `newest` = `published_at` ใหม่ก่อน; `deadline` = `application_deadline` ใกล้ก่อน); คืน `major_mismatch` เมื่อ client ส่ง `major` มา (คำนวณจากพารามิเตอร์ ไม่พึ่งตัวตนผู้เรียก) **ด้วยกฎเดียวกับ `POST /applications` (§7.2):** ตัดช่องว่างหัวท้าย ยุบช่องว่างซ้อน ไม่สนตัวพิมพ์ แล้วเทียบ **ตรงทั้งค่า** กับสาขาใน `target_majors` (ไม่ใช้ substring เช่น `computer sci` ไม่ตรงกับ `Computer Science`); ประกาศที่ไม่ระบุสาขา ⇒ `false`; `major` ที่ว่างหรือมีแต่ช่องว่างถือว่าไม่ส่ง (ไม่คืนฟิลด์) (PM ตัดสิน 2026-11-18); หน้าแรกใช้ `?page_size=3` ขอ "งานเด่น" ไม่มี endpoint เฉพาะ |
 | GET | `/jobs/{id}` | **Public** | รายละเอียดสาธารณะ (เฉพาะ `PUBLISHED`/`CLOSED`; สถานะอื่น ⇒ `404 NOT_FOUND`; HR เจ้าของดูได้ทุกสถานะผ่าน `/hr/jobs/{id}`); `CLOSED` ส่ง `X-Robots-Tag: noindex`; **บริษัทเจ้าของประกาศไม่ใช่ `VERIFIED` ⇒ `404 NOT_FOUND` ทั้ง `PUBLISHED` และ `CLOSED`** (รูปแบบเดียวกับไม่พบ ไม่เปิดเผยว่ามีอยู่; กลับเป็น `VERIFIED` ⇒ กลับมาเห็นเอง) — ใบสมัครที่ค้างอยู่ดูผ่านหน้าใบสมัคร (ชื่อประกาศจาก snapshot ของ Lifecycle) ไม่พึ่งหน้าสาธารณะ (PM ตัดสิน 2026-11-18) |
 
 > คะแนนดาวบริษัทไม่อยู่ใน Job: Web ดึงจาก `/directory/companies/{id}` (README 4.3)
@@ -179,16 +179,26 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 
 ---
 
+### 5.4 Tag ทักษะ (รายการกลาง)
+Tag = ป้ายทักษะ/เทคโนโลยีของประกาศงาน (เช่น `NextJs`, `NestJs`, `Rust` — README 5.1.0) Job เป็นเจ้าของรายการ Tag
+| Method | Path | Role | คำอธิบาย |
+| :--- | :--- | :---: | :--- |
+| GET | `/tags` | **Public** | `?q=` (ค้นชื่อ) + Pagination มาตรฐาน (`page_size` ≤ 100) — เฉพาะ Tag ที่ใช้งาน (`active=true`) → `{id, name, slug}` เรียงชื่อ; ใช้เป็นตัวเลือกของ HR และตัวกรองหน้าค้นหา |
+| GET | `/admin/tags` | AD | `?q=&active=` + Pagination → `{id, name, slug, active, job_count}` (รวมที่ปิดใช้งาน) |
+| POST | `/admin/tags` | AD | `{name}` (1–50 ตัวอักษร) → `201 {id, name, slug, active:true}`; `slug` สร้างจากชื่อ (ตัวพิมพ์เล็ก ตัดอักขระที่ไม่ใช่ตัวอักษร/ตัวเลข เช่น `Next.js` → `nextjs`); `slug` ซ้ำ ⇒ `409 STATE_CONFLICT` (`TAG_EXISTS`) |
+| PATCH | `/admin/tags/{id}` | AD | `{name?, active?}` — เปลี่ยนชื่อได้ (slug คงเดิม), `active=false` = ปิดใช้งาน: ไม่ขึ้นให้เลือกใหม่ แต่ประกาศเดิมที่ติด Tag นี้ยังแสดงตามเดิม; ไม่พบ ⇒ `404`; ไม่มี Audit Log แยก (เก็บ `created_by`/`updated_by` ในตาราง) |
+`tag_ids[]` ที่ HR ส่ง: ต้องเป็น Tag ที่ `active` จำนวน 1–10 รายการไม่ซ้ำ ไม่เช่นนั้น `400 VALIDATION_FAILED` (`details[].issue` = `TAG_UNKNOWN`/`TAG_INACTIVE`/`TAGS_COUNT`)
+
 ## 6. Verification & Trust Service
 
 ### 6.1 Admin Queue
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/admin/queue` | AD | `?type=&priority=&risk_level=&overdue=true&status=` + Pagination มาตรฐาน (§1) — ไม่ส่ง `status` ⇒ เฉพาะรายการที่ยังไม่ปิด (`OPEN`/`IN_REVIEW`); ดูที่ปิดแล้วด้วย `status=RESOLVED` → รายการพร้อม `company_name`, `due_at`, `overdue`, `is_appeal`, `risk_level`; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อน แล้ว `due_at` น้อยไปมาก |
-| GET | `/admin/queue/{id}` | AD | (รายการ `REVIEW_HELD`/`REVIEW_REPORT` เพิ่ม `review:{review_id,rating,outcome_label,title,body,moderation_status,highlights}` — ออฟเซ็ตอ้างอิงข้อความ `title\nbody` — และ `review_reports:[{id,reporter_user_id,reason,created_at}]` เฉพาะ `REVIEW_REPORT`; ฟิลด์ของประกาศเป็นค่าว่าง) รายละเอียด + `reasons` + `content` (ข้อความที่สแกน หลัง normalize) + `highlights:[{field,start,end,keyword,negated}]` (ออฟเซ็ตอ้างอิง `content[field]`; `negated=true` = คำอยู่ในประโยคปฏิเสธ) + `origin`, `submission_id`, `appeal_statement`, `reports:[{id, reporter_user_id, category, detail, counted, status, created_at}]` (เฉพาะ `JOB_REPORT` — ตัวตนผู้รายงานเห็นได้เฉพาะ Admin ที่นี่ที่เดียว; ชนิดอื่น `[]`) — รายการ Fail-safe ที่ยังไม่มีผลตรวจ: `reasons`/`highlights` ว่าง, `content` เป็น `null` |
-| POST | `/admin/queue/{id}/actions/{approve\|reject}` | AD | งาน `JOB_REVIEW`/`JOB_APPEAL` → ส่ง `JobVerified(ADMIN_APPROVE/ADMIN_REJECT)`; `reject` ต้องมี `reason`; `204`; `409 STATE_CONFLICT` (ตัดสินไปแล้ว/สองคนกดพร้อมกัน), `422 SUBMISSION_UNKNOWN` (รายการยังไม่ทราบ submission), `422 UNSUPPORTED_ITEM_TYPE` (ชนิดอื่นที่ยังไม่รองรับ) |
+| GET | `/admin/queue` | AD | `?type=&priority=&overdue=true&status=` + Pagination มาตรฐาน (§1) — ไม่ส่ง `status` ⇒ เฉพาะรายการที่ยังไม่ปิด (`OPEN`/`IN_REVIEW`); ดูที่ปิดแล้วด้วย `status=RESOLVED` → รายการพร้อม `company_name`, `due_at`, `overdue`; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อน แล้ว `due_at` น้อยไปมาก |
+| GET | `/admin/queue/{id}` | AD | (รายการ `REVIEW_REPORT` เพิ่ม `review:{review_id,rating,outcome_label,title,body,moderation_status}` และ `review_reports:[{id,reporter_user_id,reason,created_at}]` เฉพาะ `REVIEW_REPORT`; ฟิลด์ของประกาศเป็นค่าว่าง) รายละเอียด + `origin`, `submission_id`, `reports:[{id, reporter_user_id, category, detail, counted, status, created_at}]` (เฉพาะ `JOB_REPORT` — ตัวตนผู้รายงานเห็นได้เฉพาะ Admin ที่นี่ที่เดียว; ชนิดอื่น `[]`) |
+| POST | `/admin/queue/{id}/actions/{approve\|reject}` | AD | งาน `JOB_REVIEW` (ประกาศของบริษัทที่ติดธง `UNDER_REVIEW`) → ส่ง `JobVerified(ADMIN_APPROVE/ADMIN_REJECT)`; `reject` ต้องมี `reason`; `204`; `409 STATE_CONFLICT` (ตัดสินไปแล้ว/สองคนกดพร้อมกัน), `422 SUBMISSION_UNKNOWN` (รายการยังไม่ทราบ submission), `422 UNSUPPORTED_ITEM_TYPE` (ชนิดอื่นที่ยังไม่รองรับ) |
 | POST | `/admin/queue/{id}/actions/{dismiss-report\|uphold-report}` | AD | เฉพาะ `JOB_REPORT` (ชนิดอื่น ⇒ `422 UNSUPPORTED_ITEM_TYPE`; ปิดแล้ว ⇒ `409 STATE_CONFLICT`; `204`; body `{reason?}`) **รายการที่ระงับแล้ว (`origin=REPORT_THRESHOLD`):** `dismiss` ⇒ `JobVerified(RESTORE)` + รายงานของรอบนี้ `DISMISSED` + รีเซ็ตตัวนับ + `consecutive_dismissed +1` ของผู้รายงานแต่ละคน; `uphold` ⇒ `JobVerified(REMOVE)` + รายงาน `UPHELD`/`counted=true` + `consecutive_dismissed=0` — ถ้ารายการไม่มี `submission_id` ⇒ `422 SUBMISSION_UNKNOWN` **รายการ "ไม่นับ" (`origin=REPORT_UNCOUNTED`, ประกาศยัง `PUBLISHED`):** `dismiss` ปิดรายงานและรีเซ็ตตัวนับ ไม่ส่ง Event; `uphold` ทำให้รายงานเป็น `counted=true` แล้วคำนวณตัวนับใหม่ ครบเกณฑ์ ⇒ ระงับตามปกติ (E04) ไม่ส่ง `REMOVE` และไม่มี action ระงับด้วยมือ (R5-G02) — เขียน audit `REPORT_DISMISS`/`REPORT_UPHOLD` |
-| POST | `/admin/queue/{id}/actions/{publish-review\|remove-review}` | AD | เฉพาะ `REVIEW_HELD`/`REVIEW_REPORT` (ชนิดอื่น ⇒ `422 UNSUPPORTED_ITEM_TYPE`; ตัดสินแล้ว/สถานะรีวิวเปลี่ยนไปแล้ว ⇒ `409 STATE_CONFLICT`); `204`; body `{reason?}` (`remove-review` **ต้องมี `reason`** 1–500 ตัวอักษร ไม่เช่นนั้น `400`) → ส่ง `ReviewModerationResult` (`ADMIN_PUBLISH`/`ADMIN_REMOVE`, `reasons` มี `ADMIN` และ `REPORTED` เมื่อเป็นรายการ `REVIEW_REPORT`); `publish-review` ของ `REVIEW_REPORT` = ยืนยันให้รีวิวคงอยู่ |
+| POST | `/admin/queue/{id}/actions/{publish-review\|remove-review}` | AD | เฉพาะ `REVIEW_REPORT` (ชนิดอื่น ⇒ `422 UNSUPPORTED_ITEM_TYPE`; ตัดสินแล้ว/สถานะรีวิวเปลี่ยนไปแล้ว ⇒ `409 STATE_CONFLICT`); `204`; body `{reason?}` (`remove-review` **ต้องมี `reason`** 1–500 ตัวอักษร ไม่เช่นนั้น `400`) → ส่ง `ReviewModerationResult` (`ADMIN_PUBLISH`/`ADMIN_REMOVE`, `reasons` มี `ADMIN` และ `REPORTED` เมื่อเป็นรายการ `REVIEW_REPORT`); `publish-review` ของ `REVIEW_REPORT` = ยืนยันให้รีวิวคงอยู่ |
 | POST | `/admin/queue/{id}/actions/company-clear-flag` | AD | `COMPANY_ACCOUNT`: เคลียร์ธง `UNDER_REVIEW` + ปิดรายการ + `CompanyFlagChanged(active=false)`; `204`; body `{reason?}`; ชนิดอื่น ⇒ `422 UNSUPPORTED_ITEM_TYPE`; ปิดแล้ว ⇒ `409 STATE_CONFLICT`; audit `FLAG_CLEAR` |
 
 ### 6.2 ธงบริษัท
@@ -197,15 +207,9 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | PUT | `/admin/flags/companies/{company_id}/under-review` | AD | `{active, reason}` (`reason` บังคับทั้งสองทิศ; บริษัทที่ไม่รู้จัก ⇒ `404 NOT_FOUND`) ตั้ง/เคลียร์ → `200 {company_id, active, changed}`; ค่าเดิมอยู่แล้ว ⇒ `changed=false` ไม่ส่ง `CompanyFlagChanged`/ไม่เขียน audit; ตั้งด้วยมือไม่สร้างรายการคิว, เคลียร์ปิดรายการ `COMPANY_ACCOUNT` ที่เปิดอยู่ (`resolution=ADMIN_CLEAR_FLAG`); audit `FLAG_SET`/`FLAG_CLEAR` |
 | GET | `/admin/flags/companies` | AD | `?active=&q=` (ค้นชื่อบริษัท) + Pagination มาตรฐาน; เรียงที่ตั้งล่าสุดก่อน; เฉพาะบริษัทที่เคยติดธง → `{company_id, company_name, active, set_by, set_reason, set_at, cleared_at, trigger_count}` |
 
-### 6.3 Blacklist & กฎ
-| Method | Path | Role | คำอธิบาย |
-| :--- | :--- | :---: | :--- |
-| GET/POST | `/admin/blacklist` | AD | จัดการคำต้องห้าม: `GET ?severity=&enabled=&q=` + Pagination; `POST {term, severity, weight?, category?}` (`HARD` ห้ามมี `weight`, `SOFT` ต้องมี `weight` ≥ 0 จำนวนเต็ม; term ซ้ำไม่สนตัวพิมพ์ → `409 TERM_EXISTS`) |
-| PATCH/DELETE | `/admin/blacklist/{id}` | AD | `PATCH {enabled?, weight?, category?}`; `DELETE` → `204` |
-| POST | `/admin/blacklist/test` | AD | `{text}` → `{decision, risk_level, risk_score, matched_keywords, reasons}` (ทดสอบกฎก่อนใช้จริง **ไม่บันทึกอะไร**; ไม่นับกฎ "รายละเอียดสั้นเกินไป") |
-| GET/PUT | `/admin/risk-rules` | AD | `GET` → `{rules:[{code,weight,params,enabled}], negation_cues:[{id,cue,enabled}]}`; `PUT {rules?:[{code,weight?,params?,enabled?}], negation_cues?:[{cue,enabled}]}` — `params` รวมเข้ากับค่าเดิม, ตรวจทุกรายการก่อนแก้ (ผิดข้อเดียว = ไม่เปลี่ยนเลย `400`), `NEGATION_WINDOW.params.max_gap` 0–100 |
+### 6.3 (เลิกใช้) Blacklist และกฎคะแนนความเสี่ยง
 
-ทุกการแก้ของ Admin เขียน `admin_audit_log` (ดู §6.6)
+ปรับ Requirement 2026-11-21: ตัดระบบคำต้องห้าม, Risk Score และกฎคะแนนทั้งหมด ถอด `/admin/blacklist/**` และ `/admin/risk-rules` (เรียกแล้วได้ `404`) ประกาศงานใช้ Tag ทักษะแทน (§5.4) และการจัดการประกาศที่ไม่เหมาะสมใช้การรายงาน (§6.4) ทุกการแก้ของ Admin เขียน `admin_audit_log` (ดู §6.6)
 
 ### 6.4 การรายงาน
 | Method | Path | Role | คำอธิบาย |
@@ -213,16 +217,14 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/jobs/{job_id}/reports` | S | `{category, detail}` (`category` ตาม §11, `detail` 20–1000 ตัวอักษร) → `201 {id, status:'OPEN'}` (ไม่บอกว่ารายงานนับเข้าเกณฑ์หรือไม่) — รายงานได้เฉพาะประกาศ `PUBLISHED`/`CLOSED` (`422 JOB_NOT_REPORTABLE`; ไม่รู้จักประกาศ `404`), `409 ALREADY_REPORTED` (1 ครั้ง/ประกาศ แม้หลังรีเซ็ต), `429 RATE_LIMITED` + `Retry-After` (วินาที) เมื่อเกิน 5 ครั้ง/วัน (นับตามปฏิทิน `Asia/Bangkok`); ครบ 3 บัญชีที่นับเข้าเกณฑ์ ⇒ `ReportThresholdReached` + รายการคิว `JOB_REPORT`; ผู้รายงานที่ถูกยกคำร้องติด 3 ครั้ง ⇒ รายงานไม่นับแต่ยังเข้าคิว |
 | POST | `/reviews/{review_id}/reports` | S,H | `{reason}` (10–1000 ตัวอักษร ผิดรูป ⇒ `400`) 1 ครั้งต่อผู้ใช้ต่อรีวิว → `201 {id, status:'OPEN'}` และสร้างรายการคิว `REVIEW_REPORT` ถ้ายังไม่มีรายการเปิดของรีวิวนั้น; ไม่รู้จักรีวิว `404`; รีวิวที่ถูกพัก/ถูกลบ ⇒ `422 REVIEW_NOT_REPORTABLE`; ซ้ำ `409 ALREADY_REPORTED`; HR รายงานได้เฉพาะรีวิวของบริษัทตน (`403 FORBIDDEN_ROLE`) |
 
-### 6.5 สำหรับ HR ดูผลตรวจ
-| Method | Path | Role | คำอธิบาย |
-| :--- | :--- | :---: | :--- |
-| GET | `/verification/jobs/{job_id}/result` | H (เจ้าของ), AD | ผลตรวจ **ล่าสุด** (เลือกจาก `submitted_at`): `{risk_level, risk_score, reasons[], matched_keywords:[{term,field,negated}], is_appeal, can_appeal}` + `admin_reason` เมื่อ Admin เป็นผู้ปฏิเสธ; ไม่คืน `content`/`assigned_to`/`submission_id`; `403` เมื่อ HR คนละบริษัท, `404` เมื่อไม่เคยถูกตรวจ |
-| POST | `/verification/jobs/{job_id}/appeal` | H (เจ้าของ) | `{statement}` — เฉพาะงานที่ผลล่าสุดคือ `AUTO_REJECTED`, 1 ครั้ง/ประกาศ (`409 APPEAL_ALREADY_USED`) → สร้างรายการ `JOB_APPEAL` และส่ง `JobVerified(APPEAL_ACCEPTED)` ให้ Job เปลี่ยนเป็น `PENDING_REVIEW` (ป้าย APPEAL) — `statement` 20–2000 ตัวอักษร; `201 {id, status:'OPEN'}`; ผลล่าสุดไม่ใช่ `AUTO_REJECT` หรือมีรายการคิวเปิดอยู่แล้ว (เช่น Fail-safe ที่ผลตรวจมาทีหลัง; `can_appeal=false`) → `409 STATE_CONFLICT`; ส่งใหม่หลังอุทธรณ์ไม่ผ่านแล้วถูก `AUTO_REJECT` อีกจะอุทธรณ์ไม่ได้ (`409 APPEAL_ALREADY_USED`) |
+### 6.5 (เลิกใช้) ผลตรวจประกาศและการอุทธรณ์
+
+ปรับ Requirement 2026-11-21: ไม่มีการตรวจคะแนน/คำต้องห้ามและไม่มี `AUTO_REJECTED` จึง **ถอด**`GET /verification/jobs/{job_id}/result` และ `POST /verification/jobs/{job_id}/appeal` (เรียกแล้วได้ `404`) HR ดูสถานะประกาศจาก Job API (`GET /hr/jobs/{id}`) เหตุผลที่ Admin ปฏิเสธประกาศของบริษัทที่ติดธง (`ADMIN_REJECTED`) แจ้ง HR ผ่านการแจ้งเตือนและเก็บใน `status_history.reason` ของ Job
 
 ### 6.6 Audit
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/admin/audit` | AD | บันทึกการกระทำของ Admin ย้อนหลัง: `?actor=&action=&target_type=&from=&to=` + Pagination; เรียงใหม่ไปเก่า → `{id, admin_id, action, target_type, target_id, before, after, reason, correlation_id, occurred_at}` (action เช่น `QUEUE_APPROVE`, `QUEUE_REJECT`, `BLACKLIST_CREATE\|UPDATE\|DELETE`, `RISK_RULES_UPDATE`) |
+| GET | `/admin/audit` | AD | บันทึกการกระทำของ Admin ย้อนหลัง: `?actor=&action=&target_type=&from=&to=` + Pagination; เรียงใหม่ไปเก่า → `{id, admin_id, action, target_type, target_id, before, after, reason, correlation_id, occurred_at}` (action เช่น `QUEUE_APPROVE`, `QUEUE_REJECT`, `REPORT_DISMISS`, `REPORT_UPHOLD`, `FLAG_SET`, `FLAG_CLEAR`) |
 
 ---
 
@@ -269,7 +271,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 7.3 ใบสมัคร — HR
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/hr/applications` | H | `?job_id=&status=` (เฉพาะ `company_id` ของตน) |
+| GET | `/hr/applications` | H | `?job_id=&status=&category=` (เฉพาะ `company_id` ของตน; HR Member เห็นเฉพาะสายงานของตน) |
 | GET | `/hr/applications/{id}` | H | โปรไฟล์ที่ได้รับ Consent แล้วเท่านั้น • `available_actions[]` (ถ้านักศึกษา confirm ที่อื่นอยู่ ⇒ ไม่มี `accept` และมี `accept_blocked_reason`) |
 | POST | `/hr/applications/{id}/actions/accept` | H | `{start_date, end_date}` (ห่าง ≥ 30 วัน) → `403 ALREADY_CONFIRMED_ELSEWHERE`, `409 QUOTA_FULL`, `422 INVALID_PERIOD_MIN_30_DAYS` |
 | POST | `/hr/applications/{id}/actions/reject` | H | `{reason?}` |
@@ -283,6 +285,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 
 **กติกาฝั่ง HR (PM ตัดสิน 2026-11-18 — Lifecycle 1.5):**
 - **สิทธิ์:** HR เปิดใบสมัครของบริษัทอื่น ⇒ `403 NOT_OWNER_OF_RESOURCE` (UAT-29 ข้อ 2 — ต่างจากฝั่งนักศึกษาที่ได้ `404`)
+- **สิทธิ์ตามสายงาน (HR Member):** `GET /hr/applications` กรองเฉพาะใบสมัครของประกาศที่อยู่ในสายงาน (`category`) ของสมาชิก และทุก endpoint `/hr/applications/{id}/**` ของใบสมัครสายอื่น ⇒ `403 FORBIDDEN_ROLE` (`details[].issue` = `FORBIDDEN_CATEGORY`); ** Owner เห็นและทำได้ทุกสายงาน**Lifecycle ใช้ `job_snapshots.category` (เติมจาก Internal job ตอนสมัคร) เทียบกับ `company_categories` ใน JWT
 - **`GET /hr/applications/{id}`:** ไม่มี Consent หรือ Identity ล่ม ⇒ ยังได้ `200` แต่ไม่มี `profile` (ไม่คืน `502` ทั้งหน้า); `profile.photo_url?` (Signed URL ~10 นาที) **เห็นเฉพาะเมื่อมี Consent เท่านั้น เหมือนฟิลด์อื่นของ `profile`** — รายการ `GET /hr/applications` หน้าสาธารณะ รีวิว และใบรับรอง **ต้องไม่มีรูปเด็ดขาด** (รีวิวไม่ระบุชื่อต้องย้อนหาตัวตนไม่ได้); หน้าเว็บแสดงข้อความกลางว่ายังไม่มีข้อมูลโปรไฟล์ เพราะแยกสาเหตุไม่ได้; ยังไม่มีผลประเมินในรายละเอียด (ฟิลด์ `evaluation?` จะเพิ่มตอนทำ `evaluate` เพื่อให้ HR เห็นผลของตนก่อนประเมินซ้ำ)
 - **`start`:** `actual_start_date` เป็นวันในอนาคตไม่ได้ (วันนี้ตามเวลากรุงเทพใช้ได้) และ `end_date` ต้องอยู่หลัง `start_date` และ `actual_start_date` ผิด ⇒ `400 VALIDATION_FAILED` + `details[].issue`; ระยะ `end_date − actual_start_date` < 30 วัน **ไม่ใช่ error** ผ่านพร้อม `warning: 'NO_CERTIFICATE_ELIGIBLE'` (README 5.2.2, UAT-35)
 - **`terminate`:** `actual_end_date` เป็นวันในอนาคตไม่ได้ และห้ามก่อนวันเริ่มงานจริง; ไม่ส่ง ⇒ วันนี้ตามเวลากรุงเทพ
@@ -301,6 +304,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/advisor/applications/{id}/actions/continue` | A | กรณีบริษัทถูกระงับ: เลือก "ฝึกต่อ" (บันทึก decision) |
 | GET | `/advisor/problem-reports` | A | |
 | POST | `/problem-reports/{id}/actions/{acknowledge\|resolve}` | A,AD | `resolve` รับ `{note, follow_up_action?}` — **H ได้ 403/404** |
+| GET | `/advisor/students` | A | รายชื่อนักศึกษาในความดูแลพร้อมสถานะการฝึกงาน: `?q=&year_level=&training_status=IN_TRAINING\|COMPLETED` + Pagination → `{student_user_id, full_name, student_code, major, year_level, training_status, active_application_count}` — `year_level` = ชั้นปีของนักศึกษา, `IN_TRAINING` = มีใบสมัครสถานะ `IN_PROGRESS`, `COMPLETED` = มีใบสมัครสถานะ `COMPLETED` (ไม่ส่ง `training_status` ⇒ ทุกคน; นักศึกษาที่ไม่มีทั้งสองสถานะมี `training_status=NONE`); ชื่อ/รหัส/สาขา/ชั้นปีดึงสดจาก Identity (`students/summaries`) **ไม่เก็บ `full_name`**; ตัวกรองเพิ่มเติม PM จะแจ้งภายหลัง |
 | GET | `/advisor/students/{id}/overview` | A | สรุปสถานะฝึกงานของนักศึกษาในความดูแล |
 
 ### 7.5 E-Certificate และการตรวจสอบ
@@ -358,12 +362,13 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | job | POST | `/internal/v1/jobs/{job_id}/quota/reserve` | lifecycle | `{application_id}` → `200 {reserved:true}` / `409 QUOTA_FULL`; ซ้ำด้วย `application_id` เดิมขณะการจองยังเป็น `RESERVED`/`CONFIRMED` ⇒ `200` โดยไม่หักซ้ำ • **`RELEASED` ไม่ใช่สถานะสิ้นสุด (PM ตัดสิน 2026-11-19):** reserve ด้วย `application_id` เดิมหลัง `RELEASED` ⇒ จองใหม่ตามปกติ (`RESERVED` อีกครั้ง; โควตาเต็ม ⇒ `409 QUOTA_FULL`) เพราะ Lifecycle เป็นผู้เรียกที่ล็อกใบสมัครและชี้ขาดอยู่แล้ว (ผู้ใช้กดตอบรับใหม่หลังธุรกรรมล้มและ release ชดเชย ต้องทำต่อได้ด้วยใบสมัครเดิม) • คำขอ reserve เก่าที่มาช้าแล้วจองซ้อน (ค้างโดยที่ Lifecycle ไม่ถือโควตา) ⇒ Reconciliation (`reservation-check` ทุก 30 นาที — Lifecycle ชี้ขาด) คืนให้เอง จึงไม่ใช้ Attempt Identifier และห้ามตอบ `501` |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/confirm` | lifecycle | `{application_id}` `RESERVED`→`CONFIRMED` (idempotent) |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/release` | lifecycle | `{application_id, reason}` → คืนโควตา (idempotent; ไม่มีการจอง = `200` no-op) |
-| job | GET | `/internal/v1/jobs/{job_id}` | lifecycle | สถานะ/โควตา/`job_title`/`target_majors`/deadline ตอนสมัคร (ลดความเสี่ยง Snapshot ล้าสมัย); `job_title` ใช้เติม `job_snapshots.title` — E03 `JobStatusChanged` ไม่มีชื่อประกาศ จึงสร้าง snapshot ด้วยชื่อว่างได้ และ Lifecycle เติมชื่อตอนมีใบสมัครแรก (PM ตัดสิน 2026-11-18) |
+| job | GET | `/internal/v1/jobs/{job_id}` | lifecycle | สถานะ/โควตา/`job_title`/`category`/`target_majors`/deadline ตอนสมัคร (ลดความเสี่ยง Snapshot ล้าสมัย); `job_title` ใช้เติม `job_snapshots.title` — E03 `JobStatusChanged` ไม่มีชื่อประกาศ จึงสร้าง snapshot ด้วยชื่อว่างได้ และ Lifecycle เติมชื่อตอนมีใบสมัครแรก (PM ตัดสิน 2026-11-18) |
 | lifecycle | POST | `/internal/v1/applications/reservation-check` | job | `{application_ids[]}` → `[{application_id, should_hold_quota: bool}]` (Reconciliation ทุก 30 นาที — Lifecycle ชี้ขาด) • **ฝั่ง Lifecycle กันและซ่อมเอง (PM ตัดสิน 2026-11-19, QIR-01/QIR-03):** คำสั่งที่จองโควตา (`accept`) ถือ lease ต่อใบ (`applications.quota_op_until`, 45 วินาที) ตั้งแต่ก่อน reserve จนจบ release ชดเชย คำสั่งซ้อนได้ `409 STATE_CONFLICT` (`QUOTA_OPERATION_IN_PROGRESS`) และ Scheduler (ทุก `SCHEDULER_INTERVAL_MINUTES`) ซ่อม **ทุกใบที่ `quota_reserved = true`** ด้วย reserve ซ้ำ (+ confirm เมื่อผ่าน `start` มาแล้ว — รวม `TERMINATED`/หลังประเมิน เพราะที่นั่งที่ confirm แล้วคงอยู่ถาวร) — กู้ release เก่าที่มาช้าและ confirm ที่ล้มหลัง commit ซึ่ง `reservation-check` แบบ boolean กู้ไม่ได้; ใบที่ยืนยันตรงแล้วและสถานะนิ่ง ≥ 1 ชั่วโมงถูกจด `quota_synced_at` (ตรวจล่าสุด) แล้วข้ามชั่วคราว — ตรวจซ้ำทุก 24 ชั่วโมง ไม่ข้ามถาวร; `confirm` หลัง commit ได้ `409` ⇒ ซ่อมทันที (reserve + confirm) ไม่รอ Scheduler; ซ่อมได้ `409 QUOTA_FULL` = จองเกินจริง (Critical Inconsistency) ⇒ ไม่นับว่าสำเร็จ log ระดับ error ข้อความ `CRITICAL quota inconsistency (over-allocation)` และลองใหม่รอบหน้า (ต้องมีคนตัดสินว่าใครได้ที่นั่ง — PM ตัดสิน 2026-11-19) |
 | lifecycle | GET | `/internal/v1/users/{user_id}/deletion-eligibility` | identity | `200 {eligible: boolean, blocking_application_count: number}` — `eligible=false` เมื่อผู้ใช้มีใบสมัครสถานะ `ADVISOR_PENDING`/`ADVISOR_APPROVED`/`IN_PROGRESS`/`FAIL_DISPUTED`/`REEVALUATION_REQUESTED`; ไม่มีใบสมัครหรือไม่รู้จักผู้ใช้ ⇒ `eligible=true`; Identity ปฏิเสธการลบเมื่อเรียกไม่สำเร็จ (fail-closed); Service Token: audience `lifecycle`, secret `LIFECYCLE_SERVICE_SECRET_IDENTITY` (PM ตัดสิน 2026-11-17) |
 | identity | GET | `/internal/v1/users/{user_id}/contact` | notification | `{email, full_name}` (ใช้ตอนส่งเท่านั้น; ห้าม cache ถาวร) |
 | identity | GET | `/internal/v1/users/contacts?ids=` | notification | แบบ Batch (≤ 100) |
 | identity | GET | `/internal/v1/students/names?ids=` | lifecycle | แบบ Batch (≤ 100) → `[{user_id, full_name}]` ชื่อนักศึกษาสำหรับหน้ารายการของ HR/อาจารย์ — ไม่มีอีเมล; คืนเฉพาะนักศึกษา `ACTIVE` (เงื่อนไขเดียวกับ `students/{user_id}`) — ข้ามบัญชีที่ถูกระงับ/ลบ/ยังไม่ยืนยันและ id ที่ไม่ใช่นักศึกษา (SA ตัดสิน 2026-11-18) |
+| identity | GET | `/internal/v1/students/summaries?ids=` | lifecycle | แบบ Batch (≤ 100) → `[{user_id, full_name, student_code, major, year_level}]` ข้ามบัญชีที่ลบแล้วและ id ที่ไม่ใช่นักศึกษา — ใช้กับ `GET /advisor/students` ดึงสดทุกครั้ง **ห้ามเก็บ `full_name` ลง DB/cache/Event/log** (PM ตัดสิน 2026-11-21) |
 | identity | GET | `/internal/v1/students/{user_id}` | lifecycle | `{full_name, major, year_level, university_id, email_verified, advisor_id, advisor_link_status}` ตอนสมัครงาน และชื่อแสดงผลให้ HR (มี Consent)/อาจารย์ — Lifecycle ดึงสดทุกครั้ง **ห้ามเก็บ `full_name` ลง DB/cache/Event/log** (SA ตัดสิน 2026-11-18) |
 | identity | GET | `/internal/v1/companies/{company_id}/members` | notification, lifecycle | ผู้รับแจ้งเตือนฝั่ง HR |
 | identity | POST | `/internal/v1/consents/check` | lifecycle | `{student_user_id, company_id}` → `{has_consent, consent_id?}` (`consent_id` = Consent ที่ใช้อยู่ ส่งเมื่อ `has_consent=true`; ใช้ผูก `applications.resume_consent_id` — PM ตัดสิน 2026-11-18) |
@@ -379,8 +384,8 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ## 10. สิ่งที่ต้องตกลงเพิ่มก่อนเริ่ม Implement
 | # | ประเด็น | หมายเหตุ |
 | :-: | :--- | :--- |
-| 1 | ~~`verify-hash` ของ Certificate~~ | ✅ ปิดแล้ว (PM ตัดสิน 2026-11-18): **ตัดออก** ไม่มี Endpoint สาธารณะ — ยังเก็บ SHA-256 ของไฟล์ในระบบตาม README 5.4 |
-| 2 | ~~Pagination/Sort มาตรฐานของ Admin Queue~~ | ✅ ปิดแล้ว: ใช้ Pagination มาตรฐาน §1; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อนแล้ว `due_at` น้อยไปมาก (§6.1) — ปรับตาม UI ภายหลังได้ |
+| 1 | ~~`verify-hash` ของ Certificate~~ | ปิดแล้ว (PM ตัดสิน 2026-11-18): **ตัดออก** ไม่มี Endpoint สาธารณะ — ยังเก็บ SHA-256 ของไฟล์ในระบบตาม README 5.4 |
+| 2 | ~~Pagination/Sort มาตรฐานของ Admin Queue~~ | ปิดแล้ว: ใช้ Pagination มาตรฐาน §1; เรียงค่าเริ่มต้น `FAST_TRACK` ก่อนแล้ว `due_at` น้อยไปมาก (§6.1) — ปรับตาม UI ภายหลังได้ |
 
 ## 11. รูปร่าง Response/ค่า Enum ที่ PM ตัดสินแล้ว (2026-11-14)
 

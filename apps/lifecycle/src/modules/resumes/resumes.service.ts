@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { AppException, type JwtClaims } from '@internpath/common';
 import type { Paginated, ResumeItem, ResumeUrlResponse } from '@internpath/contracts';
 import type { Prisma, Resume } from '../../../generated/client';
+import { CategoryScopeService } from '../../common/auth/category-scope.service';
 import { assertAdvisorOwnership, assertCompanyOwnership } from '../../common/auth/ownership';
 import { S3StorageService } from '../../common/storage/s3-storage.service';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
@@ -45,6 +46,7 @@ export class ResumesService {
     private readonly storage: S3StorageService,
     private readonly config: LifecycleConfigService,
     private readonly identity: IdentityInternalClient,
+    private readonly scope: CategoryScopeService,
   ) {}
 
   // ---------- นักศึกษา (/me/resumes) ----------
@@ -143,6 +145,7 @@ export class ResumesService {
   async forHr(user: JwtClaims, applicationId: string, correlationId?: string): Promise<ResumeUrlResponse> {
     const application = await this.findApplication(applicationId);
     assertCompanyOwnership(user, application.companyId);
+    await this.scope.assertInScope(user, application, correlationId);
 
     const consent = await this.identity.checkConsent(application.studentUserId, application.companyId, correlationId);
     if (!consent.has_consent) {
@@ -168,7 +171,7 @@ export class ResumesService {
   private async findApplication(applicationId: string) {
     const application = await this.db.application.findUnique({
       where: { id: applicationId },
-      select: { id: true, companyId: true, studentUserId: true, advisorUserId: true, resumeId: true },
+      select: { id: true, companyId: true, jobId: true, studentUserId: true, advisorUserId: true, resumeId: true },
     });
     if (!application) throw new AppException('NOT_FOUND', 'ไม่พบใบสมัคร', 404);
     return application;

@@ -1,18 +1,16 @@
 // ต้องตรงกับ docs/api-contract.md §4 (Identity) — เฉพาะ body/response ที่เอกสารระบุไว้
 // Response ของ endpoint ที่เอกสารไม่ได้ระบุฟิลด์ (เช่น GET /users/me, /companies/me) ยังไม่ถูกล็อก — ดูรายการช่องว่างท้ายเอกสาร api-contract
-import type { CompanyStatus } from '../enums';
+import type { CompanyStatus, JobCategory } from '../enums';
 import type { PageQuery } from './common';
 import type { AuthUser, CompanyDocType } from './identity-responses';
 
 // ---- 4.1 Auth ----
-export interface RegisterStudentRequest {
-  /** ต้องเป็น @ac.th */
-  email: string;
+/**
+ * POST /auth/student-invitations/accept — นักศึกษาตั้งรหัสผ่านจากลิงก์คำเชิญที่อาจารย์สร้างให้ (ไม่มี register/student — ปรับ 2026-11-21)
+ */
+export interface AcceptStudentInvitationRequest {
+  token: string;
   password: string;
-  full_name: string;
-  student_code: string;
-  major: string;
-  year_level: number;
   accept_privacy: true;
 }
 
@@ -60,11 +58,29 @@ export interface ResetPasswordRequest {
 }
 
 // ---- 4.2 ผู้ใช้/อาจารย์ ----
-export interface RequestAdvisorLinkRequest {
-  advisor_id: string;
+/** POST /advisor-links/students — อาจารย์เพิ่มนักศึกษา (ไม่มีการเลือกอาจารย์โดยนักศึกษา) */
+export interface CreateStudentRequest {
+  /** ต้องเป็น @ac.th ของมหาวิทยาลัยเดียวกับอาจารย์ */
+  email: string;
+  full_name: string;
+  student_code: string;
+  major: string;
+  year_level: number;
 }
 
-export type AdvisorLinkRequestAction = 'confirm' | 'reject';
+/** PATCH /advisor-links/students/{student_id} */
+export interface UpdateStudentRequest {
+  full_name?: string;
+  major?: string;
+  year_level?: number;
+}
+
+/** GET /advisor-links/students?q=&year_level=&activation= */
+export interface AdvisorStudentsQuery extends PageQuery {
+  q?: string;
+  year_level?: number;
+  activation?: 'PENDING' | 'ACTIVE';
+}
 
 export interface RecordConsentRequest {
   type: 'RESUME_SHARE';
@@ -80,6 +96,13 @@ export interface UploadCompanyDocumentFields {
 export interface InviteMemberRequest {
   /** โดเมนองค์กรเท่านั้น */
   email: string;
+  /** สายงานของสมาชิกใหม่ 1–3 ค่า (README 5.6) */
+  categories: JobCategory[];
+}
+
+/** PUT /companies/me/members/{user_id}/categories */
+export interface UpdateMemberCategoriesRequest {
+  categories: JobCategory[];
 }
 
 export interface AcceptInvitationRequest {

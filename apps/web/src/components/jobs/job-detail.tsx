@@ -19,7 +19,7 @@ const workModeLabel: Record<WorkMode, string> = { ONSITE: 'On-Site', HYBRID: 'Hy
 function Badge({ children, tone }: { children: React.ReactNode; tone: 'success' | 'accent' | 'neutral' | 'warning' }) {
   const styles = {
     success: 'bg-success-soft text-success-text',
-    accent: 'bg-accent-soft text-accent',
+    accent: 'bg-accent-soft text-accent-text',
     neutral: 'bg-surface-muted text-ink-soft',
     warning: 'bg-warning-soft text-warning-text',
   }[tone];
@@ -33,7 +33,7 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 function TextSection({ title, text }: { title: string; text: string }) {
   return (
     <section className="mt-8">
-      <h2 className="text-lg font-bold">{title}</h2>
+      <h2 className="text-lg font-semibold">{title}</h2>
       <p className="mt-2 whitespace-pre-line text-ink-soft">{text}</p>
     </section>
   );
@@ -48,7 +48,7 @@ function ApplyBox({ closed, job }: { closed: boolean; job: SearchJobItem }) {
     const next = encodeURIComponent(`/jobs/item?id=${job.id}`);
     return (
       <div className="flex flex-col gap-2">
-        <Link href={`/login?next=${next}`} className="inline-block rounded-lg bg-primary px-6 py-2.5 text-center font-semibold text-white hover:bg-primary-hover">
+        <Link href={`/login?next=${next}`} className="inline-block rounded-full bg-primary px-6 py-2.5 text-center font-semibold text-white hover:bg-primary-hover">
           เข้าสู่ระบบเพื่อสมัคร
         </Link>
         <p className="text-xs text-ink-soft">สมัครได้เฉพาะนักศึกษาที่ยืนยันอีเมลสถาบันแล้ว</p>
@@ -80,7 +80,7 @@ export function JobDetail() {
   if (state.status === 'missing' || state.status === 'error') {
     return (
       <main className="mx-auto max-w-md px-4 py-16 text-center">
-        <h1 className="text-xl font-bold">{state.status === 'missing' ? 'ไม่พบประกาศนี้' : 'โหลดประกาศไม่สำเร็จ'}</h1>
+        <h1 className="text-xl font-semibold">{state.status === 'missing' ? 'ไม่พบประกาศนี้' : 'โหลดประกาศไม่สำเร็จ'}</h1>
         <p className="mt-2 text-sm text-ink-soft">
           {state.status === 'missing' ? 'ประกาศอาจถูกลบหรือยังไม่เปิดเผยต่อสาธารณะ' : 'ระบบไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง'}
         </p>
@@ -104,7 +104,7 @@ export function JobDetail() {
           {job.featured && <Badge tone="accent">Featured</Badge>}
           {closed && <StatusBadge tone={statusView(JOB_STATUS, 'CLOSED').tone} icon={statusView(JOB_STATUS, 'CLOSED').icon}>ปิดรับสมัคร</StatusBadge>}
         </div>
-        <h1 className="mt-3 text-3xl font-bold">{job.job_title}</h1>
+        <h1 className="mt-3 text-3xl font-semibold">{job.job_title}</h1>
         <p className="mt-1 text-ink-soft">{job.company.name}</p>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {job.company.badges.map((badge) => <Badge key={badge} tone="success">{badge}</Badge>)}
@@ -116,7 +116,7 @@ export function JobDetail() {
 
       <div className="mt-6 grid gap-8 md:grid-cols-[1fr_16rem]">
         <div>
-          <dl className="grid grid-cols-2 gap-4 rounded-xl border border-border bg-surface-muted p-4 sm:grid-cols-3">
+          <dl className="grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-3">
             <Fact label="ค่าตอบแทน">{job.allowance.text}</Fact>
             <Fact label="รูปแบบการทำงาน">{workModeLabel[job.work_mode]}</Fact>
             <Fact label="สถานที่">{job.location}</Fact>
@@ -130,14 +130,14 @@ export function JobDetail() {
           <TextSection title="คุณสมบัติผู้สมัคร" text={job.qualifications} />
 
           <section className="mt-8">
-            <h2 className="text-lg font-bold">สาขาที่เปิดรับ</h2>
+            <h2 className="text-lg font-semibold">สาขาที่เปิดรับ</h2>
             <ul className="mt-2 flex flex-wrap gap-2">
               {job.target_majors.map((major) => <li key={major}><Badge tone="neutral">{major}</Badge></li>)}
             </ul>
           </section>
         </div>
 
-        <aside className="h-fit rounded-xl border border-border bg-surface p-5 shadow-sm md:sticky md:top-6">
+        <aside className="h-fit rounded-xl border border-border bg-surface p-5 md:sticky md:top-6">
           <p className="text-sm text-ink-soft">เปิดรับอีก {job.quota_available} จาก {job.quota} ตำแหน่ง</p>
           <div className="mt-4"><ApplyBox closed={closed} job={job} /></div>
           {/* รายงานได้เฉพาะประกาศ PUBLISHED/CLOSED (หน้านี้แสดงเฉพาะสองสถานะนี้) — ผู้เยี่ยมชมเห็นลิงก์เข้าสู่ระบบ */}

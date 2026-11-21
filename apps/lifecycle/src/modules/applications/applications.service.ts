@@ -270,20 +270,27 @@ function consentIdOf(consent: ConsentCheckResponse): string | null {
 }
 
 /**
- * เติม `job_snapshots.title` จาก `job_title` ของ Job (api-contract §10 — E03 ไม่มีชื่อประกาศ, PM ตัดสิน 2026-11-18)
- * - เติมเฉพาะเมื่อชื่อยังว่าง (snapshot ที่ E03 สร้าง) — ไม่เขียนทับชื่อเดิม
+ * เติม `job_snapshots.title` และ `category` จาก Job (api-contract §10 — E03 ไม่มีชื่อ/สายงานของประกาศ)
+ * - เติมเฉพาะฟิลด์ที่ยังว่าง — ไม่เขียนทับค่าเดิม
  * - ยังไม่มี snapshot ⇒ สร้างแถว `entity_version = 0` (placeholder แบบเดียวกับ Consumer E03) ให้ E03 ถัดไปเขียนทับสถานะได้เสมอ
- * - Job ยังไม่ส่ง `job_title` (ว่าง/ไม่มี) ⇒ ไม่ทำอะไร
- * - อ่านแบบไม่ล็อกก่อน: มีชื่อแล้ว (กรณีส่วนใหญ่) ⇒ ไม่เขียน — `ON CONFLICT DO UPDATE` ล็อกแถวแม้ `WHERE` ไม่ผ่าน
+ * - Job ไม่ส่ง `job_title` (ว่าง/ไม่มี) ⇒ ไม่เติมชื่อ; ไม่ส่ง `category` ⇒ ไม่เติมสายงาน
+ * - อ่านแบบไม่ล็อกก่อน: ครบแล้ว (กรณีส่วนใหญ่) ⇒ ไม่เขียน — `ON CONFLICT DO UPDATE` ล็อกแถวแม้ `WHERE` ไม่ผ่าน
  *   จะทำให้การสมัครประกาศเดียวกันและ Consumer E03 ต้องรอกันทุกครั้ง
  */
 async function fillJobSnapshotTitle(tx: Tx, job: InternalJobResponse): Promise<void> {
   const title = typeof job.job_title === 'string' ? job.job_title.trim() : '';
-  if (!title) return;
-  const current = await tx.jobSnapshot.findUnique({ where: { jobId: job.job_id }, select: { title: true } });
-  if (current && current.title !== '') return;
+  const category = typeof job.category === 'string' ? job.category : null;
+  if (!title && !category) return;
+  const current = await tx.jobSnapshot.findUnique({ where: { jobId: job.job_id }, select: { title: true, category: true } });
+  const needTitle = !!title && (!current || current.title === '');
+  const needCategory = !!category && (!current || current.category === null);
+  if (!needTitle && !needCategory) return;
   await tx.$executeRaw`
-    INSERT INTO job_snapshots (job_id, company_id, status, title, entity_version, updated_at)
-    VALUES (${job.job_id}::uuid, ${job.company_id}::uuid, ${job.status}::job_status, ${title}, 0, now())
-    ON CONFLICT (job_id) DO UPDATE SET title = EXCLUDED.title, updated_at = now() WHERE job_snapshots.title = ''`;
+    INSERT INTO job_snapshots (job_id, company_id, status, title, category, entity_version, updated_at)
+    VALUES (${job.job_id}::uuid, ${job.company_id}::uuid, ${job.status}::job_status, ${title}, ${category}::job_category, 0, now())
+    ON CONFLICT (job_id) DO UPDATE SET
+      title = CASE WHEN job_snapshots.title = '' THEN EXCLUDED.title ELSE job_snapshots.title END,
+      category = COALESCE(job_snapshots.category, EXCLUDED.category),
+      updated_at = now()
+    WHERE job_snapshots.title = '' OR job_snapshots.category IS NULL`;
 }

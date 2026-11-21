@@ -26,8 +26,8 @@ export class QueueActionsService {
   }
 
   /**
-   * ตัดสินรายการคิวของประกาศ (JOB_REVIEW/JOB_APPEAL) ใน Transaction เดียว: ปิดรายการ → ส่ง JobVerified → status_history
-   * → audit (+ appeals ถ้าเป็นอุทธรณ์) การปิดใช้ `updateMany where status <> 'RESOLVED'` เป็นตัวกันสองคนกดพร้อมกัน
+   * ตัดสินรายการคิวของประกาศ (JOB_REVIEW) ใน Transaction เดียว: ปิดรายการ → ส่ง JobVerified → status_history
+   * → audit การปิดใช้ `updateMany where status <> 'RESOLVED'` เป็นตัวกันสองคนกดพร้อมกัน
    * (คนที่สองได้ 0 แถว → 409 และ rollback ทั้งก้อน)
    * เหตุผลการปฏิเสธเก็บใน status_history.reason (resolution เก็บแค่รหัส ADMIN_APPROVE/ADMIN_REJECT)
    */
@@ -36,7 +36,7 @@ export class QueueActionsService {
     await this.prisma.$transaction(async (tx) => {
       const item = await tx.queueItem.findUnique({ where: { id } });
       if (!item) throw new AppException('NOT_FOUND', 'ไม่พบรายการคิว', 404);
-      if (item.type !== 'JOB_REVIEW' && item.type !== 'JOB_APPEAL') {
+      if (item.type !== 'JOB_REVIEW') {
         throw new AppException('UNSUPPORTED_ITEM_TYPE', 'รายการชนิดนี้ยังไม่รองรับการตัดสิน', 422);
       }
       if (item.status === 'RESOLVED') throw new AppException('STATE_CONFLICT', 'รายการนี้ถูกตัดสินไปแล้ว', 409);
@@ -51,8 +51,7 @@ export class QueueActionsService {
       });
       if (count === 0) throw new AppException('STATE_CONFLICT', 'รายการนี้ถูกตัดสินไปแล้ว', 409);
 
-      const evaluation = await tx.evaluation.findUnique({ where: { submissionId: item.submissionId } });
-      const reasons: JobVerifiedReason[] = ((evaluation?.reasons ?? []) as unknown as JobVerifiedReason[]).slice();
+      const reasons: JobVerifiedReason[] = [];
       if (decision === 'ADMIN_REJECT' && reason) reasons.push({ code: 'ADMIN_REASON', detail: reason });
 
       await emitJobVerified(this.outbox, tx, {
@@ -61,20 +60,12 @@ export class QueueActionsService {
           job_id: item.targetId,
           submission_id: item.submissionId,
           decision,
-          ...(evaluation ? { risk_score: evaluation.riskScore, risk_level: evaluation.riskLevel } : {}),
           reasons,
-          is_appeal: item.isAppeal,
           decided_by: 'ADMIN',
           decided_at: now.toISOString(),
         },
       });
 
-      if (item.type === 'JOB_APPEAL') {
-        await tx.appeal.updateMany({
-          where: { jobId: item.targetId },
-          data: { status: decision === 'ADMIN_APPROVE' ? 'APPROVED' : 'DENIED', decidedBy: admin.sub, decidedAt: now },
-        });
-      }
 
       await tx.statusHistory.create({
         data: {

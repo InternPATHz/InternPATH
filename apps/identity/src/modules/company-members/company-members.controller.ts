@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Public, Roles, RolesGuard } from '@internpath/common';
-import { AcceptInvitationDto, AppointOwnerDto, InviteMemberDto, MembersQueryDto, TransferOwnerDto } from './company-members.dto';
+import { AcceptInvitationDto, AppointOwnerDto, InviteMemberDto, MembersQueryDto, TransferOwnerDto, UpdateMemberCategoriesDto } from './company-members.dto';
 import { CompanyMembersService } from './company-members.service';
 
 @Controller('companies/me')
@@ -13,7 +13,7 @@ export class CompanyMembersController {
   members(@CurrentUser() actor: JwtClaims, @Query() query: MembersQueryDto) { return this.service.members(actor.sub, query); }
 
   @Post('invitations')
-  invite(@CurrentUser() actor: JwtClaims, @Body() body: InviteMemberDto) { return this.service.invite(actor.sub, body.email); }
+  invite(@CurrentUser() actor: JwtClaims, @Body() body: InviteMemberDto) { return this.service.invite(actor.sub, body.email, body.categories); }
 
   @Get('invitations')
   invitations(@CurrentUser() actor: JwtClaims) { return this.service.invitations(actor.sub); }
@@ -28,6 +28,12 @@ export class CompanyMembersController {
   @Delete('members/:user_id') @HttpCode(204)
   remove(@CurrentUser() actor: JwtClaims, @Param('user_id', ParseUUIDPipe) userId: string,
     @Headers('x-correlation-id') cid: string) { return this.service.remove(actor.sub, userId, cid); }
+
+  @Put('members/:user_id/categories') @HttpCode(204)
+  setCategories(@CurrentUser() actor: JwtClaims, @Param('user_id', ParseUUIDPipe) userId: string,
+    @Body() body: UpdateMemberCategoriesDto, @Headers('x-correlation-id') cid: string) {
+    return this.service.setCategories(actor.sub, userId, body.categories, cid);
+  }
 
   @Post('owner-transfer')
   transfer(@CurrentUser() actor: JwtClaims, @Body() body: TransferOwnerDto) {

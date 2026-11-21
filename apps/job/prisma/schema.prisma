@@ -110,10 +110,13 @@ model Job {
   publishedAt           DateTime?          @map("published_at") @db.Timestamptz(6)
   closedAt              DateTime?          @map("closed_at") @db.Timestamptz(6)
   applicationDeadline   DateTime?          @map("application_deadline") @db.Date
+  // เหตุผลที่ Admin ปฏิเสธ (ADMIN_REJECTED) จาก reasons[] ของ JobVerified — ล้างเมื่อ Admin อนุมัติ
+  adminReason           String?            @map("admin_reason")
   entityVersion         Int                @map("entity_version")
   version               Int
   createdAt             DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt             DateTime           @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  tags                  JobTag[]
   submissions           JobSubmission[]
   quotaReservations     QuotaReservation[]
   reportRounds          ReportRound[]
@@ -122,6 +125,32 @@ model Job {
   @@index([jobTitle(ops: raw("gin_trgm_ops"))], type: Gin, map: "jobs_job_title_trgm_idx")
   @@index([targetMajors], type: Gin)
   @@map("jobs")
+}
+
+// Tag ทักษะ (ปรับ Requirement 2026-11-21) — รายการกลางที่ Admin จัดการ แทนระบบคำต้องห้าม/คะแนนความเสี่ยง
+model Tag {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name      String
+  slug      String    @unique
+  active    Boolean   @default(true)
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  jobs      JobTag[]
+
+  @@map("tags")
+}
+
+model JobTag {
+  jobId String @map("job_id") @db.Uuid
+  tagId String @map("tag_id") @db.Uuid
+  job   Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  tag   Tag    @relation(fields: [tagId], references: [id])
+
+  @@id([jobId, tagId])
+  @@index([tagId, jobId])
+  @@map("job_tags")
 }
 
 enum ReportRoundStatus {

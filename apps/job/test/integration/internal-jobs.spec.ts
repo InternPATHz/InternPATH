@@ -102,6 +102,7 @@ describe('Internal Job API (HTTP and real PostgreSQL)', function () {
       quota: 5,
       quota_available: 2,
       job_title: 'Lifecycle snapshot title',
+      category: 'TECH_IT',
       target_majors: ['CS'],
       application_deadline: '2026-12-01',
       entity_version: 10,

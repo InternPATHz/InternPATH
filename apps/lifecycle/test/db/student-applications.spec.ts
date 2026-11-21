@@ -17,7 +17,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import { bangkokToday } from '../../src/state-machine/dates';
 import { FakeJobClient } from '../support/application-fakes';
 import { createTestDatabase, type TestDatabase } from '../support/db';
-import { TEST_JWT, bearer } from '../support/jwt';
+import { ALL_CATEGORIES, TEST_JWT, bearer } from '../support/jwt';
 import { FakeIdentity } from '../support/profile-resume-fakes';
 
 /** OutboxWriter มาจาก MessagingModule (Global) ในแอปจริง — เทสต์ไม่ต่อ RabbitMQ จึงให้ตัวเขียนตรง */
@@ -47,7 +47,7 @@ describe('Lifecycle 1.4 — ใบสมัครฝั่งนักศึก�
   let resumeId: string;
 
   const asStudent = (sub = student) => bearer({ role: 'STUDENT', sub });
-  const asHr = () => bearer({ role: 'COMPANY_HR', sub: randomUUID(), company_id: companyId, company_role: 'MEMBER' });
+  const asHr = () => bearer({ role: 'COMPANY_HR', sub: randomUUID(), company_id: companyId, company_role: 'MEMBER', company_categories: ALL_CATEGORIES });
 
   before(async function () {
     database = await createTestDatabase('lc_apply');

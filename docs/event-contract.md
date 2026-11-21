@@ -1,4 +1,4 @@
-# 📨 Event Contract (InternPath)
+# Event Contract (InternPath)
 
 > ที่เก็บหลักของ **Event ทั้งหมด** — Envelope, Payload, Routing, Retry/DLQ
 > สรุประดับ Service ดู [architecture.md](architecture.md) §2 | กฎธุรกิจที่ทำให้เกิด Event ดู [README.md](../README.md) หัวข้อ 5.x ที่อ้างในแต่ละรายการ
@@ -130,9 +130,9 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
   job_id: string
   company_id: string
   submission_id: string            // 1 ครั้งที่ส่งตรวจ (idempotency ของการตรวจ)
-  submission_kind: 'NEW' | 'EDIT' | 'RESUBMIT'   // RESUBMIT = แก้หลัง AUTO_REJECTED/ADMIN_REJECTED แล้วส่งใหม่
+  submission_kind: 'NEW' | 'EDIT' | 'RESUBMIT'   // RESUBMIT = แก้หลัง ADMIN_REJECTED แล้วส่งใหม่
   changed_fields?: string[]        // กรณี EDIT
-  content: {                       // เฉพาะฟิลด์ข้อความที่ต้องสแกน
+  content: {                       // ฟิลด์ข้อความให้ Admin อ่านในคิว (ไม่มีการสแกนอัตโนมัติ)
     job_title: string
     description: string
     responsibilities: string
@@ -151,19 +151,17 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
 ```
 *(เนื้อหาประกาศงานเป็นข้อมูลสาธารณะอยู่แล้ว ไม่ใช่ข้อมูลส่วนบุคคล)*
 
+> **ปรับ Requirement 2026-11-21:** Job ส่ง E01 **เฉพาะเมื่อบริษัทติดธง `UNDER_REVIEW`** (ซึ่งส่งทุก kind) — บริษัทปกติเผยแพร่ทันทีโดยไม่ผ่าน Verification จึงไม่มี E01/E02 ให้ Verification ตัดสินใจเนื้อหา Tag ทักษะไม่อยู่ใน payload (เป็นข้อมูลโครงสร้างของ Job)
+
 ### E02 `JobVerified`  (verification → job)
 ```ts
 {
   job_id: string
   submission_id: string
-  decision: 'APPROVE' | 'PENDING_REVIEW' | 'AUTO_REJECT'     // ผลตรวจอัตโนมัติ
-          | 'APPEAL_ACCEPTED'                                // HR อุทธรณ์ถูกต้อง → AUTO_REJECTED→PENDING_REVIEW
-          | 'ADMIN_APPROVE' | 'ADMIN_REJECT'                 // คำตัดสิน Admin (รวมผลอุทธรณ์)
+  decision: 'APPROVE' | 'PENDING_REVIEW'                     // ผลคัดกรอง: บริษัทติดธง ⇒ PENDING_REVIEW เสมอ (APPROVE สงวนไว้)
+          | 'ADMIN_APPROVE' | 'ADMIN_REJECT'                 // คำตัดสิน Admin
           | 'REMOVE' | 'RESTORE'                             // ผลตัดสินคำร้อง Report (RESTORE = ยกคำร้อง)
-  risk_score?: number               // 0–100
-  risk_level?: 'LOW' | 'MEDIUM' | 'HIGH'
-  reasons: Array<{ code: string, detail: string, matched_text?: string }>
-  is_appeal: boolean
+  reasons: Array<{ code: string, detail: string }>   // เช่น FLAGGED_COMPANY, หมายเหตุของ Admin
   decided_by: 'SYSTEM' | 'ADMIN'
   decided_at: string
   queue_item_id?: string            // บังคับเมื่อ decision = REMOVE | RESTORE: รายการคิวรายงานที่ตัดสิน (= queue_item_id ของ E04 ที่ระงับประกาศ)
@@ -194,7 +192,7 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
 
 **Job ต้องส่ง E03 ทุกการเปลี่ยนสถานะ** รวมทุกแถวที่เข้า `VERIFYING` (ส่งคู่กับ E01 ใน transaction เดียว ส่ง E03 ก่อน) — ค่า `application_effect` ของแถวเหล่านั้น: `PUBLISHED → VERIFYING` = `FREEZE` (มีใบสมัครค้างได้), `DRAFT`/`AUTO_REJECTED`/`ADMIN_REJECTED → VERIFYING` = `NONE`; `→ SUSPENDED` = `FREEZE`; `SUSPENDED → PUBLISHED|CLOSED` (RESTORE) = `UNFREEZE` (ดู [data-schema.md](data-schema.md) §8.2) — PM ตัดสิน 2026-11-15
 
-**`application_effect` ของการตีกลับ/ลบ และของผลตรวจ (PM ตัดสิน 2026-11-16):** `→ AUTO_REJECTED`, `→ ADMIN_REJECTED` (และ `→ REMOVED` เมื่อ Job ทำ E02 `REMOVE`) = `CANCEL_PRE_APPROVAL` — ค่าเดียวนี้หมายถึงทั้งสองกรณีตาม README 5.1.2 โดย Lifecycle ตรวจสถานะใบสมัครแต่ละใบเอง: ยังไม่ถึง `ADVISOR_APPROVED` ⇒ `CANCELLED` (ระบุเหตุผลว่างานถูกตีกลับ/ระงับถาวร) พร้อมแจ้งนักศึกษาและอาจารย์ที่ปรึกษา และคืนโควตาที่จองไว้; ตั้งแต่ `ADVISOR_APPROVED` ขึ้นไป (รวม `IN_PROGRESS`) ⇒ ไม่ยกเลิกอัตโนมัติ แต่ติดธงเตือนให้อาจารย์พิจารณา — `FLAG_POST_APPROVAL` สงวนไว้ ยังไม่มีผู้ส่ง (Lifecycle ไม่ต้องรอค่านี้) ส่วนการเข้า `PUBLISHED` จากผลตรวจ (`APPROVE`/`ADMIN_APPROVE`) = `UNFREEZE` และการเข้า `PENDING_REVIEW` (`PENDING_REVIEW`/`APPEAL_ACCEPTED`/Fail-safe `VERIFY_TIMEOUT`) = `FREEZE`
+**`application_effect` ของการตีกลับ/ลบ และของผลตรวจ (PM ตัดสิน 2026-11-16):** `→ ADMIN_REJECTED` (และ `→ REMOVED` เมื่อ Job ทำ E02 `REMOVE`) = `CANCEL_PRE_APPROVAL` — ค่าเดียวนี้หมายถึงทั้งสองกรณีตาม README 5.1.2 โดย Lifecycle ตรวจสถานะใบสมัครแต่ละใบเอง: ยังไม่ถึง `ADVISOR_APPROVED` ⇒ `CANCELLED` (ระบุเหตุผลว่างานถูกตีกลับ/ระงับถาวร) พร้อมแจ้งนักศึกษาและอาจารย์ที่ปรึกษา และคืนโควตาที่จองไว้; ตั้งแต่ `ADVISOR_APPROVED` ขึ้นไป (รวม `IN_PROGRESS`) ⇒ ไม่ยกเลิกอัตโนมัติ แต่ติดธงเตือนให้อาจารย์พิจารณา — `FLAG_POST_APPROVAL` สงวนไว้ ยังไม่มีผู้ส่ง (Lifecycle ไม่ต้องรอค่านี้) ส่วนการเข้า `PUBLISHED` จากผลตรวจ (`APPROVE`/`ADMIN_APPROVE`) = `UNFREEZE` และการเข้า `PENDING_REVIEW` (`PENDING_REVIEW`/`APPEAL_ACCEPTED`/Fail-safe `VERIFY_TIMEOUT`) = `FREEZE`
 
 **ค่าที่ Job ตั้งเมื่อรับ E02 (PM ตัดสิน 2026-11-16):** `published_at = now` เฉพาะเมื่ออนุมัติ (`VERIFYING → PUBLISHED`, `PENDING_REVIEW → PUBLISHED`) ไม่ตั้งตอน `RESTORE` (`SUSPENDED → PUBLISHED`) เพื่อไม่ให้ประกาศที่ถูกระงับแล้วคืนสถานะเด้งขึ้นบนสุดของหน้าค้นหา; `verifying_since` ตั้งเมื่อเข้า `VERIFYING` และเคลียร์เป็น NULL เมื่อออกจาก `VERIFYING` (ใช้ทำ Fail-safe 5 นาที); `status_history.actor_role` ของการเปลี่ยนจาก E02 = `PLATFORM_ADMIN` เมื่อ `decided_by = ADMIN` ไม่เช่นนั้น `SYSTEM` (`actor_id` เป็น NULL เพราะ E02 ไม่พก user id)
 
@@ -258,7 +256,7 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
   student_user_id: string
   old_advisor_id?: string
   new_advisor_id?: string
-  link_status: 'ADVISOR_LINK_PENDING' | 'LINKED' | 'UNLINKED'
+  link_status: 'LINKED' | 'UNLINKED'     // ADVISOR_LINK_PENDING เลิกใช้ (2026-11-21)
   changed_by: 'STUDENT' | 'ADVISOR' | 'ADMIN'
   entity_version: number
   changed_at: string
@@ -293,7 +291,7 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
   application_id: string
   student_user_id: string                       // เจ้าของรีวิว (ใช้ส่งต่อใน E10 เพื่อแจ้งนักศึกษา — เป็น user_id ไม่ใช่ข้อมูลส่วนบุคคล)
   company_id: string
-  content: { title?: string, body: string }     // สแกน Blacklist + ข้อมูลติดต่อส่วนตัว
+  content: { title?: string, body: string }     // เผยแพร่ทันที (ไม่สแกนเนื้อหา)
   rating: 1 | 2 | 3 | 4 | 5
   outcome_label: 'PASS' | 'FAIL' | 'TERMINATED' | 'NO_EVALUATION'
   submitted_at: string
@@ -305,15 +303,15 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
 {
   review_id: string
   student_user_id: string                    // ส่งต่อจาก E09 — Notification ใช้แจ้งนักศึกษา (ไม่ต้องหาเจ้าของรีวิวเอง)
-  decision: 'PUBLISH' | 'HOLD' | 'ADMIN_PUBLISH' | 'ADMIN_REMOVE'
-  reasons: Array<{ code: 'BLACKLIST' | 'PERSONAL_CONTACT' | 'REPORTED' | 'ADMIN', detail?: string }>
+  decision: 'PUBLISH' | 'HOLD' | 'ADMIN_PUBLISH' | 'ADMIN_REMOVE'   // Verification ตอบ PUBLISH ทุกครั้งที่รับ E09 (HOLD เลิกใช้); ADMIN_REMOVE มาจากคิว REVIEW_REPORT
+  reasons: Array<{ code: 'REPORTED' | 'ADMIN', detail?: string }>
   decided_by: 'SYSTEM' | 'ADMIN'
   decided_at: string
 }
 ```
-`HOLD` ⇒ รีวิวถูกพักและเข้าคิว Admin ไม่ถูกตีกลับ (README 5.5)
+`HOLD` เลิกใช้ (2026-11-21: ไม่มีการสแกนคำต้องห้าม/ข้อมูลติดต่อในรีวิว) — ค่าคงไว้ใน enum เพื่อความเข้ากันได้ย้อนหลัง
 
-**กติกาของผู้รับ (Lifecycle) — สไลซ์ 3 แบบ A:** `ADMIN_REMOVE` ใช้ได้กับรีวิวที่ `SUBMITTED`, `HELD` **หรือ `PUBLISHED`** (จาก `PUBLISHED` ⇒ เปลี่ยนเป็น `REMOVED` และส่ง `ReviewPublished` ใหม่ให้ตัวนับคะแนนตรง — มาจาก Admin ตัดสินรายการ `REVIEW_REPORT`); `ADMIN_PUBLISH` ของรีวิวที่ `PUBLISHED` อยู่แล้ว ⇒ ข้ามเงียบ (เป็นการยืนยันให้คงอยู่); E10 ที่สถานะรีวิวไม่ตรงกับที่คาด ⇒ ข้ามพร้อม log ไม่ throw; `reasons` ของการตัดสินโดย Admin มี `ADMIN` (พร้อม `detail` เมื่อมีเหตุผล) และ `REPORTED` เมื่อมาจากรายงาน
+**กติกาของผู้รับ (Lifecycle) — สไลซ์ 3 แบบ A:** `ADMIN_REMOVE` ใช้ได้กับรีวิวที่ `SUBMITTED` **หรือ `PUBLISHED`** (`HELD` เลิกใช้) (จาก `PUBLISHED` ⇒ เปลี่ยนเป็น `REMOVED` และส่ง `ReviewPublished` ใหม่ให้ตัวนับคะแนนตรง — มาจาก Admin ตัดสินรายการ `REVIEW_REPORT`); `ADMIN_PUBLISH` ของรีวิวที่ `PUBLISHED` อยู่แล้ว ⇒ ข้ามเงียบ (เป็นการยืนยันให้คงอยู่); E10 ที่สถานะรีวิวไม่ตรงกับที่คาด ⇒ ข้ามพร้อม log ไม่ throw; `reasons` ของการตัดสินโดย Admin มี `ADMIN` (พร้อม `detail` เมื่อมีเหตุผล) และ `REPORTED` เมื่อมาจากรายงาน
 
 ### E11 `ReviewPublished`  (lifecycle → identity, notification)
 ```ts
@@ -392,10 +390,10 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 
 | Event | ผู้ได้รับแจ้ง | เงื่อนไข |
 | :--- | :--- | :--- |
-| `JobStatusChanged` | HR ของบริษัท | to ∈ {`PUBLISHED`, `PENDING_REVIEW`, `AUTO_REJECTED`, `ADMIN_REJECTED`, `SUSPENDED`, `REMOVED`} |
+| `JobStatusChanged` | HR ของบริษัท | to ∈ {`PUBLISHED`, `PENDING_REVIEW`, `ADMIN_REJECTED`, `SUSPENDED`, `REMOVED`} |
 | `ReportThresholdReached` | Admin | เสมอ |
 | `CompanyStatusChanged` | HR Owner | เมื่อสถานะ = `VERIFIED` / `NEED_MORE_INFO` / `REJECTED` / `SUSPENDED` |
-| `AdvisorLinkChanged` | อาจารย์ใหม่ (`LINKED` รอยืนยัน), นักศึกษา | ตาม `link_status` |
+| `AdvisorLinkChanged` | อาจารย์ที่ผูกกับนักศึกษา, นักศึกษา | ตาม `link_status` (อาจารย์สร้างนักศึกษา = `LINKED` ทันที `changed_by=ADVISOR`) |
 | `ApplicationStatusChanged` | ตาม **Recipient Matrix §6.1** (แยกตาม `to_status`) | ผู้รับ: นักศึกษา, HR, อาจารย์ ตามสถานะ |
 | `ReviewModerationResult` | นักศึกษา (`student_user_id` ใน payload; เมื่อ `HOLD`/`ADMIN_REMOVE`), Admin (เมื่อ `HOLD` — รายชื่อจาก `GET /internal/v1/admins`) | — |
 | `ReviewPublished` | HR ของบริษัท | มีรีวิวใหม่ |
@@ -410,25 +408,25 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 
 > Tester (เจ้าของ Lifecycle) แก้ได้ถ้ามีเหตุผลด้านโดเมน แต่ต้องแก้ตารางนี้ในเอกสารและแจ้งเจ้าของ Notification (กฎ "contract ล็อก" — developer-guide §4 ข้อ 8) v2 แก้จากร่างแรก: `HR_REJECTED` ไม่แจ้งอาจารย์, `ADVISOR_REJECTED` แจ้ง HR, `IN_PROGRESS` ส่งอีเมลถึงนักศึกษา และอาจารย์ได้รับแจ้งเรื่องถอน/ถอนข้อเสนอ/หมดเวลาเฉพาะเมื่อใบสมัครเคยถึงขั้นของอาจารย์
 
-✉ = In-App + อีเมล • In-app = In-App อย่างเดียว • — = ไม่แจ้ง (ตามสถานะ `to_status`)
+In-App + อีเมล = แจ้งทั้งสองช่องทาง • In-app = In-App อย่างเดียว • — = ไม่แจ้ง (ตามสถานะ `to_status`)
 
 | `to_status` | นักศึกษา | HR | อาจารย์ |
 | :--- | :-: | :-: | :-: |
-| `PENDING` | — | ✉ | — |
-| `HR_ACCEPTED` | ✉ | — | — |
-| `ADVISOR_PENDING` | — | In-app | ✉ |
-| `ADVISOR_APPROVED` | ✉ | ✉ | — |
-| `IN_PROGRESS` | ✉ (HR ปรับ `start_date`/`end_date` ได้ตอนยืนยัน — UAT-35) | — | In-app |
-| `EVALUATED_PASS` | ✉ | — | In-app |
-| `EVALUATED_FAIL` | ✉ | — | ✉ |
-| `FAIL_DISPUTED` | — | In-app | ✉ |
-| `REEVALUATION_REQUESTED` | In-app | ✉ | — |
+| `PENDING` | — | In-App + อีเมล | — |
+| `HR_ACCEPTED` | In-App + อีเมล | — | — |
+| `ADVISOR_PENDING` | — | In-app | In-App + อีเมล |
+| `ADVISOR_APPROVED` | In-App + อีเมล | In-App + อีเมล | — |
+| `IN_PROGRESS` | In-App + อีเมล (HR ปรับ `start_date`/`end_date` ได้ตอนยืนยัน — UAT-35) | — | In-app |
+| `EVALUATED_PASS` | In-App + อีเมล | — | In-app |
+| `EVALUATED_FAIL` | In-App + อีเมล | — | In-App + อีเมล |
+| `FAIL_DISPUTED` | — | In-app | In-App + อีเมล |
+| `REEVALUATION_REQUESTED` | In-app | In-App + อีเมล | — |
 | `COMPLETED`, `NO_EVALUATION` | In-app | In-app | In-app |
-| `TERMINATED` | ✉ | ✉ | ✉ |
-| `HR_REJECTED` | ✉ | — | — |
-| `ADVISOR_REJECTED` | ✉ | In-app | — |
-| `OFFER_RESCINDED` | ✉ | — | In-app เฉพาะเมื่อ `from_status` ∈ {`ADVISOR_PENDING`, `ADVISOR_APPROVED`} |
-| `CANCELLED` (ประกาศถูกตีกลับ/ลบ — README 5.1.2) | ✉ | — | In-app (แจ้งเสมอ) |
+| `TERMINATED` | In-App + อีเมล | In-App + อีเมล | In-App + อีเมล |
+| `HR_REJECTED` | In-App + อีเมล | — | — |
+| `ADVISOR_REJECTED` | In-App + อีเมล | In-app | — |
+| `OFFER_RESCINDED` | In-App + อีเมล | — | In-app เฉพาะเมื่อ `from_status` ∈ {`ADVISOR_PENDING`, `ADVISOR_APPROVED`} |
+| `CANCELLED` (ประกาศถูกตีกลับ/ลบ — README 5.1.2) | In-App + อีเมล | — | In-app (แจ้งเสมอ) |
 | `STUDENT_DECLINED` | — | In-app | — |
 | `WITHDRAWN` | — | In-app | In-app เฉพาะเมื่อ `from_status` ∈ {`ADVISOR_PENDING`, `ADVISOR_APPROVED`} |
 | `EXPIRED` | In-app | In-app | In-app เฉพาะเมื่อ `from_status = ADVISOR_APPROVED` |

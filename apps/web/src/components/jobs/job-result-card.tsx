@@ -9,7 +9,7 @@ const workModeLabel: Record<WorkMode, string> = { ONSITE: 'On-Site', HYBRID: 'Hy
 function Badge({ children, tone }: { children: React.ReactNode; tone: 'success' | 'accent' | 'neutral' | 'warning' }) {
   const styles = {
     success: 'bg-success-soft text-success-text',
-    accent: 'bg-accent-soft text-accent',
+    accent: 'bg-accent-soft text-accent-text',
     neutral: 'bg-surface-muted text-ink-soft',
     warning: 'bg-warning-soft text-warning-text',
   }[tone];
@@ -25,7 +25,7 @@ export function formatDeadline(isoDate: string): string {
 export function JobResultCard({ job, rating }: { job: SearchJobItem; rating?: CompanyRating }) {
   const category = CATEGORIES.find((entry) => entry.id === job.category)?.label ?? job.category;
   return (
-    <article className="flex flex-col rounded-xl border border-border bg-surface p-5 shadow-sm">
+    <article className="flex flex-col rounded-xl border border-border bg-surface p-5">
       <div className="flex flex-wrap items-center gap-2">
         <Badge tone="neutral">{category}</Badge>
         {job.featured && <Badge tone="accent">Featured</Badge>}
@@ -33,6 +33,11 @@ export function JobResultCard({ job, rating }: { job: SearchJobItem; rating?: Co
       </div>
       <h2 className="mt-3 text-lg font-semibold">{job.job_title}</h2>
       <p className="mt-1 text-sm text-ink-soft">{job.company.name}</p>
+      {job.tags.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5" aria-label="Tag ทักษะ">
+          {job.tags.map((tag) => <Badge key={tag.id} tone="neutral">{tag.name}</Badge>)}
+        </div>
+      )}
       <div className="mt-3 flex flex-wrap gap-2">
         {job.company.badges.map((badge) => <Badge key={badge} tone="success">{badge}</Badge>)}
       </div>
@@ -50,7 +55,7 @@ export function JobResultCard({ job, rating }: { job: SearchJobItem; rating?: Co
       <p className="mt-3 text-xs text-ink-soft">เปิดรับอีก {job.quota_available} จาก {job.quota} ตำแหน่ง</p>
       <Link
         href={`/jobs/item?id=${job.id}`}
-        className="mt-5 inline-block self-start rounded-lg bg-primary-soft px-4 py-2 text-sm font-semibold text-primary hover:bg-primary hover:text-white"
+        className="mt-5 inline-block self-start rounded-full bg-primary-soft px-4 py-2 text-sm font-semibold text-primary hover:bg-primary hover:text-white"
       >
         ดูรายละเอียด
       </Link>

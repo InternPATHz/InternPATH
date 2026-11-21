@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AppException, isUuid } from '@internpath/common';
 import type { ConsentCheckBatchRequest, ConsentCheckBatchResponse, ConsentCheckRequest, ConsentCheckResponse, InternalAdminsResponse, InternalCompanyMembersResponse,
-  InternalDenylistResponse, InternalStudentNamesResponse, InternalStudentResponse, UserContact } from '@internpath/contracts';
+  InternalDenylistResponse, InternalStudentNamesResponse, InternalStudentResponse, InternalStudentSummariesResponse, UserContact } from '@internpath/contracts';
 import { PrismaService } from '../prisma/prisma.service';
 
 /** `?ids=` แบบ Batch: UUID คั่นด้วยจุลภาค 1–100 รายการ (ตัดซ้ำ คงลำดับ) */
@@ -60,6 +60,21 @@ export class InternalService {
     return unique.flatMap((id) => {
       const fullName = byId.get(id);
       return fullName === undefined ? [] : [{ user_id: id, full_name: fullName }];
+    });
+  }
+
+  /**
+   * สรุปนักศึกษาแบบ Batch ให้ Lifecycle (หน้ารายการของอาจารย์พร้อมตัวกรองชั้นปี/สถานะการฝึก)
+   * ข้ามบัญชีที่ลบแล้วและ id ที่ไม่ใช่นักศึกษา — ผู้รับห้ามเก็บ full_name ลง DB/cache/Event/log
+   */
+  async studentSummaries(ids: string): Promise<InternalStudentSummariesResponse> {
+    const unique = parseBatchIds(ids);
+    const profiles = await this.db.studentProfileIdentity.findMany({ where: { userId: { in: unique }, user: { role: 'STUDENT', status: { not: 'DELETED' } } },
+      select: { userId: true, studentCode: true, major: true, yearLevel: true, user: { select: { fullName: true } } } });
+    const byId = new Map(profiles.map((profile) => [profile.userId, profile]));
+    return unique.flatMap((id) => {
+      const profile = byId.get(id);
+      return profile ? [{ user_id: id, full_name: profile.user.fullName, student_code: profile.studentCode, major: profile.major, year_level: profile.yearLevel }] : [];
     });
   }
 

@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException, normalizePemKey } from '@internpath/common';
-import type { AuthUser, LoginResponse, RegisterCompanyRequest, RegisterStudentRequest } from '@internpath/contracts';
+import type { AuthUser, JobCategory, LoginResponse, RegisterCompanyRequest } from '@internpath/contracts';
 import * as jwt from 'jsonwebtoken';
 import { Prisma, User, UserStatus } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -13,6 +13,8 @@ import { hashPassword, verifyPassword } from './password-hash';
 const VERIFY_TTL_MS = 24 * 60 * 60 * 1000;
 const RESET_TTL_MS = 30 * 60 * 1000;
 const LOGIN_UNLOCK_TTL_MS = 15 * 60 * 1000;
+/** อายุลิงก์คำเชิญนักศึกษาที่อาจารย์สร้าง (api-contract §4.1) */
+export const STUDENT_INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const LOCK_MS = 15 * 60 * 1000;
 // Keep the Argon2id cost aligned with hashPassword so unknown emails take a comparable path.
@@ -53,17 +55,18 @@ export class AuthService {
     return university.id;
   }
 
-  private async issueEmailToken(tx: Prisma.TransactionClient, userId: string, purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'LOGIN_UNLOCK'): Promise<string> {
+  async issueEmailToken(tx: Prisma.TransactionClient, userId: string, purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'LOGIN_UNLOCK' | 'STUDENT_INVITATION'): Promise<string> {
     const token = newToken();
     await tx.emailToken.create({ data: {
       userId, purpose, tokenHash: hashToken(token),
       expiresAt: new Date(Date.now() + (purpose === 'VERIFY_EMAIL' ? VERIFY_TTL_MS
-        : purpose === 'RESET_PASSWORD' ? RESET_TTL_MS : LOGIN_UNLOCK_TTL_MS)),
+        : purpose === 'RESET_PASSWORD' ? RESET_TTL_MS : purpose === 'STUDENT_INVITATION' ? STUDENT_INVITATION_TTL_MS : LOGIN_UNLOCK_TTL_MS)),
     } });
     return token;
   }
 
-  private async registerUser(email: string, password: string, fullName: string, role: 'STUDENT' | 'ADVISOR', profile: RegisterStudentRequest | RegisterAdvisorDto): Promise<void> {
+  /** สมัครอาจารย์เท่านั้น — นักศึกษาไม่สมัครเอง (อาจารย์สร้างบัญชีให้ ปรับ 2026-11-21) */
+  private async registerAdvisorUser(email: string, password: string, fullName: string, profile: RegisterAdvisorDto): Promise<void> {
     const normalized = normalizeEmail(email);
     const domain = this.requireAcademic(normalized);
     const passwordHash = await hashPassword(password);
@@ -72,14 +75,8 @@ export class AuthService {
       token = await this.db.$transaction(async (tx) => {
         const universityId = await this.universityId(tx, domain);
         const user = await tx.user.create({ data: {
-          email: normalized, passwordHash, fullName: fullName.trim(), role, universityId,
-          ...(role === 'STUDENT'
-            ? { studentProfile: { create: {
-                studentCode: (profile as RegisterStudentRequest).student_code,
-                major: (profile as RegisterStudentRequest).major,
-                yearLevel: (profile as RegisterStudentRequest).year_level,
-              } } }
-            : { advisorProfile: { create: { department: (profile as RegisterAdvisorDto).department } } }),
+          email: normalized, passwordHash, fullName: fullName.trim(), role: 'ADVISOR', universityId,
+          advisorProfile: { create: { department: profile.department } },
           consents: { create: { type: 'PRIVACY_POLICY', policyVersion: 'v1' } },
         } });
         return this.issueEmailToken(tx, user.id, 'VERIFY_EMAIL');
@@ -92,12 +89,35 @@ export class AuthService {
     catch { /* The account is committed; do not report registration as failed. */ }
   }
 
-  registerStudent(body: RegisterStudentRequest): Promise<void> {
-    return this.registerUser(body.email, body.password, body.full_name, 'STUDENT', body);
+  registerAdvisor(body: RegisterAdvisorDto): Promise<void> {
+    return this.registerAdvisorUser(body.email, body.password, body.full_name, body);
   }
 
-  registerAdvisor(body: RegisterAdvisorDto): Promise<void> {
-    return this.registerUser(body.email, body.password, body.full_name, 'ADVISOR', body);
+  /**
+   * นักศึกษาที่อาจารย์สร้างตั้งรหัสผ่านจากลิงก์คำเชิญ (`POST /auth/student-invitations/accept`): ใช้ครั้งเดียว อายุ 7 วัน
+   * ตั้งรหัสผ่าน ยืนยันอีเมล และเปิดใช้บัญชี (`ACTIVE`) ในขั้นตอนเดียว; ผิด/หมดอายุ/ใช้แล้ว ⇒ 400 VALIDATION_FAILED (INVALID_TOKEN)
+   */
+  async acceptStudentInvitation(token: string, password: string): Promise<void> {
+    const invalid = () => new AppException('VALIDATION_FAILED', 'ลิงก์คำเชิญไม่ถูกต้อง หมดอายุ หรือถูกใช้แล้ว', 400, [{ field: 'token', issue: 'INVALID_TOKEN' }]);
+    const tokenHash = hashToken(token);
+    // กันคำขอสุ่มจากสาธารณะก่อนคำนวณ Argon2id ที่หนัก
+    const probe = await this.db.emailToken.findUnique({ where: { tokenHash } });
+    if (!probe || probe.purpose !== 'STUDENT_INVITATION' || probe.usedAt || probe.expiresAt <= new Date()) throw invalid();
+    const passwordHash = await hashPassword(password);
+    await this.db.$transaction(async (tx) => {
+      const record = await tx.emailToken.findUnique({ where: { tokenHash }, include: { user: true } });
+      if (!record || record.purpose !== 'STUDENT_INVITATION' || record.usedAt || record.expiresAt <= new Date()) throw invalid();
+      const consumed = await tx.emailToken.updateMany({ where: { id: record.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
+      if (consumed.count !== 1) throw invalid();
+      const user = record.user;
+      if (user.role !== 'STUDENT' || user.status !== 'PENDING_EMAIL' || user.passwordHash !== null) throw invalid();
+      const updated = await tx.user.updateMany({ where: { id: user.id, status: 'PENDING_EMAIL', passwordHash: null },
+        data: { passwordHash, status: 'ACTIVE', emailVerifiedAt: new Date(), version: { increment: 1 } } });
+      if (updated.count !== 1) throw invalid();
+      await tx.consent.create({ data: { userId: user.id, type: 'PRIVACY_POLICY', policyVersion: 'v1' } });
+      await tx.statusHistory.create({ data: { entity: 'USER', entityId: user.id, fromStatus: 'PENDING_EMAIL', toStatus: 'ACTIVE',
+        actorId: user.id, actorRole: 'STUDENT', reason: 'STUDENT_INVITATION_ACCEPTED', correlationId: randomUUID() } });
+    });
   }
 
   async registerCompany(body: RegisterCompanyRequest): Promise<void> {
@@ -169,10 +189,10 @@ export class AuthService {
     return Number.isInteger(ttl) && ttl > 0 ? ttl : 900;
   }
 
-  private accessToken(user: User, companyId?: string, companyRole?: 'OWNER' | 'MEMBER', advisorId?: string): string {
+  private accessToken(user: User, companyId?: string, companyRole?: 'OWNER' | 'MEMBER', advisorId?: string, companyCategories?: JobCategory[]): string {
     const privateKey = normalizePemKey(this.config.get<string>('JWT_PRIVATE_KEY'));
     if (!privateKey) throw new AppException('AUTH_NOT_CONFIGURED', 'ระบบยังไม่ได้ตั้งค่า JWT_PRIVATE_KEY', 500);
-    return jwt.sign({ role: user.role, ...(companyId ? { company_id: companyId, company_role: companyRole } : {}), ...(advisorId ? { advisor_id: advisorId } : {}), ...(user.universityId ? { university_id: user.universityId } : {}) }, privateKey, { algorithm: 'RS256', subject: user.id, jwtid: randomUUID(), expiresIn: this.accessTtl() });
+    return jwt.sign({ role: user.role, ...(companyId ? { company_id: companyId, company_role: companyRole } : {}), ...(companyRole === 'MEMBER' ? { company_categories: companyCategories ?? [] } : {}), ...(advisorId ? { advisor_id: advisorId } : {}), ...(user.universityId ? { university_id: user.universityId } : {}) }, privateKey, { algorithm: 'RS256', subject: user.id, jwtid: randomUUID(), expiresIn: this.accessTtl() });
   }
 
   private async issueSession(user: User, familyId: string = randomUUID()): Promise<LoginResponse> {
@@ -180,7 +200,7 @@ export class AuthService {
       user.role === 'COMPANY_HR' ? this.db.companyMember.findUnique({ where: { userId: user.id } }) : null,
       user.role === 'STUDENT' ? this.db.studentProfileIdentity.findUnique({ where: { userId: user.id } }) : null,
     ]);
-    const access_token = this.accessToken(user, member?.companyId, member?.memberRole, student?.advisorId ?? undefined);
+    const access_token = this.accessToken(user, member?.companyId, member?.memberRole, student?.advisorId ?? undefined, member?.categories);
     const refresh_token = newToken();
     await this.db.refreshToken.create({ data: { userId: user.id, tokenHash: hashToken(refresh_token), familyId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) } });
     return { access_token, refresh_token, expires_in: this.accessTtl(), user: this.authUser(user) };
@@ -204,6 +224,12 @@ export class AuthService {
     }
     if (user.lockedUntil && user.lockedUntil <= new Date()) {
       user = await this.db.user.update({ where: { id: user.id }, data: { failedLoginCount: 0, lockedUntil: null } });
+    }
+    // บัญชีที่ยังไม่ตั้งรหัสผ่าน (นักศึกษาที่อาจารย์สร้าง) เข้าสู่ระบบไม่ได้: ตอบเหมือนรหัสผ่านผิดและใช้เวลาใกล้เคียงกัน
+    // แต่ไม่นับครั้งที่ผิด/ไม่ล็อกบัญชี (ผู้ไม่หวังดีล็อกบัญชีที่ยังไม่ถูกเปิดใช้ไม่ได้)
+    if (user.passwordHash === null) {
+      await verifyPassword(DUMMY_PASSWORD_HASH, password);
+      throw new AppException('INVALID_CREDENTIALS', 'อีเมลหรือรหัสผ่านไม่ถูกต้อง', 401);
     }
     const valid = await verifyPassword(user.passwordHash, password);
     if (!valid) {
@@ -268,7 +294,8 @@ export class AuthService {
   async forgotPassword(emailInput: string): Promise<void> {
     const email = normalizeEmail(emailInput);
     const user = await this.db.user.findUnique({ where: { email } });
-    if (!user || user.status === 'DELETED') return;
+    // บัญชีที่ยังไม่เคยตั้งรหัสผ่าน (นักศึกษาที่อาจารย์สร้าง) ต้องใช้ลิงก์คำเชิญ ไม่ใช่รีเซ็ตรหัสผ่าน
+    if (!user || user.status === 'DELETED' || user.passwordHash === null) return;
     const recent = await this.db.emailToken.findFirst({ where: { userId: user.id, purpose: 'RESET_PASSWORD', createdAt: { gt: new Date(Date.now() - 60_000) } } });
     if (recent) return;
     const token = await this.db.$transaction((tx) => this.issueEmailToken(tx, user.id, 'RESET_PASSWORD'));

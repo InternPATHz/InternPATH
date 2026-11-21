@@ -165,11 +165,11 @@ export function ProfileForm() {
             </div>
           </div>
           <div className="min-w-0">
-            <h2 className="text-2xl font-bold">{user?.full_name || 'นักศึกษา'}</h2>
+            <h2 className="text-2xl font-semibold">{user?.full_name || 'นักศึกษา'}</h2>
             <p className="text-sm text-ink-soft">{saved.major} · ชั้นปี {saved.year_level}</p>
           </div>
           <button type="button" onClick={() => { setMessage(null); setEditing(true); }}
-            className="ml-auto rounded-lg border border-border px-5 py-2 text-sm font-semibold hover:bg-surface-muted">
+            className="ml-auto rounded-full border border-border px-5 py-2 text-sm font-semibold hover:bg-surface-muted">
             แก้ไขโปรไฟล์
           </button>
         </div>
@@ -191,7 +191,7 @@ export function ProfileForm() {
   return (
     <form onSubmit={submit} className="space-y-5" noValidate>
       {major && (
-        <dl className="grid grid-cols-2 gap-4 rounded-xl border border-border bg-surface-muted p-4 text-sm">
+        <dl className="grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 text-sm">
           <div><dt className="text-xs text-ink-soft">สาขา</dt><dd className="font-medium">{major.major}</dd></div>
           <div><dt className="text-xs text-ink-soft">ชั้นปี</dt><dd className="font-medium">{major.year_level}</dd></div>
           <p className="col-span-2 text-xs text-ink-soft">สาขาและชั้นปีมาจากข้อมูลบัญชี แก้ไขที่หน้านี้ไม่ได้</p>
@@ -218,11 +218,11 @@ export function ProfileForm() {
       </label>
       {message && <Notice tone={message.tone}>{message.text}</Notice>}
       <div className="flex flex-wrap gap-3">
-        <button type="submit" disabled={busy} className="rounded-lg bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
+        <button type="submit" disabled={busy} className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
           {busy ? 'กำลังบันทึก…' : 'บันทึกโปรไฟล์'}
         </button>
         {saved && !isBlank(saved) && (
-          <button type="button" onClick={cancelEdit} disabled={busy} className="rounded-lg border border-border px-6 py-2.5 font-semibold hover:bg-surface-muted disabled:opacity-60">ยกเลิก</button>
+          <button type="button" onClick={cancelEdit} disabled={busy} className="rounded-full border border-border px-6 py-2.5 font-semibold hover:bg-surface-muted disabled:opacity-60">ยกเลิก</button>
         )}
       </div>
     </form>

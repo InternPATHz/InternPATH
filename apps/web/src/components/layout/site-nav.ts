@@ -17,7 +17,6 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { label: 'ใบสมัครของฉัน', href: '/student/applications', ready: true },
     { label: 'ใบรับรองของฉัน', href: '/student/certificates', ready: true },
     { label: 'โปรไฟล์และเรซูเม่', href: '/student/profile', ready: true },
-    { label: 'อาจารย์ที่ปรึกษา', href: '/student/advisor', ready: true },
   ],
   COMPANY_HR: [
     { label: 'ประกาศของฉัน', href: '/hr/jobs', ready: true },
@@ -25,7 +24,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { label: 'บริษัทของฉัน', href: '/hr/company', ready: true },
     { label: 'ทีม HR', href: '/hr/team', ready: true },
   ],
-  ADVISOR: [{ label: 'คำขออนุมัติ', href: '/advisor/requests', ready: false }],
+  ADVISOR: [{ label: 'นักศึกษาของฉัน', href: '/advisor/students', ready: true }],
   PLATFORM_ADMIN: [{ label: 'หลังบ้าน', href: '/admin/queue', ready: true }],
 };
 

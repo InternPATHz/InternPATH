@@ -23,6 +23,9 @@ export class InternalController {
   @Get('students/names') @InternalCallers('lifecycle')
   studentNames(@Query('ids') ids: string) { return this.service.studentNames(ids); }
 
+  @Get('students/summaries') @InternalCallers('lifecycle')
+  studentSummaries(@Query('ids') ids: string) { return this.service.studentSummaries(ids); }
+
   @Get('students/:user_id') @InternalCallers('lifecycle')
   student(@Param('user_id', ParseUUIDPipe) userId: string) { return this.service.student(userId); }
 
