@@ -10,6 +10,8 @@ import { expect } from 'chai';
 import * as jwt from 'jsonwebtoken';
 import { Client } from 'pg';
 import request from 'supertest';
+import sinon from 'sinon';
+import { AuthMailer } from '../../src/modules/auth/auth.mailer';
 import { AdvisorLinkModule } from '../../src/modules/advisor-links/advisor-link.module';
 import { UsersModule } from '../../src/modules/users/users.module';
 import { PrismaModule } from '../../src/prisma/prisma.module';
@@ -213,7 +215,11 @@ describe('Identity advisor-created students (Postgres จริง)', function (
 
     const before = await db.emailToken.findMany({ where: { userId: id } });
     await http().post(`/v1/advisor-links/students/${id}/actions/resend-invitation`).set(advisorAuth(advisorA)).expect(404);
-    await http().post(`/v1/advisor-links/students/${id}/actions/resend-invitation`).set(advisorAuth(advisorB)).expect(503); // ไม่ได้ตั้งค่า SMTP ในเทสต์ แต่คำเชิญใหม่ถูกออกแล้ว
+    // Force a mail failure so the expected 503 does not depend on a running Mailpit or developer SMTP settings.
+    const mailFailure = sinon.stub(app.get(AuthMailer), 'send').rejects(new Error('test SMTP failure'));
+    try {
+      await http().post(`/v1/advisor-links/students/${id}/actions/resend-invitation`).set(advisorAuth(advisorB)).expect(503);
+    } finally { mailFailure.restore(); }
     const after = await db.emailToken.findMany({ where: { userId: id }, orderBy: { createdAt: 'asc' } });
     expect(after).to.have.length(before.length + 1);
     expect(after.filter((t) => !t.usedAt)).to.have.length(1); // ลิงก์เดิมใช้ไม่ได้
