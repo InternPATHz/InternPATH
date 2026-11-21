@@ -50,10 +50,9 @@ export class ReportResolutionService {
       await lockScope(tx, 'job', probe.targetId);
       const item = await tx.queueItem.findUniqueOrThrow({ where: { id: itemId } });
       if (item.status === 'RESOLVED') throw new AppException('STATE_CONFLICT', 'รายการนี้ถูกตัดสินไปแล้ว', 409);
+      // ไม่บังคับ submission_id: ประกาศของบริษัทปกติเผยแพร่ทันทีโดยไม่เคยส่งตรวจ (ปรับ Requirement 2026-11-21)
+      // และ Job ตัดสิน REMOVE/RESTORE จาก queue_item_id เท่านั้น (event-contract E02) — มี submission ล่าสุดก็แนบไปตามเดิม
       const suspended = item.origin === 'REPORT_THRESHOLD';
-      if (suspended && !item.submissionId) {
-        throw new AppException('SUBMISSION_UNKNOWN', 'รายการนี้ยังไม่ทราบ submission ที่ต้องตัดสิน', 422);
-      }
 
       const now = new Date();
       const resolution = kind === 'dismiss' ? 'REPORT_DISMISSED' : 'REPORT_UPHELD';
