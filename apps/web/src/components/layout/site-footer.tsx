@@ -1,19 +1,24 @@
 import Link from 'next/link';
-import { FOOTER_LINKS } from './site-nav';
+import { FOOTER_LINKS, PUBLIC_NAV } from './site-nav';
 
+/** ท้ายหน้าพื้น Parchment ตัวอักษรเล็กแบบ fine-print (DESIGN-apple: footer) */
 export function SiteFooter() {
+  const links = [...PUBLIC_NAV, ...FOOTER_LINKS].filter((item) => item.ready);
   return (
-    <footer className="mt-12 border-t border-border bg-surface">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-8 text-sm text-ink-soft sm:flex-row sm:items-center sm:justify-between sm:px-6">
-        <div>
-          <p className="font-semibold text-ink">INTERNPATH</p>
-          <p className="mt-1">แพลตฟอร์มตัวกลางเชื่อมนักศึกษา อาจารย์ที่ปรึกษา และบริษัทสำหรับการฝึกงาน</p>
+    <footer className="bg-surface-muted">
+      <div className="mx-auto max-w-6xl px-4 py-10 text-xs text-ink-soft sm:px-6">
+        <p className="max-w-2xl leading-relaxed">
+          InternPath แพลตฟอร์มตัวกลางเชื่อมนักศึกษา อาจารย์ที่ปรึกษา และบริษัทสำหรับการฝึกงาน
+          ป้าย Featured คือบริการดันประกาศ ไม่ได้รับรองความน่าเชื่อถือของบริษัท
+        </p>
+        <div className="mt-6 flex flex-col gap-3 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <p>สงวนลิขสิทธิ์ InternPath</p>
+          <nav aria-label="ลิงก์ท้ายหน้า" className="flex flex-wrap gap-x-5 gap-y-2">
+            {links.map((item) => (
+              <Link key={item.href} href={item.href} className="text-ink/80 hover:text-ink hover:underline">{item.label}</Link>
+            ))}
+          </nav>
         </div>
-        <nav aria-label="ลิงก์ท้ายหน้า" className="flex flex-wrap gap-x-5 gap-y-2">
-          {FOOTER_LINKS.filter((item) => item.ready).map((item) => (
-            <Link key={item.href} href={item.href} className="hover:text-primary">{item.label}</Link>
-          ))}
-        </nav>
       </div>
     </footer>
   );

@@ -37,7 +37,7 @@ describe('QueueService สไลซ์ 2: JOB_REPORT / COMPANY_ACCOUNT (Postgres
     const now = new Date('2026-11-14T03:00:00Z');
     const a = reportArgs({ now });
     const item = await t.prisma.$transaction((tx) => queue.createReportItem(tx, a));
-    expect(item).to.include({ type: 'JOB_REPORT', targetType: 'job', targetId: a.jobId, priority: 'NORMAL', origin: 'REPORT_THRESHOLD', isAppeal: false, status: 'OPEN' });
+    expect(item).to.include({ type: 'JOB_REPORT', targetType: 'job', targetId: a.jobId, priority: 'NORMAL', origin: 'REPORT_THRESHOLD', status: 'OPEN' });
     expect(item.dueAt.toISOString()).to.equal('2026-11-16T03:00:00.000Z');
     const hist = await t.prisma.statusHistory.findMany({ where: { entityId: item.id } });
     expect(hist).to.have.length(1);

@@ -46,7 +46,7 @@ export function DeleteAccount() {
   if (done) {
     return (
       <main className="mx-auto max-w-md px-4 py-16 text-center">
-        <h1 className="text-2xl font-bold">ลบบัญชีเรียบร้อยแล้ว</h1>
+        <h1 className="text-2xl font-semibold">ลบบัญชีเรียบร้อยแล้ว</h1>
         <p className="mt-3 text-sm text-ink-soft">ข้อมูลส่วนบุคคลของคุณถูกลบหรือทำให้ไม่ระบุตัวตนตามนโยบายความเป็นส่วนตัวแล้ว ขอบคุณที่ใช้ InternPath</p>
         <Link href="/" className="mt-6 inline-block text-sm font-medium text-primary hover:underline">กลับหน้าแรก</Link>
       </main>
@@ -56,11 +56,11 @@ export function DeleteAccount() {
   return (
     <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
       <Link href="/account" className="text-sm font-medium text-primary hover:underline">บัญชีของฉัน</Link>
-      <h1 className="mt-3 text-3xl font-bold">ลบบัญชี</h1>
+      <h1 className="mt-3 text-3xl font-semibold">ลบบัญชี</h1>
       <p className="mt-2 text-sm text-ink-soft">การลบบัญชีทำย้อนกลับไม่ได้ ทุกอุปกรณ์จะถูกออกจากระบบทันที</p>
 
       <section aria-labelledby="deleted-title" className="mt-6 rounded-xl border border-border p-4">
-        <h2 id="deleted-title" className="text-lg font-bold">สิ่งที่จะถูกลบ</h2>
+        <h2 id="deleted-title" className="text-lg font-semibold">สิ่งที่จะถูกลบ</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-soft">
           <li>ข้อมูลส่วนตัว โปรไฟล์ รูปโปรไฟล์ และเรซูเม่ที่อัปโหลดไว้</li>
           <li>ใบสมัครที่ยังไม่ถึงขั้นรออาจารย์อนุมัติจะถูกยกเลิก และโควตาที่จองไว้จะถูกคืน</li>
@@ -68,7 +68,7 @@ export function DeleteAccount() {
         </ul>
       </section>
       <section aria-labelledby="kept-title" className="mt-4 rounded-xl border border-border p-4">
-        <h2 id="kept-title" className="text-lg font-bold">สิ่งที่ยังเก็บไว้ (โดยไม่ระบุตัวตน)</h2>
+        <h2 id="kept-title" className="text-lg font-semibold">สิ่งที่ยังเก็บไว้ (โดยไม่ระบุตัวตน)</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-soft">
           <li>E-Certificate ที่ออกแล้วยังตรวจสอบได้ แต่ชื่อบนหน้าตรวจสอบจะแสดงเป็น "ผู้ใช้ที่ลบบัญชีแล้ว"</li>
           <li>รีวิวที่เผยแพร่แล้วยังอยู่ แต่ไม่ระบุตัวตน และไม่กระทบคะแนนของบริษัท</li>
@@ -76,7 +76,7 @@ export function DeleteAccount() {
         </ul>
       </section>
       <section aria-labelledby="blocked-title" className="mt-4 rounded-xl border border-border bg-warning-soft p-4">
-        <h2 id="blocked-title" className="text-lg font-bold text-warning-text">ลบไม่ได้เมื่อ</h2>
+        <h2 id="blocked-title" className="text-lg font-semibold text-warning-text">ลบไม่ได้เมื่อ</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-warning-text">
           <li>มีใบสมัครที่ยังดำเนินอยู่ (รออาจารย์อนุมัติ อนุมัติแล้ว กำลังฝึกงาน หรืออยู่ระหว่างโต้แย้ง/ประเมินซ้ำ)</li>
           <li>คุณเป็นเจ้าของบัญชีบริษัท (Owner) ที่ยังไม่ได้โอนสิทธิ์ให้สมาชิกคนอื่น</li>
@@ -91,10 +91,10 @@ export function DeleteAccount() {
         </label>
         {error && <Notice tone="error">{error}</Notice>}
         <div className="flex flex-wrap gap-3">
-          <button type="submit" disabled={busy || text.trim() !== CONFIRM_WORD} className="rounded-lg bg-danger-text px-6 py-2.5 font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
+          <button type="submit" disabled={busy || text.trim() !== CONFIRM_WORD} className="rounded-full bg-danger-text px-6 py-2.5 font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">
             {busy ? 'กำลังลบบัญชี…' : 'ลบบัญชีถาวร'}
           </button>
-          <Link href="/account" className="rounded-lg border border-border px-6 py-2.5 font-semibold hover:bg-surface-muted">ยกเลิก</Link>
+          <Link href="/account" className="rounded-full border border-border px-6 py-2.5 font-semibold hover:bg-surface-muted">ยกเลิก</Link>
         </div>
       </form>
     </main>

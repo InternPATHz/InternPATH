@@ -135,9 +135,9 @@ export class ReportService {
     return true;
   }
 
-  /** submission_id ของผลตรวจล่าสุด (เลือกจาก submitted_at) — ว่างถ้าประกาศไม่เคยมีผลตรวจ */
+  /** submission_id ของการส่งตรวจล่าสุด (เลือกจาก submitted_at) — ว่างถ้าประกาศไม่เคยถูกส่งตรวจ (บริษัทปกติเผยแพร่ทันที) */
   async latestSubmissionId(tx: Tx, jobId: string): Promise<string | null> {
-    const latest = await tx.evaluation.findFirst({ where: { jobId }, orderBy: { submittedAt: 'desc' }, select: { submissionId: true } });
+    const latest = await tx.jobSubmissionSnapshot.findFirst({ where: { jobId }, orderBy: { submittedAt: 'desc' }, select: { submissionId: true } });
     return latest?.submissionId ?? null;
   }
 }

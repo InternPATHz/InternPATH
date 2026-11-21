@@ -2,11 +2,13 @@ import type {
   AcademicResult,
   AcademicResultRequest,
   AdvisorApplicationsQuery,
+  AdvisorTrainingFilter,
+  AdvisorTrainingStudentsQuery,
   ApplicationStatus,
   ProblemReportStatus,
 } from '@internpath/contracts';
-import { Transform } from 'class-transformer';
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { AcademicResult as PrismaAcademicResult, ProblemReportStatus as PrismaProblemReportStatus } from '../../../generated/client';
 import { APPLICATION_LIMITS, APPLICATION_STATUSES } from '../applications/applications.dto';
 import { PageQueryDto } from '../resumes/resumes.dto';
@@ -22,6 +24,26 @@ export class AdvisorApplicationsQueryDto extends PageQueryDto implements Advisor
   @IsOptional()
   @IsIn(APPLICATION_STATUSES)
   status?: ApplicationStatus;
+}
+
+/** GET /advisor/students — `?q=&year_level=&training_status=` + Pagination มาตรฐาน */
+export class AdvisorStudentsQueryDto extends PageQueryDto implements AdvisorTrainingStudentsQuery {
+  @IsOptional()
+  @Transform(trim)
+  @IsString()
+  @MaxLength(100)
+  q?: string;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(10)
+  year_level?: number;
+
+  @IsOptional()
+  @IsIn(['IN_TRAINING', 'COMPLETED'])
+  training_status?: AdvisorTrainingFilter;
 }
 
 /**

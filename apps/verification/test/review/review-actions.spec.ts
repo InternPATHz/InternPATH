@@ -34,22 +34,6 @@ describe('ReviewActions — publish-review / remove-review (Postgres จริ�
   };
   const results = async () => (await t.prisma.outboxEvent.findMany({ where: { type: 'ReviewModerationResult' } })).map((o) => o.payload as any);
 
-  /** รีวิวที่ถูกพัก + รายการ REVIEW_HELD */
-  const seedHeld = async () => {
-    const reviewId = randomUUID();
-    const companyId = randomUUID();
-    const studentUserId = randomUUID();
-    const item = await t.prisma.queueItem.create({
-      data: { type: 'REVIEW_HELD', targetType: 'review', targetId: reviewId, companyId, origin: 'REVIEW_SCAN', dueAt: new Date(Date.now() + 1e8) },
-    });
-    await t.prisma.reviewModeration.create({
-      data: {
-        reviewId, companyId, studentUserId, rating: 3, outcomeLabel: 'FAIL', body: 'ติดต่อ 081-234-5678', decision: 'HOLD',
-        reasons: [{ code: 'PERSONAL_CONTACT' }], status: 'HELD', queueItemId: item.id,
-      },
-    });
-    return { reviewId, itemId: item.id, studentUserId, companyId };
-  };
   /** รีวิวเผยแพร่แล้ว + รายการ REVIEW_REPORT (มีผู้รายงานหนึ่งคน) */
   const seedReported = async (status: 'PASSED' | 'ADMIN_PUBLISHED' = 'PASSED') => {
     const reviewId = randomUUID();
@@ -67,8 +51,8 @@ describe('ReviewActions — publish-review / remove-review (Postgres จริ�
   };
   const moderation = (reviewId: string) => t.prisma.reviewModeration.findUniqueOrThrow({ where: { reviewId } });
 
-  it('REVIEW_HELD + publish ⇒ ADMIN_PUBLISHED, E10 ADMIN_PUBLISH [ADMIN], ปิดรายการ, history และ audit ครบ', async () => {
-    const s = await seedHeld();
+  it('REVIEW_REPORT + publish ⇒ ADMIN_PUBLISHED, E10 ADMIN_PUBLISH [ADMIN], ปิดรายการ, history และ audit ครบ', async () => {
+    const s = await seedReported();
     const admin = who('PLATFORM_ADMIN');
     const res = await act(s.itemId, 'publish-review', admin.auth);
     expect(res.status).to.equal(204);
@@ -77,21 +61,21 @@ describe('ReviewActions — publish-review / remove-review (Postgres จริ�
     const out = await results();
     expect(out).to.have.length(1);
     expect(out[0]).to.include({ review_id: s.reviewId, student_user_id: s.studentUserId, decision: 'ADMIN_PUBLISH', decided_by: 'ADMIN' });
-    expect(out[0].reasons).to.deep.equal([{ code: 'ADMIN' }]);
+    expect(out[0].reasons).to.deep.equal([{ code: 'REPORTED' }, { code: 'ADMIN' }]);
     const audit = await t.prisma.adminAuditLog.findMany();
     expect(audit).to.have.length(1);
     expect(audit[0]).to.include({ adminId: admin.sub, action: 'REVIEW_PUBLISH', targetType: 'review', targetId: s.reviewId });
     expect(await t.prisma.statusHistory.count({ where: { entityId: s.itemId, toStatus: 'RESOLVED', actorId: admin.sub } })).to.equal(1);
   });
 
-  it('REVIEW_HELD + remove ⇒ ADMIN_REMOVED, E10 ADMIN_REMOVE พร้อม detail เหตุผล; audit REVIEW_REMOVE', async () => {
-    const s = await seedHeld();
+  it('REVIEW_REPORT + remove (พร้อม detail) ⇒ ADMIN_REMOVED, E10 ADMIN_REMOVE พร้อม detail เหตุผล; audit REVIEW_REMOVE', async () => {
+    const s = await seedReported();
     const res = await act(s.itemId, 'remove-review', who('PLATFORM_ADMIN').auth, { reason: 'มีข้อมูลติดต่อส่วนตัว' });
     expect(res.status).to.equal(204);
     expect(await moderation(s.reviewId)).to.include({ status: 'ADMIN_REMOVED', decision: 'ADMIN_REMOVE' });
     const out = await results();
     expect(out[0]).to.include({ decision: 'ADMIN_REMOVE', decided_by: 'ADMIN' });
-    expect(out[0].reasons).to.deep.equal([{ code: 'ADMIN', detail: 'มีข้อมูลติดต่อส่วนตัว' }]);
+    expect(out[0].reasons).to.deep.equal([{ code: 'REPORTED' }, { code: 'ADMIN', detail: 'มีข้อมูลติดต่อส่วนตัว' }]);
     expect((await t.prisma.adminAuditLog.findMany())[0]).to.include({ action: 'REVIEW_REMOVE', reason: 'มีข้อมูลติดต่อส่วนตัว' });
   });
 
@@ -125,7 +109,7 @@ describe('ReviewActions — publish-review / remove-review (Postgres จริ�
   });
 
   it('remove-review: ไม่มี/ว่าง/501 ตัว ⇒ 400 และรายการไม่เปลี่ยน; publish-review: reason 501 ตัว ⇒ 400', async () => {
-    const s = await seedHeld();
+    const s = await seedReported();
     const admin = who('PLATFORM_ADMIN');
     for (const body of [{}, { reason: '   ' }, { reason: 'ก'.repeat(501) }, { reason: 7 }]) {
       const res = await act(s.itemId, 'remove-review', admin.auth, body);
@@ -134,13 +118,13 @@ describe('ReviewActions — publish-review / remove-review (Postgres จริ�
     }
     expect((await act(s.itemId, 'publish-review', admin.auth, { reason: 'ก'.repeat(501) })).status).to.equal(400);
     expect(await t.prisma.queueItem.findUniqueOrThrow({ where: { id: s.itemId } })).to.include({ status: 'OPEN' });
-    expect(await moderation(s.reviewId)).to.include({ status: 'HELD' });
+    expect(await moderation(s.reviewId)).to.include({ status: 'PASSED' });
     expect(await results()).to.have.length(0);
     expect((await act(s.itemId, 'remove-review', admin.auth, { reason: 'ก'.repeat(500) })).status).to.equal(204);
   });
 
   it('Minor #10: reason ของ Admin มี NUL ⇒ 400 ทั้ง publish และ remove และรายการไม่เปลี่ยน', async () => {
-    const s = await seedHeld();
+    const s = await seedReported();
     const admin = who('PLATFORM_ADMIN');
     expect((await act(s.itemId, 'remove-review', admin.auth, { reason: 'เหตุผล\u0000' })).status).to.equal(400);
     expect((await act(s.itemId, 'publish-review', admin.auth, { reason: 'เหตุผล\u0000' })).status).to.equal(400);
@@ -149,14 +133,14 @@ describe('ReviewActions — publish-review / remove-review (Postgres จริ�
 
   it('ชนิดรายการอื่น ⇒ 422 UNSUPPORTED_ITEM_TYPE; RESOLVED แล้ว ⇒ 409; ไม่รู้จัก id ⇒ 404', async () => {
     const other = await t.prisma.queueItem.create({
-      data: { type: 'JOB_REVIEW', targetType: 'job', targetId: randomUUID(), origin: 'EVALUATION', dueAt: new Date(Date.now() + 1e8) },
+      data: { type: 'JOB_REVIEW', targetType: 'job', targetId: randomUUID(), origin: 'FLAGGED_COMPANY', dueAt: new Date(Date.now() + 1e8) },
     });
     const admin = who('PLATFORM_ADMIN');
     const wrong = await act(other.id, 'publish-review', admin.auth);
     expect(wrong.status).to.equal(422);
     expect(wrong.body.error.code).to.equal('UNSUPPORTED_ITEM_TYPE');
 
-    const s = await seedHeld();
+    const s = await seedReported();
     expect((await act(s.itemId, 'publish-review', admin.auth)).status).to.equal(204);
     const twice = await act(s.itemId, 'remove-review', admin.auth, { reason: 'ซ้ำ' });
     expect(twice.status).to.equal(409);
@@ -166,7 +150,7 @@ describe('ReviewActions — publish-review / remove-review (Postgres จริ�
   });
 
   it('Admin สองคนตัดสินรายการเดียวกันพร้อมกัน ⇒ คนหนึ่ง 204 อีกคน 409 และมี E10/audit ชุดเดียว', async () => {
-    const s = await seedHeld();
+    const s = await seedReported();
     const [a, b] = await Promise.all([
       act(s.itemId, 'publish-review', who('PLATFORM_ADMIN').auth),
       act(s.itemId, 'remove-review', who('PLATFORM_ADMIN').auth, { reason: 'ลบ' }),
@@ -186,7 +170,7 @@ describe('ReviewActions — publish-review / remove-review (Postgres จริ�
   });
 
   it('สิทธิ์: STUDENT/HR ⇒ 403, ไม่มี token ⇒ 401', async () => {
-    const s = await seedHeld();
+    const s = await seedReported();
     expect((await act(s.itemId, 'publish-review', who('STUDENT').auth)).status).to.equal(403);
     expect((await act(s.itemId, 'remove-review', who('COMPANY_HR', { company_id: s.companyId }).auth, { reason: 'x' })).status).to.equal(403);
     expect((await act(s.itemId, 'publish-review', undefined)).status).to.equal(401);

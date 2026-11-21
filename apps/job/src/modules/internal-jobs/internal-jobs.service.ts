@@ -18,6 +18,7 @@ export class InternalJobsService {
         quotaReserved: true,
         quotaConfirmed: true,
         jobTitle: true,
+        category: true,
         targetMajors: true,
         applicationDeadline: true,
         entityVersion: true,
@@ -30,6 +31,7 @@ export class InternalJobsService {
       job.quotaReserved === null ||
       job.quotaConfirmed === null ||
       job.jobTitle === null ||
+      job.category === null ||
       job.applicationDeadline === null
     ) {
       throw new Error('Internal Job fields are incomplete');
@@ -41,6 +43,7 @@ export class InternalJobsService {
       quota: job.quota,
       quota_available: job.quota - job.quotaReserved - job.quotaConfirmed,
       job_title: job.jobTitle,
+      category: job.category,
       target_majors: job.targetMajors,
       application_deadline: job.applicationDeadline.toISOString().slice(0, 10),
       entity_version: job.entityVersion,

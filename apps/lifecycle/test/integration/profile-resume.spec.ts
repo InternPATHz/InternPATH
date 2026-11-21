@@ -12,7 +12,8 @@ import { ProfilesModule } from '../../src/modules/profiles/profiles.module';
 import { ResumesModule } from '../../src/modules/resumes/resumes.module';
 import { MAX_ACTIVE_RESUMES } from '../../src/modules/resumes/resumes.service';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { TEST_JWT, bearer } from '../support/jwt';
+import { CategoryScopeService } from '../../src/common/auth/category-scope.service';
+import { ALL_CATEGORIES, TEST_JWT, bearer } from '../support/jwt';
 import { FakeIdentity, FakePrisma, FakeStorage, SAMPLE_FILES } from '../support/profile-resume-fakes';
 
 const prisma = new FakePrisma();
@@ -26,9 +27,10 @@ const SIGNED_URL_TTL = 600;
     { provide: PrismaService, useValue: prisma },
     { provide: S3StorageService, useValue: storage },
     { provide: IdentityInternalClient, useValue: identity },
+    { provide: CategoryScopeService, useValue: { scopeOf: () => null, assertInScope: async () => undefined } },
     { provide: LifecycleConfigService, useValue: { getNumber: async () => SIGNED_URL_TTL } },
   ],
-  exports: [PrismaService, S3StorageService, IdentityInternalClient, LifecycleConfigService],
+  exports: [PrismaService, S3StorageService, IdentityInternalClient, LifecycleConfigService, CategoryScopeService],
 })
 class FakeInfraModule {}
 
@@ -46,7 +48,7 @@ describe('Lifecycle 1.3 — โปรไฟล์และเรซูเม่ 
   const advisorOther = randomUUID();
 
   const asStudent = (sub = studentA) => bearer({ role: 'STUDENT', sub });
-  const asHr = (company_id = companyX) => bearer({ role: 'COMPANY_HR', sub: randomUUID(), company_id, company_role: 'MEMBER' });
+  const asHr = (company_id = companyX) => bearer({ role: 'COMPANY_HR', sub: randomUUID(), company_id, company_role: 'MEMBER', company_categories: ALL_CATEGORIES });
   const asAdvisor = (sub = advisorA) => bearer({ role: 'ADVISOR', sub });
   const asAdmin = () => bearer({ role: 'PLATFORM_ADMIN', sub: randomUUID() });
 

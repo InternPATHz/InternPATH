@@ -79,6 +79,11 @@ export class JobVerificationService {
         actorRole: p.decided_by === 'ADMIN' ? 'PLATFORM_ADMIN' : 'SYSTEM',
         // Lifecycle owns cancellation before approval and advisor flagging afterward.
         applicationEffect: transition.applicationEffect,
+        ...(p.decision === 'ADMIN_REJECT'
+          ? { adminReason: p.reasons.find((reason) => reason.code === 'ADMIN_REASON')?.detail ?? null }
+          : p.decision === 'ADMIN_APPROVE'
+            ? { adminReason: null }
+            : {}),
       },
       new Date(),
     );

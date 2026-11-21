@@ -12,9 +12,10 @@ export function resolveService(path: string): ServiceName | undefined {
 
   if (['/auth', '/.well-known', '/users', '/advisor-links', '/companies/me', '/directory',
     '/admin/companies', '/admin/advisors', '/admin/students', '/admin/users', '/admin/audit-logs']
-    .some((start) => prefix(path, start)) || path === '/advisors') return 'identity';
-  if (['/hr/jobs', '/jobs', '/search', '/admin/jobs'].some((start) => prefix(path, start))) return 'job';
-  if (['/verification', '/admin/queue', '/admin/blacklist', '/admin/risk-rules', '/admin/flags',
+    .some((start) => prefix(path, start))) return 'identity';
+  if (['/hr/jobs', '/jobs', '/search', '/tags', '/admin/jobs', '/admin/tags'].some((start) => prefix(path, start))) return 'job';
+  // ปรับ Requirement 2026-11-21: ถอด /admin/blacklist, /admin/risk-rules และ /advisors (ไม่มีปลายทาง ⇒ 404 ที่ Gateway)
+  if (['/verification', '/admin/queue', '/admin/flags',
     '/admin/audit'].some((start) => prefix(path, start))) return 'verification';
   if (['/applications', '/me', '/hr/applications', '/hr/certificates', '/hr/reviews', '/advisor',
     '/me/certificates', '/problem-reports', '/admin/lifecycle', '/public'].some((start) => prefix(path, start)))
@@ -24,7 +25,8 @@ export function resolveService(path: string): ServiceName | undefined {
 }
 
 const PUBLIC_POST = new Set([
-  '/auth/register/student', '/auth/register/advisor', '/auth/register/company', '/auth/verify-email',
+  // นักศึกษาไม่สมัครเอง (ไม่มี /auth/register/student) — ตั้งรหัสผ่านผ่านคำเชิญจากอาจารย์
+  '/auth/register/advisor', '/auth/register/company', '/auth/student-invitations/accept', '/auth/verify-email',
   '/auth/resend-verification', '/auth/login', '/auth/login/unlock/request', '/auth/refresh', '/auth/password/forgot',
   '/auth/password/reset', '/auth/invitations/accept',
 ]);
@@ -40,6 +42,7 @@ export const PUBLIC_READ_ROUTES: readonly { name: string; pattern: RegExp }[] = 
   { name: 'public-directory-list', pattern: /^\/directory\/companies$/ },
   { name: 'public-directory-detail', pattern: new RegExp(`^/directory/companies/${item}$`) },
   { name: 'public-company-reviews', pattern: new RegExp(`^/companies/${item}/reviews$`) },
+  { name: 'public-tags', pattern: /^\/tags$/ },
 ];
 
 export function publicReadRoute(method: string, path: string): string | undefined {

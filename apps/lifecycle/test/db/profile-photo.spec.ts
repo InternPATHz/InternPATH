@@ -17,7 +17,7 @@ import { PrismaModule } from '../../src/prisma/prisma.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
 import { FakeJobClient } from '../support/application-fakes';
 import { createTestDatabase, type TestDatabase } from '../support/db';
-import { TEST_JWT, bearer } from '../support/jwt';
+import { ALL_CATEGORIES, TEST_JWT, bearer } from '../support/jwt';
 import { sampleJpeg, samplePng } from '../support/photo-samples';
 import { FakeIdentity, FakeStorage, SAMPLE_FILES } from '../support/profile-resume-fakes';
 
@@ -47,7 +47,7 @@ describe('Lifecycle — รูปโปรไฟล์นักศึกษา (
   let student: string;
   let companyId: string;
   const asStudent = (sub = student) => bearer({ role: 'STUDENT', sub });
-  const asHr = () => bearer({ role: 'COMPANY_HR', sub: randomUUID(), company_id: companyId, company_role: 'MEMBER' });
+  const asHr = () => bearer({ role: 'COMPANY_HR', sub: randomUUID(), company_id: companyId, company_role: 'MEMBER', company_categories: ALL_CATEGORIES });
 
   before(async function () {
     database = await createTestDatabase('lc_photo');
@@ -160,8 +160,11 @@ describe('Lifecycle — รูปโปรไฟล์นักศึกษา (
   });
 
   describe('ฝั่ง HR (api-contract §7.3)', () => {
-    const seedApplication = () =>
-      prisma.application.create({ data: { jobId: randomUUID(), companyId, studentUserId: student, status: 'PENDING' } });
+    const seedApplication = async () => {
+      const jobId = randomUUID();
+      await prisma.jobSnapshot.create({ data: { jobId, companyId, title: 'x', status: 'PUBLISHED', category: 'TECH_IT' } });
+      return prisma.application.create({ data: { jobId, companyId, studentUserId: student, status: 'PENDING' } });
+    };
 
     it('รายละเอียด: profile.photo_url เฉพาะเมื่อมี Consent • ไม่มี Consent ⇒ ไม่มีรูป • รายการ HR ไม่มีรูปเด็ดขาด', async () => {
       await upload(sampleJpeg()).expect(200);

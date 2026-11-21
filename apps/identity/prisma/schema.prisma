@@ -48,6 +48,7 @@ enum CompanyMemberRole {
   @@map("company_member_role")
 }
 
+/// ADVISOR_LINK_PENDING เลิกใช้ (2026-11-21) — คงค่าไว้ใน enum ของ Postgres
 enum AdvisorLinkStatus {
   NONE
   ADVISOR_LINK_PENDING
@@ -69,8 +70,17 @@ enum EmailTokenPurpose {
   VERIFY_EMAIL
   RESET_PASSWORD
   LOGIN_UNLOCK
+  STUDENT_INVITATION
 
   @@map("email_token_purpose")
+}
+
+enum JobCategory {
+  TECH_IT
+  BUSINESS_MARKETING
+  CORPORATE_SERVICES
+
+  @@map("job_category")
 }
 
 enum ConsentType {
@@ -103,7 +113,8 @@ model University {
 model User {
   id               String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email            String     @unique @db.Citext
-  passwordHash     String     @map("password_hash")
+  /// ว่างได้เฉพาะนักศึกษาที่อาจารย์สร้างและยังไม่ตั้งรหัสผ่านผ่านลิงก์คำเชิญ
+  passwordHash     String?    @map("password_hash")
   role             Role
   status           UserStatus @default(PENDING_EMAIL)
   emailVerifiedAt  DateTime?  @map("email_verified_at") @db.Timestamptz(6)
@@ -122,7 +133,7 @@ model User {
   studentProfile   StudentProfileIdentity?  @relation("student")
   advisorProfile   AdvisorProfile?          @relation("advisor")
   currentStudents  StudentProfileIdentity[] @relation("current_advisor")
-  pendingStudents  StudentProfileIdentity[] @relation("pending_advisor")
+  createdStudents  StudentProfileIdentity[] @relation("created_by_advisor")
   companyMember    CompanyMember?
   emailTokens      EmailToken[]
   refreshTokens    RefreshToken[]
@@ -141,16 +152,15 @@ model StudentProfileIdentity {
   yearLevel            Int               @map("year_level")
   advisorId            String?           @map("advisor_id") @db.Uuid
   advisorLinkStatus    AdvisorLinkStatus @default(NONE) @map("advisor_link_status")
-  pendingAdvisorId     String?           @map("pending_advisor_id") @db.Uuid
+  createdByAdvisorId   String?           @map("created_by_advisor_id") @db.Uuid
   advisorLinkUpdatedAt DateTime?         @map("advisor_link_updated_at") @db.Timestamptz(6)
   createdAt            DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt            DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   user                 User              @relation("student", fields: [userId], references: [id])
   advisor              User?             @relation("current_advisor", fields: [advisorId], references: [id])
-  pendingAdvisor       User?             @relation("pending_advisor", fields: [pendingAdvisorId], references: [id])
+  createdByAdvisor     User?             @relation("created_by_advisor", fields: [createdByAdvisorId], references: [id])
 
   @@index([advisorId, advisorLinkStatus])
-  @@index([pendingAdvisorId, advisorLinkStatus])
   @@map("student_profiles_identity")
 }
 
@@ -198,6 +208,8 @@ model CompanyMember {
   companyId  String            @map("company_id") @db.Uuid
   userId     String            @unique @map("user_id") @db.Uuid
   memberRole CompanyMemberRole @default(MEMBER) @map("member_role")
+  /// สายงานของสมาชิก (MEMBER 1–3 ค่า; OWNER ว่าง = ทุกสายงาน)
+  categories JobCategory[]
   invitedBy  String?           @map("invited_by") @db.Uuid
   joinedAt   DateTime          @default(now()) @map("joined_at") @db.Timestamptz(6)
   createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(6)
@@ -213,6 +225,7 @@ model CompanyInvitation {
   id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   companyId  String    @map("company_id") @db.Uuid
   email      String    @db.Citext
+  categories JobCategory[]
   tokenHash  String    @unique @map("token_hash")
   expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
   acceptedAt DateTime? @map("accepted_at") @db.Timestamptz(6)

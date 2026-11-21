@@ -76,6 +76,15 @@ export interface AdvisorApplicationsQuery {
   status?: ApplicationStatus;
 }
 
+/** GET /advisor/students — ตัวกรองสถานะการฝึกงาน (ปรับ 2026-11-21; ตัวกรองเพิ่มเติม PM จะแจ้งภายหลัง) */
+export type AdvisorTrainingFilter = 'IN_TRAINING' | 'COMPLETED';
+
+export interface AdvisorTrainingStudentsQuery {
+  q?: string;
+  year_level?: number;
+  training_status?: AdvisorTrainingFilter;
+}
+
 export type AdvisorDisputeAction = 'request-reevaluation' | 'uphold-fail';
 
 /** ห้ามเปลี่ยน FAIL ของบริษัทเป็น PASS (FAIL → ได้เฉพาะ ACADEMIC_FAIL / REPEAT_REQUIRED) */

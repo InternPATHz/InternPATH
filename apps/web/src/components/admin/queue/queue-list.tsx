@@ -7,17 +7,17 @@ import type { Paginated, QueueItemStatus, QueueItemSummary, QueueItemType } from
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { ApiError } from '@/lib/api';
-import { ItemBadges, STATUS_LABEL, TYPE_LABEL, formatDateTime, riskStyle } from './queue-ui';
+import { ItemBadges, STATUS_LABEL, TYPE_LABEL, formatDateTime } from './queue-ui';
 
 const PAGE_SIZE = 20;
 
 /** ตัวกรองเก็บใน URL เพื่อแชร์ลิงก์/รีเฟรชแล้วคงค่าเดิม; `status` ไม่ระบุ = เฉพาะที่ยังไม่ปิด (ตรงกับ API) */
-type Filters = { type: string; risk_level: string; status: string; overdue: string; page: number };
+type Filters = { type: string; status: string; overdue: string; page: number };
 
 function readFilters(params: URLSearchParams): Filters {
   const page = Number(params.get('page'));
   return {
-    type: params.get('type') ?? '', risk_level: params.get('risk_level') ?? '',
+    type: params.get('type') ?? '',
     status: params.get('status') ?? '', overdue: params.get('overdue') ?? '',
     page: Number.isInteger(page) && page > 0 ? page : 1,
   };
@@ -25,7 +25,7 @@ function readFilters(params: URLSearchParams): Filters {
 
 function toQuery(filters: Filters): string {
   const query = new URLSearchParams();
-  for (const key of ['type', 'risk_level', 'status', 'overdue'] as const) if (filters[key]) query.set(key, filters[key]);
+  for (const key of ['type', 'status', 'overdue'] as const) if (filters[key]) query.set(key, filters[key]);
   if (filters.page > 1) query.set('page', String(filters.page));
   return query.toString();
 }
@@ -70,14 +70,12 @@ export function QueueList() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">คิวตรวจ</h1>
-      <p className="mt-1 text-sm text-ink-soft">ประกาศที่รอตรวจ อุทธรณ์ รายงาน ธงบริษัท และรีวิวที่ถูกพัก เรียงตามกำหนดเวลา</p>
+      <h1 className="text-2xl font-semibold">คิวตรวจ</h1>
+      <p className="mt-1 text-sm text-ink-soft">ประกาศของบริษัทที่ติดธงรอตรวจ รายงานประกาศ รายงานรีวิว และธงบริษัท เรียงตามกำหนดเวลา</p>
 
       <div className="mt-5 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
         <FilterSelect label="ประเภท" value={filters.type} onChange={(type) => update({ type })}
           options={[['', 'ทั้งหมด'], ...(Object.keys(TYPE_LABEL) as QueueItemType[]).map((key): [string, string] => [key, TYPE_LABEL[key]])]} />
-        <FilterSelect label="ความเสี่ยง" value={filters.risk_level} onChange={(risk_level) => update({ risk_level })}
-          options={[['', 'ทั้งหมด'], ['HIGH', 'สูง'], ['MEDIUM', 'กลาง'], ['LOW', 'ต่ำ']]} />
         <FilterSelect label="สถานะ" value={filters.status} onChange={(status) => update({ status })}
           options={[['', 'ที่ยังไม่ปิด'], ...(Object.keys(STATUS_LABEL) as QueueItemStatus[]).map((key): [string, string] => [key, STATUS_LABEL[key]])]} />
         <label className="flex items-center gap-2 pb-2 text-sm">
@@ -106,7 +104,7 @@ export function QueueList() {
             )}
             {result?.data.map((item) => (
               <tr key={item.id} className="border-t border-border hover:bg-surface-muted">
-                <td className={`border-l-4 px-4 py-3 ${riskStyle(item.risk_level).stripe}`}>
+                <td className="px-4 py-3">
                   <Link href={`/admin/queue/item?id=${item.id}`} className="font-semibold text-primary hover:underline">{TYPE_LABEL[item.type]}</Link>
                   <div className="mt-1"><ItemBadges item={item} /></div>
                 </td>

@@ -7,8 +7,7 @@ import {
   GraduationCap,
   Inbox,
   ScrollText,
-  ShieldBan,
-  SlidersHorizontal,
+  Tags,
   TriangleAlert,
   Users,
   type LucideIcon,
@@ -21,8 +20,6 @@ import {
 export const ADMIN_NAV_ICONS: Record<string, LucideIcon> = {
   'คิวตรวจ': Inbox,
   'ธงบริษัท': Flag,
-  'Blacklist': ShieldBan,
-  'Risk Rules': SlidersHorizontal,
   'Audit log': ScrollText,
   'บริษัท': Building2,
   'อาจารย์ที่ปรึกษา': GraduationCap,
@@ -31,4 +28,5 @@ export const ADMIN_NAV_ICONS: Record<string, LucideIcon> = {
   'รายงานปัญหา': TriangleAlert,
   'ใบรับรอง': Award,
   'ประกาศทุกสถานะ': Briefcase,
+  'Tag ทักษะ': Tags,
 };

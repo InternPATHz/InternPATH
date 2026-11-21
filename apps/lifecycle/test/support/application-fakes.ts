@@ -50,6 +50,7 @@ export class FakeJobClient {
       quota: 3,
       quota_available: 3,
       job_title: 'Test Job',
+      category: 'TECH_IT',
       target_majors: [],
       application_deadline: '2099-12-31',
       entity_version: 1,

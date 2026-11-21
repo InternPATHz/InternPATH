@@ -178,7 +178,7 @@ export function ApplicantDetail() {
   if (loadError) {
     return (
       <main className="mx-auto max-w-md px-4 py-16 text-center">
-        <h1 className="text-xl font-bold">{loadError.missing ? 'ไม่พบใบสมัครนี้' : 'โหลดใบสมัครไม่สำเร็จ'}</h1>
+        <h1 className="text-xl font-semibold">{loadError.missing ? 'ไม่พบใบสมัครนี้' : 'โหลดใบสมัครไม่สำเร็จ'}</h1>
         <p className="mt-2 text-sm text-ink-soft">{loadError.text}</p>
         <Link href="/hr/applicants" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปรายการผู้สมัคร</Link>
       </main>
@@ -201,7 +201,7 @@ export function ApplicantDetail() {
 
       <header className="mt-3 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold">{app.job_title}</h1>
+          <h1 className="text-3xl font-semibold">{app.job_title}</h1>
           <p className="mt-1 text-ink-soft">{app.profile?.full_name || `ผู้สมัคร #${app.student_user_id.slice(0, 8)}`}</p>
         </div>
         <ApplicationStatusBadge status={app.status} />
@@ -210,7 +210,7 @@ export function ApplicantDetail() {
       {app.frozen && <div className="mt-4"><Notice tone="error">ประกาศนี้ถูกระงับชั่วคราว จึงยังส่งข้อเสนอไม่ได้จนกว่าผู้ดูแลระบบจะตรวจสอบเสร็จ</Notice></div>}
       {message && <div className="mt-4"><Notice tone={message.tone}>{message.text}</Notice></div>}
 
-      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl border border-border bg-surface-muted p-4 sm:grid-cols-3">
+      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-3">
         <Fact label="สมัครเมื่อ">{formatDate(app.created_at)}</Fact>
         <Fact label="เริ่มฝึก (ตามข้อเสนอ)">{app.start_date ? formatDate(app.start_date) : '-'}</Fact>
         <Fact label="สิ้นสุด (ตามข้อเสนอ)">{app.end_date ? formatDate(app.end_date) : '-'}</Fact>
@@ -220,7 +220,7 @@ export function ApplicantDetail() {
       </dl>
 
       <section aria-labelledby="profile-title" className="mt-8">
-        <h2 id="profile-title" className="text-lg font-bold">โปรไฟล์ผู้สมัคร</h2>
+        <h2 id="profile-title" className="text-lg font-semibold">โปรไฟล์ผู้สมัคร</h2>
         {app.profile ? (
           <div className="mt-3 space-y-3 text-sm">
             <p><span className="text-ink-soft">สาขา/ชั้นปี:</span> {app.profile.major} ปี {app.profile.year_level}</p>
@@ -244,14 +244,14 @@ export function ApplicantDetail() {
             <p className="mt-1 whitespace-pre-line text-sm text-ink-soft">{app.cover_letter}</p>
           </div>
         )}
-        <button type="button" onClick={() => void openResume()} className="mt-4 rounded-lg border border-border px-5 py-2 text-sm font-semibold hover:bg-surface-muted">
+        <button type="button" onClick={() => void openResume()} className="mt-4 rounded-full border border-border px-5 py-2 text-sm font-semibold hover:bg-surface-muted">
           เปิดเรซูเม่
         </button>
       </section>
 
       {app.evaluation && (
         <section aria-labelledby="evaluation-title" className="mt-8">
-          <h2 id="evaluation-title" className="text-lg font-bold">ผลประเมิน</h2>
+          <h2 id="evaluation-title" className="text-lg font-semibold">ผลประเมิน</h2>
           <p className="mt-2 flex flex-wrap items-center gap-2 text-sm">
             {/* ป้ายสถานะกลางตาม design.md ชิ้นที่ 1: ไอคอน + ข้อความ ไม่ใช้สีอย่างเดียว */}
             {app.evaluation.result === 'PASS'
@@ -266,8 +266,8 @@ export function ApplicantDetail() {
 
       {certificate && (
         <section aria-labelledby="certificate-title" className="mt-8">
-          <h2 id="certificate-title" className="text-lg font-bold">E-Certificate</h2>
-          <dl className="mt-3 grid grid-cols-2 gap-4 rounded-xl border border-border bg-surface-muted p-4 sm:grid-cols-4">
+          <h2 id="certificate-title" className="text-lg font-semibold">E-Certificate</h2>
+          <dl className="mt-3 grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-4">
             <Fact label="รหัสใบรับรอง">{certificate.certificate_code}</Fact>
             <Fact label="สถานะ">
               {certificate.status === 'VALID'
@@ -285,7 +285,7 @@ export function ApplicantDetail() {
 
       {showActions && (
         <section aria-labelledby="actions-title" className="mt-8">
-          <h2 id="actions-title" className="text-lg font-bold">ดำเนินการ</h2>
+          <h2 id="actions-title" className="text-lg font-semibold">ดำเนินการ</h2>
           {app.accept_blocked_reason && (
             <p className="mt-1 text-sm text-warning-text">
               ส่งข้อเสนอไม่ได้ในขณะนี้: {app.accept_blocked_reason === 'ALREADY_CONFIRMED_ELSEWHERE' ? 'นักศึกษายืนยันฝึกงานกับที่อื่นแล้ว' : app.accept_blocked_reason === 'JOB_FROZEN' ? 'ประกาศถูกระงับชั่วคราว' : app.accept_blocked_reason}
@@ -296,19 +296,19 @@ export function ApplicantDetail() {
           <div className="mt-3 flex flex-wrap gap-3">
             {can('certificate') && (
               <button type="button" disabled={busy} onClick={() => void issueCertificate()}
-                className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
+                className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
                 ออกใบรับรอง
               </button>
             )}
             {canRevoke && (
               <button type="button" disabled={busy} onClick={() => openForm('revoke-certificate')}
-                className="rounded-lg border border-border px-5 py-2.5 text-sm font-semibold text-danger-text hover:bg-danger-soft disabled:opacity-60">
+                className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold text-danger-text hover:bg-danger-soft disabled:opacity-60">
                 เพิกถอนใบรับรอง
               </button>
             )}
             {visibleButtons.map(([kind, label, primary]) => (
               <button key={kind} type="button" disabled={busy} onClick={() => openForm(kind)}
-                className={`rounded-lg px-5 py-2.5 text-sm font-semibold disabled:opacity-60 ${primary ? 'bg-primary text-white hover:bg-primary-hover' : 'border border-border hover:bg-surface-muted'}`}>
+                className={`rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-60 ${primary ? 'bg-primary text-white hover:bg-primary-hover' : 'border border-border hover:bg-surface-muted'}`}>
                 {label}
               </button>
             ))}
@@ -356,10 +356,10 @@ export function ApplicantDetail() {
                 </label>
               )}
               <div className="flex gap-3">
-                <button type="submit" disabled={busy} className="rounded-lg bg-primary px-5 py-2 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
+                <button type="submit" disabled={busy} className="rounded-full bg-primary px-5 py-2 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
                   {busy ? 'กำลังดำเนินการ…' : 'ยืนยัน'}
                 </button>
-                <button type="button" onClick={() => setForm(null)} className="rounded-lg border border-border px-5 py-2 font-semibold hover:bg-surface-muted">ยกเลิก</button>
+                <button type="button" onClick={() => setForm(null)} className="rounded-full border border-border px-5 py-2 font-semibold hover:bg-surface-muted">ยกเลิก</button>
               </div>
             </form>
           )}

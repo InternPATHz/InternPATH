@@ -156,7 +156,7 @@ export class CompaniesService {
     if (!company) throw new AppException('NOT_FOUND', 'ไม่พบบริษัท', 404);
     return { ...this.response(company), email_domain: company.emailDomain, documents: await this.documentsFor(companyId),
       members: company.members.map((m) => ({ user_id: m.userId, full_name: m.user.fullName, email: m.user.email,
-        member_role: m.memberRole, joined_at: m.joinedAt.toISOString() })) };
+        member_role: m.memberRole, categories: m.memberRole === 'OWNER' ? [] : m.categories, joined_at: m.joinedAt.toISOString() })) };
   }
 
   private async verifyCriteria(tx: Prisma.TransactionClient, company: Company): Promise<void> {

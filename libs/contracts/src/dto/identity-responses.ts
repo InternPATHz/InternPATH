@@ -1,6 +1,6 @@
 // Response ที่ api-contract.md เดิมไม่ได้ระบุฟิลด์ — PM ตัดสินจาก data-schema.md (2026-11-14)
 // กฎ: ไม่ส่ง password_hash / token hash / object_key (ใช้ Signed URL แทน) — ดู api-contract §1
-import type { AdvisorLinkStatus, CompanyMemberRole, CompanyStatus, Role, UserStatus } from '../enums';
+import type { AdvisorLinkStatus, CompanyMemberRole, CompanyStatus, JobCategory, Role, UserStatus } from '../enums';
 import type { DirectoryCompanyListItem } from './identity';
 
 /** `user` ใน LoginResponse และ GET /users/me */
@@ -23,10 +23,9 @@ export interface UserMeResponse extends AuthUser {
     year_level: number;
     advisor_link_status: AdvisorLinkStatus;
     advisor_id?: string;
-    pending_advisor_id?: string;
   };
   advisor?: { department?: string };
-  company?: { id: string; name: string; status: CompanyStatus; member_role: CompanyMemberRole };
+  company?: { id: string; name: string; status: CompanyStatus; member_role: CompanyMemberRole; categories?: JobCategory[] };
 }
 
 export interface UpdateMeRequest {
@@ -34,30 +33,24 @@ export interface UpdateMeRequest {
   phone?: string;
 }
 
-/** GET /advisors */
-export interface AdvisorListItem {
-  id: string;
-  full_name: string;
-  department?: string;
+/** POST /advisor-links/students → 201 */
+export interface CreateStudentResponse {
+  student_user_id: string;
+  email: string;
+  invitation_expires_at: string;
 }
 
-/** GET /advisor-links/requests */
-export interface AdvisorLinkRequestItem {
-  student_user_id: string;
+/** GET /advisor-links/students — นักศึกษาในความดูแลสำหรับจัดการบัญชี (รายชื่อพร้อมสถานะการฝึกอยู่ที่ Lifecycle `GET /advisor/students`) */
+export interface AdvisorStudentItem {
+  user_id: string;
   full_name: string;
+  email: string;
   student_code: string;
   major: string;
   year_level: number;
-  requested_at: string;
-}
-
-/** GET /advisor-links/students */
-export interface LinkedStudentItem {
-  student_user_id: string;
-  full_name: string;
-  student_code: string;
-  major: string;
-  year_level: number;
+  /** `PENDING` = ยังไม่ตั้งรหัสผ่านจากลิงก์คำเชิญ */
+  activation_status: 'PENDING' | 'ACTIVE';
+  invitation_expires_at?: string;
 }
 
 /** GET /companies/me */
@@ -102,6 +95,8 @@ export interface CompanyMemberItem {
   full_name: string;
   email: string;
   member_role: CompanyMemberRole;
+  /** สายงานของ HR Member (Owner = ทุกสายงาน จึงเป็น []) */
+  categories: JobCategory[];
   joined_at: string;
 }
 
@@ -109,6 +104,7 @@ export interface CompanyMemberItem {
 export interface CompanyInvitationItem {
   id: string;
   email: string;
+  categories: JobCategory[];
   invited_at: string;
   expires_at: string;
 }
@@ -179,6 +175,18 @@ export interface InternalStudentResponse {
  * และ id ที่ไม่ใช่นักศึกษาจะไม่อยู่ในผลลัพธ์
  */
 export type InternalStudentNamesResponse = Array<{ user_id: string; full_name: string }>;
+
+/**
+ * GET /internal/v1/students/summaries?ids= (≤ 100, ผู้เรียก lifecycle) — สรุปนักศึกษาสำหรับหน้ารายการของอาจารย์
+ * ข้ามบัญชีที่ลบแล้วและ id ที่ไม่ใช่นักศึกษา; ผู้รับห้ามเก็บ `full_name` ลง DB/cache/Event/log
+ */
+export type InternalStudentSummariesResponse = Array<{
+  user_id: string;
+  full_name: string;
+  student_code: string;
+  major: string;
+  year_level: number;
+}>;
 
 /** GET /internal/v1/companies/{company_id}/members */
 export type InternalCompanyMembersResponse = Array<{ user_id: string; member_role: CompanyMemberRole }>;

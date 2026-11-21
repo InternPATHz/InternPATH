@@ -7,7 +7,7 @@ import type { Tx } from '../prisma/types';
 import { JobSnapshotService } from './job-snapshot.service';
 
 /** สถานะประกาศที่นับเป็น "ถูกปฏิเสธ/ระงับ/ลบ" ของบริษัท (README 5.1.4) */
-const REJECTION_STATUSES: ReadonlySet<string> = new Set<RejectionKind>(['AUTO_REJECTED', 'ADMIN_REJECTED', 'SUSPENDED', 'REMOVED']);
+const REJECTION_STATUSES: ReadonlySet<string> = new Set<RejectionKind>(['ADMIN_REJECTED', 'SUSPENDED', 'REMOVED']);
 
 /** จุดรวมของ E03 `JobStatusChanged` ทุกตัวที่ Verification รับ */
 @Injectable()

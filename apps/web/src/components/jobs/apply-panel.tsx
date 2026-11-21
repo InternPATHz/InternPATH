@@ -14,7 +14,7 @@ const COVER_LETTER_MAX = 5000; // api-contract §7.2
 
 const BLOCKED: Record<string, string> = {
   EMAIL_NOT_VERIFIED: 'ต้องยืนยันอีเมลก่อนจึงจะสมัครงานได้',
-  ADVISOR_NOT_LINKED: 'ต้องผูกอาจารย์ที่ปรึกษาให้เรียบร้อยก่อนสมัครงาน',
+  ADVISOR_NOT_LINKED: 'บัญชีของคุณยังไม่มีอาจารย์ที่ปรึกษา กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบ',
   REAPPLY_BLOCKED: 'คุณผ่านการฝึกงานแล้ว จึงสมัครงานใหม่ไม่ได้ เว้นแต่ผู้ดูแลระบบปลดล็อก',
 };
 
@@ -95,7 +95,7 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
 
   if (!open) {
     return (
-      <button type="button" onClick={() => setOpen(true)} className="w-full rounded-lg bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
+      <button type="button" onClick={() => setOpen(true)} className="w-full rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
         สมัครงานนี้
       </button>
     );
@@ -109,7 +109,6 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
     return (
       <div className="flex flex-col gap-2">
         <Notice tone="error">{BLOCKED[reason] ?? 'ยังสมัครงานไม่ได้ในขณะนี้'}</Notice>
-        {reason === 'ADVISOR_NOT_LINKED' && <Link href="/student/advisor" className="text-sm font-medium text-primary hover:underline">ไปผูกอาจารย์ที่ปรึกษา</Link>}
       </div>
     );
   }
@@ -147,7 +146,7 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
         <span>ฉันยินยอมให้ส่งเรซูเม่และโปรไฟล์ให้ {job.company.name} เพื่อพิจารณาใบสมัครนี้</span>
       </label>
       {error && <Notice tone="error">{error}</Notice>}
-      <button type="submit" disabled={busy} className="w-full rounded-lg bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
+      <button type="submit" disabled={busy} className="w-full rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
         {busy ? 'กำลังส่งใบสมัคร…' : 'ส่งใบสมัคร'}
       </button>
     </form>

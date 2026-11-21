@@ -29,7 +29,7 @@ describe('audit (Postgres จริง)', function () {
   it('record แล้ว list อ่านได้ (เรียงใหม่ไปเก่า) ตัวกรองทุกตัวทำงานและ Pagination ตาม meta', async () => {
     const adminA = randomUUID();
     const adminB = randomUUID();
-    await record({ adminId: adminA, action: 'BLACKLIST_CREATE', targetType: 'blacklist_term', targetId: randomUUID(), after: { term: 'x' } });
+    await record({ adminId: adminA, action: 'FLAG_SET', targetType: 'company_flag', targetId: randomUUID(), after: { active: true } });
     await new Promise((r) => setTimeout(r, 15));
     const cut = new Date();
     await new Promise((r) => setTimeout(r, 15));
@@ -38,7 +38,7 @@ describe('audit (Postgres จริง)', function () {
 
     const all = await audit.list({ page: 1, page_size: 20 });
     expect(all.meta).to.deep.equal({ page: 1, page_size: 20, total: 3 });
-    expect(all.data.map((r) => r.action)).to.deep.equal(['QUEUE_REJECT', 'QUEUE_APPROVE', 'BLACKLIST_CREATE']);
+    expect(all.data.map((r) => r.action)).to.deep.equal(['QUEUE_REJECT', 'QUEUE_APPROVE', 'FLAG_SET']);
     expect(all.data[1]).to.include({ admin_id: adminB, target_type: 'queue_item', reason: 'ok' });
     expect(all.data[1].before).to.deep.equal({ s: 1 });
 
@@ -54,7 +54,7 @@ describe('audit (Postgres จริง)', function () {
   });
 
   it('correlationId ที่ไม่ใช่ UUID ไม่ทำให้ record ล้ม', async () => {
-    await record({ adminId: randomUUID(), action: 'X', targetType: 't', targetId: 'risk_rules', correlationId: 'abc-123' });
+    await record({ adminId: randomUUID(), action: 'X', targetType: 't', targetId: 'company_flags', correlationId: 'abc-123' });
   });
 
   describe('GET /v1/admin/audit', () => {

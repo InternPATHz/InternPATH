@@ -135,7 +135,7 @@ export function FlagsList() {
 
   return (
     <div>
-      <h1 className="text-2xl font-bold">ธงบริษัท (UNDER_REVIEW)</h1>
+      <h1 className="text-2xl font-semibold">ธงบริษัท (UNDER_REVIEW)</h1>
       <p className="mt-1 text-sm text-ink-soft">
         บริษัทที่ติดธงจะมีประกาศใหม่เข้าคิวตรวจโดยอัตโนมัติ ธงตั้งจากระบบ (ประกาศถูกระงับตามเกณฑ์) หรือตั้งด้วยมือที่นี่ ต้องระบุเหตุผลทั้งตอนตั้งและตอนเคลียร์
       </p>
@@ -153,7 +153,7 @@ export function FlagsList() {
             <input value={newReason} onChange={(event) => setNewReason(event.target.value)} maxLength={REASON_MAX}
               className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" />
           </label>
-          <button type="submit" disabled={busy} className="rounded-lg bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">ตั้งธง</button>
+          <button type="submit" disabled={busy} className="rounded-full bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">ตั้งธง</button>
         </div>
         {newError && <div className="mt-3"><Notice tone="error">{newError}</Notice></div>}
       </form>
@@ -225,7 +225,7 @@ export function FlagsList() {
                         </label>
                         {formError && <div className="mt-2"><Notice tone="error">{formError}</Notice></div>}
                         <div className="mt-3 flex gap-2">
-                          <button type="submit" disabled={busy} className={`rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${item.active ? 'bg-primary hover:bg-primary-hover' : 'bg-danger hover:opacity-90'}`}>
+                          <button type="submit" disabled={busy} className={`rounded-full px-4 py-2 text-sm font-semibold text-white disabled:opacity-50 ${item.active ? 'bg-primary hover:bg-primary-hover' : 'bg-danger hover:opacity-90'}`}>
                             ยืนยัน{item.active ? 'เคลียร์ธง' : 'ตั้งธง'}
                           </button>
                           <button type="button" onClick={() => setOpenId(null)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface">ยกเลิก</button>

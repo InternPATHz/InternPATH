@@ -3,13 +3,13 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
-import type { RegisterCompanyRequest, RegisterStudentRequest } from '@internpath/contracts';
+import type { RegisterCompanyRequest } from '@internpath/contracts';
 import { ActionButton, AuthShell, Field, Notice } from '@/auth/ui';
 import { apiRequest } from '@/lib/api';
 
-type Role = 'student' | 'advisor' | 'company';
+// นักศึกษาไม่สมัครเอง — อาจารย์ที่ปรึกษาสร้างบัญชีและส่งลิงก์ตั้งรหัสผ่านทางอีเมล (ปรับ Requirement 2026-11-21)
+type Role = 'advisor' | 'company';
 const roles: Array<{ id: Role; label: string }> = [
-  { id: 'student', label: 'นักศึกษา' },
   { id: 'advisor', label: 'อาจารย์' },
   { id: 'company', label: 'บริษัท' },
 ];
@@ -32,7 +32,7 @@ function VisibilityButton({ visible, onToggle }: { visible: boolean; onToggle: (
 }
 
 export default function RegisterPage() {
-  const [role, setRole] = useState<Role>('student');
+  const [role, setRole] = useState<Role>('advisor');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [registeredEmail, setRegisteredEmail] = useState('');
@@ -53,12 +53,7 @@ export default function RegisterPage() {
     setBusy(true);
     setError('');
     try {
-      if (role === 'student') {
-        const body: RegisterStudentRequest = { email, password, full_name: fullName,
-          student_code: String(form.get('student_code')).trim(), major: String(form.get('major')).trim(),
-          year_level: Number(form.get('year_level')), accept_privacy: true };
-        await apiRequest<void>('/auth/register/student', body);
-      } else if (role === 'advisor') {
+      if (role === 'advisor') {
         await apiRequest<void>('/auth/register/advisor', { email, password, full_name: fullName,
           department: String(form.get('department')).trim(), accept_privacy: true });
       } else {
@@ -87,7 +82,8 @@ export default function RegisterPage() {
         <Link href="/resend-verification" className="text-primary hover:underline">ขอลิงก์ยืนยันใหม่</Link>
       </div>
     </div> : <>
-      <div className="mb-6 grid grid-cols-3 gap-2" role="group" aria-label="ประเภทบัญชี">
+      <p className="mb-4 rounded-lg bg-surface-muted px-4 py-3 text-sm text-ink-soft">นักศึกษาไม่ต้องสมัครเอง อาจารย์ที่ปรึกษาจะเพิ่มบัญชีให้และส่งลิงก์ตั้งรหัสผ่านไปที่อีเมลสถาบัน</p>
+      <div className="mb-6 grid grid-cols-2 gap-2" role="group" aria-label="ประเภทบัญชี">
         {roles.map((item) => <button key={item.id} type="button" onClick={() => {
           setRole(item.id); setError(''); setShowPassword(false); setShowConfirmPassword(false);
         }}
@@ -107,11 +103,6 @@ export default function RegisterPage() {
         </>}
         <Field label={role === 'company' ? 'ชื่อผู้ดูแลบริษัท' : 'ชื่อ-นามสกุล'} name="full_name" autoComplete="name" required />
         <Field label={role === 'company' ? 'อีเมลองค์กร' : 'อีเมลสถาบัน (.ac.th)'} name="email" type="email" autoComplete="email" required />
-        {role === 'student' && <>
-          <Field label="รหัสนักศึกษา" name="student_code" required />
-          <Field label="สาขาวิชา" name="major" required />
-          <Field label="ชั้นปี" name="year_level" type="number" min={1} max={10} required />
-        </>}
         {role === 'advisor' && <Field label="ภาควิชา" name="department" required />}
         <Field label="รหัสผ่าน (อย่างน้อย 12 ตัวอักษร)" name="password"
           type={showPassword ? 'text' : 'password'} minLength={12} autoComplete="new-password" required

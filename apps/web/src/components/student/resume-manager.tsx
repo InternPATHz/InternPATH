@@ -78,13 +78,13 @@ export function ResumeManager() {
   const full = (resumes?.length ?? 0) >= MAX_FILES;
   return (
     <section aria-labelledby="resume-title" className="mt-10">
-      <h2 id="resume-title" className="text-xl font-bold">เรซูเม่</h2>
+      <h2 id="resume-title" className="text-xl font-semibold">เรซูเม่</h2>
       <p className="mt-1 text-sm text-ink-soft">ไฟล์ PDF ไม่เกิน 5 MB มีได้สูงสุด {MAX_FILES} ไฟล์ ไฟล์แรกที่อัปโหลดเป็นไฟล์หลักโดยอัตโนมัติ บริษัทจะเห็นเรซูเม่เมื่อคุณยินยอมตอนสมัครเท่านั้น</p>
 
       <div className="mt-4">
         <input ref={input} type="file" accept="application/pdf,.pdf" onChange={upload} className="sr-only" id="resume-file" disabled={busy || full} />
         <button type="button" onClick={() => input.current?.click()} disabled={busy || full}
-          className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50">
+          className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50">
           {busy ? 'กำลังดำเนินการ…' : 'อัปโหลดเรซูเม่'}
         </button>
         {full && <span className="ml-3 text-sm text-ink-soft">ครบ {MAX_FILES} ไฟล์แล้ว ลบไฟล์เดิมก่อนจึงจะอัปโหลดเพิ่มได้</span>}

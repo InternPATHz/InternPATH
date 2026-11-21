@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConsumersModule } from './events/consumers/consumers.module';
 import { InternalJobsModule } from './modules/internal-jobs/internal-jobs.module';
 import { PublicJobsModule } from './modules/public-jobs/public-jobs.module';
+import { TagsModule } from './modules/tags/tags.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PrismaService } from './prisma/prisma.service';
 import type { Tx } from './prisma/types';
@@ -23,6 +24,7 @@ import type { Tx } from './prisma/types';
     }),
     ConsumersModule,
     PublicJobsModule,
+    TagsModule,
     InternalJobsModule,
   ],
 })

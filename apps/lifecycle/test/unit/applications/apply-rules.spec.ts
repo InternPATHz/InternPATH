@@ -20,6 +20,7 @@ const job = (data: Partial<InternalJobResponse> = {}): InternalJobResponse => ({
   quota: 2,
   quota_available: 2,
   job_title: 'Test Job',
+  category: 'TECH_IT',
   target_majors: [],
   application_deadline: '2026-12-31',
   entity_version: 1,

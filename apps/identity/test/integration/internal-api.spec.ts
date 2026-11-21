@@ -191,6 +191,24 @@ describe('Identity Internal API (Postgres จริง)', function () {
       .set('Authorization', lifecycle).expect(400);
   });
 
+  it('returns student summaries in batch only to Lifecycle (code, major, year; includes not-yet-active students; skips deleted and non-students)', async () => {
+    const pendingId = (await db.user.create({ data: { email: 'summary-pending@test.ac.th', passwordHash: null,
+      fullName: 'Summary Pending', role: 'STUDENT', status: 'PENDING_EMAIL', universityId,
+      studentProfile: { create: { studentCode: 'SUM-1', major: 'Data Science', yearLevel: 4 } } } })).id;
+    const lifecycle = `Bearer ${serviceToken('lifecycle')}`;
+    const res = await request(app.getHttpServer())
+      .get(`/internal/v1/students/summaries?ids=${pendingId},${studentId},${deletedId},${hrId},${randomUUID()},${pendingId}`)
+      .set('Authorization', lifecycle).expect(200);
+    expect(res.body).to.have.length(2);
+    expect(res.body[0]).to.deep.equal({ user_id: pendingId, full_name: 'Summary Pending', student_code: 'SUM-1', major: 'Data Science', year_level: 4 });
+    expect(res.body[1]).to.include.keys('user_id', 'full_name', 'student_code', 'major', 'year_level');
+    expect(JSON.stringify(res.body)).to.not.include('@');
+    await request(app.getHttpServer()).get(`/internal/v1/students/summaries?ids=${studentId}`).set('Authorization', `Bearer ${serviceToken('notification')}`).expect(403);
+    await request(app.getHttpServer()).get('/internal/v1/students/summaries').set('Authorization', lifecycle).expect(400);
+    await request(app.getHttpServer()).get('/internal/v1/students/summaries?ids=bad').set('Authorization', lifecycle).expect(400);
+    await request(app.getHttpServer()).get(`/internal/v1/students/summaries?ids=${Array(101).fill(studentId).join(',')}`).set('Authorization', lifecycle).expect(400);
+  });
+
   it('returns the denylist only to Gateway and enforces route allow-lists', async () => {
     const gateway = `Bearer ${serviceToken('gateway')}`;
     const notification = `Bearer ${serviceToken('notification')}`;

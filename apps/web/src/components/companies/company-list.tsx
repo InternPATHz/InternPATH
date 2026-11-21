@@ -52,11 +52,11 @@ export function CompanyList() {
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
   return (
     <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold">บริษัทและรีวิว</h1>
+      <h1 className="text-3xl font-semibold">บริษัทและรีวิว</h1>
       <p className="mt-2 text-sm text-ink-soft">ดูข้อมูลบริษัทที่ผ่านการรับรองและรีวิวจากผู้ฝึกงานจริง</p>
 
       <form role="search" onSubmit={(event) => { event.preventDefault(); update({ q: text.trim() || undefined }); }}
-        className="mt-6 flex flex-col gap-3 rounded-xl border border-border bg-surface-muted p-4 sm:flex-row sm:items-end">
+        className="mt-6 flex flex-col gap-3 rounded-xl bg-surface-muted p-4 sm:flex-row sm:items-end">
         <label className="flex-1 text-sm">
           <span className="mb-1 block text-xs font-medium text-ink-soft">ชื่อบริษัท</span>
           <input type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder="ค้นหาชื่อบริษัท"
@@ -66,7 +66,7 @@ export function CompanyList() {
           <input type="checkbox" checked={partner} onChange={(event) => update({ partner: event.target.checked ? 'true' : undefined })} className="h-4 w-4 accent-primary" />
           เฉพาะ University Partner
         </label>
-        <button type="submit" className="rounded-lg bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">ค้นหา</button>
+        <button type="submit" className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">ค้นหา</button>
       </form>
 
       <section aria-busy={!result && !error} className="mt-6">
@@ -82,7 +82,7 @@ export function CompanyList() {
         {result && result.data.length > 0 && (
           <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {result.data.map((company) => (
-              <li key={company.id} className="flex flex-col rounded-xl border border-border bg-surface p-5 shadow-sm">
+              <li key={company.id} className="flex flex-col rounded-xl border border-border bg-surface p-5">
                 <div className="flex items-center gap-3">
                   <Avatar name={company.name} src={company.logo_url} size="md" />
                   <h3 className="min-w-0 text-lg font-semibold">{company.name}</h3>
@@ -92,7 +92,7 @@ export function CompanyList() {
                   {company.university_partner && <span className="inline-block rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success-text">University Partner</span>}
                 </div>
                 <div className="mt-3"><RatingSummary average={company.rating_avg} count={company.review_count} /></div>
-                <Link href={`/companies/item?id=${company.id}`} className="mt-4 inline-block self-start rounded-lg bg-primary-soft px-4 py-2 text-sm font-semibold text-primary hover:bg-primary hover:text-white">ดูบริษัทและรีวิว</Link>
+                <Link href={`/companies/item?id=${company.id}`} className="mt-4 inline-block self-start rounded-full bg-primary-soft px-4 py-2 text-sm font-semibold text-primary hover:bg-primary hover:text-white">ดูบริษัทและรีวิว</Link>
               </li>
             ))}
           </ul>
@@ -100,10 +100,10 @@ export function CompanyList() {
         {result && result.meta.total > PAGE_SIZE && (
           <nav aria-label="เลือกหน้า" className="mt-8 flex items-center justify-center gap-4 text-sm">
             <button type="button" disabled={page <= 1} onClick={() => update({ page: String(page - 1) }, true)}
-              className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
+              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
             <span aria-live="polite">หน้า {page} จาก {totalPages}</span>
             <button type="button" disabled={page >= totalPages} onClick={() => update({ page: String(page + 1) }, true)}
-              className="rounded-lg border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
+              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
           </nav>
         )}
       </section>

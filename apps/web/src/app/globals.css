@@ -2,11 +2,47 @@
 @tailwind components;
 @tailwind utilities;
 
+/* แนวทางหน้าตาอิง DESIGN-apple.md: สีโต้ตอบสีเดียว, ไม่มีเงาบนการ์ด/ปุ่ม, กดปุ่มแล้วหดเล็กน้อย, หัวข้อหนา 600 ตัวชิด */
 @layer base {
   html {
     font-size: 16px; /* README 8: ข้อความเนื้อหา 16px */
+    -webkit-text-size-adjust: 100%;
   }
   body {
     @apply bg-surface text-ink font-sans leading-thai antialiased;
+  }
+  h1,
+  h2 {
+    @apply tracking-display;
+  }
+  a {
+    @apply transition-colors;
+  }
+  :focus-visible {
+    outline: 2px solid #0071e3;
+    outline-offset: 2px;
+  }
+  button {
+    transition: transform 0.12s ease, background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  }
+  button:not(:disabled):active {
+    transform: scale(0.97);
+  }
+  input,
+  select,
+  textarea {
+    @apply transition-colors;
+  }
+  ::selection {
+    background: #cfe3fa;
+  }
+}
+
+@layer components {
+  /* แถบเมนูแบบกระจกฝ้า (sub-nav-frosted) */
+  .frosted {
+    background-color: rgba(245, 245, 247, 0.82);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
   }
 }

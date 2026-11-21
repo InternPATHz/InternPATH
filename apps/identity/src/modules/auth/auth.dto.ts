@@ -1,14 +1,10 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsInt, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, Max, Min, MinLength, ValidateNested, Equals } from 'class-validator';
-import type { RegisterStudentRequest, RegisterCompanyRequest, LoginRequest, RefreshRequest, VerifyEmailRequest, ForgotPasswordRequest, ResetPasswordRequest } from '@internpath/contracts';
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MinLength, ValidateNested, Equals } from 'class-validator';
+import type { AcceptStudentInvitationRequest, RegisterCompanyRequest, LoginRequest, RefreshRequest, VerifyEmailRequest, ForgotPasswordRequest, ResetPasswordRequest } from '@internpath/contracts';
 
-export class RegisterStudentDto implements RegisterStudentRequest {
-  @IsEmail() email!: string;
+export class AcceptStudentInvitationDto implements AcceptStudentInvitationRequest {
+  @IsString() @IsNotEmpty() token!: string;
   @IsString() @MinLength(12) password!: string;
-  @IsString() @IsNotEmpty() full_name!: string;
-  @IsString() @IsNotEmpty() student_code!: string;
-  @IsString() @IsNotEmpty() major!: string;
-  @IsInt() @Min(1) @Max(10) year_level!: number;
   @IsBoolean() @Equals(true) accept_privacy!: true;
 }
 

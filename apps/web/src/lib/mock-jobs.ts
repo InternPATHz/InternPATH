@@ -49,6 +49,17 @@ const SEEDS: Seed[] = [
   { id: 'mock-job-12', company: 3, category: 'BUSINESS_MARKETING', title: 'Market Research Intern', workMode: 'ONSITE', location: 'นนทบุรี', allowance: null, majors: ['สถิติ', 'เศรษฐศาสตร์'], quota: [1, 1], publishedDaysAgo: 14, deadlineInDays: 8, summary: 'รวบรวมและวิเคราะห์ข้อมูลตลาดเพื่อสนับสนุนการตัดสินใจของทีมขาย' },
 ];
 
+/** Tag ทักษะจำลอง (slug → ชื่อ) — ตรงกับรายการกลางของ Admin (api-contract §5.4) */
+export const MOCK_TAG_NAMES: Record<string, string> = {
+  nextjs: 'NextJs', nestjs: 'NestJs', rust: 'Rust', react: 'React', python: 'Python', sql: 'SQL', figma: 'Figma', seo: 'SEO', excel: 'Excel',
+};
+
+const SEED_TAGS: Record<string, string[]> = {
+  'mock-job-1': ['nextjs', 'nestjs'], 'mock-job-2': ['python', 'sql'], 'mock-job-3': ['seo'], 'mock-job-4': ['excel'],
+  'mock-job-5': ['figma', 'react'], 'mock-job-6': ['seo'], 'mock-job-7': ['python', 'rust'], 'mock-job-8': ['excel'],
+  'mock-job-9': ['excel'], 'mock-job-10': ['react', 'sql'], 'mock-job-11': [], 'mock-job-12': ['excel', 'sql'],
+};
+
 export const MOCK_SEARCH_JOBS: SearchJobItem[] = SEEDS.map((seed) => {
   const company = MOCK_COMPANIES[seed.company];
   return {
@@ -67,6 +78,7 @@ export const MOCK_SEARCH_JOBS: SearchJobItem[] = SEEDS.map((seed) => {
     hours_per_week: 40,
     period: { start: day(60), end: day(150) },
     target_majors: seed.majors,
+    tags: (SEED_TAGS[seed.id] ?? []).map((slug) => ({ id: `mock-tag-${slug}`, name: MOCK_TAG_NAMES[slug] ?? slug, slug })),
     quota: seed.quota[1],
     quota_available: seed.quota[0],
     application_deadline: day(seed.deadlineInDays),

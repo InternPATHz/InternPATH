@@ -30,7 +30,7 @@ describe('รายงานและคำตัดสินที่ทำง�
   });
   afterEach(async () => {
     await t.prisma.$executeRawUnsafe(
-      'TRUNCATE job_snapshots, job_reports, job_report_counters, reporter_stats, evaluations, queue_items, outbox_events, status_history, admin_audit_log',
+      'TRUNCATE job_snapshots, job_reports, job_report_counters, reporter_stats, job_submission_snapshots, queue_items, outbox_events, status_history, admin_audit_log',
     );
   });
 
@@ -40,10 +40,9 @@ describe('รายงานและคำตัดสินที่ทำง�
     const jobId = randomUUID();
     const companyId = randomUUID();
     await t.prisma.jobSnapshot.create({ data: { jobId, companyId, status: 'PUBLISHED', entityVersion: 1 } });
-    await t.prisma.evaluation.create({
+    await t.prisma.jobSubmissionSnapshot.create({
       data: {
-        jobId, companyId, submissionId: randomUUID(), submissionKind: 'NEW', submittedAt: new Date(), content: {}, riskScore: 0, riskLevel: 'LOW',
-        decision: 'APPROVE', negatedOnly: false, matchedKeywords: [], reasons: [], companyFlagUnderReview: false, fastTrack: false,
+        jobId, companyId, submissionId: randomUUID(), submissionKind: 'NEW', submittedAt: new Date(), content: {}, fastTrack: false,
       },
     });
     return jobId;

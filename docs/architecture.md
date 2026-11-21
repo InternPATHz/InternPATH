@@ -1,7 +1,7 @@
-# 🏗️ Architecture (InternPath)
+# Architecture (InternPath)
 
 > เอกสารนี้เป็น **ที่เก็บหลัก (Single Source of Truth)** ของโครงสร้างระบบเชิงเทคนิค
-> กฎธุรกิจ (Risk Score, SLA, Flow การอนุมัติ ฯลฯ) อยู่ใน [README.md](../README.md) — เอกสารนี้อ้างอิงเลขหัวข้อของ README แทนการคัดลอกซ้ำ
+> กฎธุรกิจ (SLA, Flow การอนุมัติ, Tag ทักษะ ฯลฯ — ตัด Risk Score/Blacklist แล้วตามปรับ Requirement 2026-11-21) อยู่ใน [README.md](../README.md) — เอกสารนี้อ้างอิงเลขหัวข้อของ README แทนการคัดลอกซ้ำ
 
 | เอกสาร | เนื้อหา |
 | :--- | :--- |
@@ -111,7 +111,7 @@ Sync Call ภายในทั้งหมดที่มี (รายละ�
 | เรื่อง | การออกแบบ |
 | :--- | :--- |
 | Access Token | JWT RS256 อายุ 15 นาที ออกโดย Identity ด้วย Private Key; ทุก Service/Gateway ตรวจด้วย **Public Key จาก `JWT_PUBLIC_KEY` ใน env** (การตัดสินใจของ SA ใน §9) |
-| Claims | `sub` (user_id), `role`, `company_id?`, `company_role?` (`OWNER`/`MEMBER`), `advisor_id?`, `university_id`, `iat`, `exp`, `jti` |
+| Claims | `sub` (user_id), `role`, `company_id?`, `company_role?` (`OWNER`/`MEMBER`), `company_categories?` (สายงานของ `MEMBER` 1–3 ค่า; `OWNER` ไม่ใส่ = ทุกสายงาน), `advisor_id?`, `university_id`, `iat`, `exp`, `jti` |
 | Refresh Token | สุ่มค่าเก็บ Hash ใน `identity_db` ใช้ครั้งเดียว (Rotation) ตอนต่ออายุอ่านข้อมูลล่าสุดแล้วออก Claim ใหม่ |
 | Denylist | Identity เผยแพร่รายการ `user_id` ที่ถูกระงับ; Gateway เก็บ Cache (in-memory + ดึงใหม่ทุก 30 วินาที หรืออัปเดตทันทีจาก Event `CompanyStatusChanged` / ผู้ใช้ถูกระงับ) |
 | Service Token | JWT แยก (`typ: service`, `iss`, `aud`) ออกโดยแต่ละ Service ด้วย secret/คีย์ของตนเอง หรือใช้ shared secret ต่อคู่ Service ใน `.env` — Endpoint ภายในอยู่ใต้ prefix `/internal/**` และ **Gateway ไม่ Route `/internal/**` ออกสู่ภายนอก** |
@@ -194,8 +194,8 @@ Docker Compose Profiles: `infra` (Postgres, RabbitMQ, RustFS, Mailpit) + `identi
 
 | # | หัวข้อ | ผู้ตัดสินใจ | กำหนด |
 | :-: | :--- | :--- | :--- |
-| 1 | ~~ที่รัน NestJS ตอน Deploy~~ | ทีม (PM) | ✅ ตัดสินใจแล้ว: Docker Compose บนเครื่องทีม + Cloudflare Tunnel, Front บน Cloudflare Workers (§8.1) |
-| 2 | ~~JWT Public Key: ฝัง env หรือ JWKS endpoint~~ | SA | ✅ ใช้ `JWT_PUBLIC_KEY` ใน env ของ Gateway/ทุก Service สำหรับระยะนี้; Identity เก็บ Private Key ใน env เท่านั้น การหมุนคีย์ต้องประสานอัปเดต env และ restart Service พร้อมกัน หากต้องการหมุนคีย์โดยไม่หยุดระบบค่อยออกแบบ JWKS เพิ่ม |
-| 3 | ค่าน้ำหนัก Risk Score และ Blacklist เริ่มต้น | PM | สัปดาห์ที่ 1 |
-| 4 | ~~แผนฟรีของ Neon ให้กี่โปรเจกต์~~ | SA | ✅ ยกเลิก: ไม่ใช้ Neon ใช้ Postgres ใน Docker แยกฐานข้อมูลต่อ Service |
+| 1 | ~~ที่รัน NestJS ตอน Deploy~~ | ทีม (PM) | ตัดสินใจแล้ว: Docker Compose บนเครื่องทีม + Cloudflare Tunnel, Front บน Cloudflare Workers (§8.1) |
+| 2 | ~~JWT Public Key: ฝัง env หรือ JWKS endpoint~~ | SA | ใช้ `JWT_PUBLIC_KEY` ใน env ของ Gateway/ทุก Service สำหรับระยะนี้; Identity เก็บ Private Key ใน env เท่านั้น การหมุนคีย์ต้องประสานอัปเดต env และ restart Service พร้อมกัน หากต้องการหมุนคีย์โดยไม่หยุดระบบค่อยออกแบบ JWKS เพิ่ม |
+| 3 | รายการ Tag ทักษะเริ่มต้น (seed ใน Job) | PM | สัปดาห์ที่ 1 |
+| 4 | ~~แผนฟรีของ Neon ให้กี่โปรเจกต์~~ | SA | ยกเลิก: ไม่ใช้ Neon ใช้ Postgres ใน Docker แยกฐานข้อมูลต่อ Service |
 | 5 | ที่ลง Backend ถาวร (ถ้าต้องการออนไลน์ตลอด เช่น VM ฟรี หรือบริการ PaaS) | ทีม | เมื่อหาได้ — ย้ายโดยเปลี่ยน `API_ORIGIN` |

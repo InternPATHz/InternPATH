@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { AppException } from '@internpath/common';
-import type { ConsentCheckResponse, InternalStudentNamesResponse, InternalStudentResponse } from '@internpath/contracts';
+import type { ConsentCheckResponse, InternalStudentNamesResponse, InternalStudentResponse, InternalStudentSummariesResponse } from '@internpath/contracts';
 
 /**
  * ตัวปลอมในหน่วยความจำสำหรับเทสต์ 1.3 (โปรไฟล์/เรซูเม่) — รองรับเฉพาะ query ที่ ProfilesService/ResumesService ใช้
@@ -203,6 +203,20 @@ export class FakeIdentity {
 
   /** `GET /internal/v1/students/names?ids=` — แต่ละครั้งที่เรียก (ตรวจการแบ่ง batch ≤ 100) */
   nameCalls: string[][] = [];
+
+  /** `GET /internal/v1/students/summaries?ids=` — รหัส/สาขา/ชั้นปีตั้งผ่าน `setSummary` (ไม่ตั้ง ⇒ ข้ามเหมือน id ที่ไม่ใช่นักศึกษา) */
+  summaries = new Map<string, { student_code: string }>();
+  summaryCalls: string[][] = [];
+
+  async getStudentSummaries(ids: readonly string[]): Promise<InternalStudentSummariesResponse> {
+    if (this.unavailable) throw new AppException('UPSTREAM_UNAVAILABLE', 'identity down', 502);
+    this.summaryCalls.push([...ids]);
+    return ids.flatMap((id) => {
+      const student = this.students.get(id);
+      const summary = this.summaries.get(id);
+      return student && summary ? [{ user_id: id, full_name: student.full_name, student_code: summary.student_code, major: student.major, year_level: student.year_level }] : [];
+    });
+  }
 
   async getStudentNames(ids: readonly string[]): Promise<InternalStudentNamesResponse> {
     if (this.unavailable) throw new AppException('UPSTREAM_UNAVAILABLE', 'identity down', 502);

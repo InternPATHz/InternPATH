@@ -47,6 +47,7 @@ export async function searchJobs(query: SearchJobsQuery, page: number, pageSize 
   await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
 
   const q = query.q ? normalize(query.q) : '';
+  const tagSlugs = (query.tags ?? '').split(',').map((slug) => slug.trim().toLowerCase()).filter(Boolean);
   // `major` ที่มีแต่ช่องว่างถือว่าไม่ส่ง (เหมือนฝั่ง API)
   const major = query.major && normalizeMajor(query.major) ? query.major : '';
   const matched = MOCK_SEARCH_JOBS
@@ -55,6 +56,7 @@ export async function searchJobs(query: SearchJobsQuery, page: number, pageSize 
     .filter((job) => !query.work_mode || job.work_mode === query.work_mode)
     .filter((job) => !query.allowance || job.allowance.type === 'AMOUNT')
     .filter((job) => !query.company_id || job.company.id === query.company_id)
+    .filter((job) => tagSlugs.length === 0 || job.tags.some((tag) => tagSlugs.includes(tag.slug))) // any-of
     .filter((job) => !q || normalize(`${job.job_title} ${job.company.name}`).includes(q))
     .sort(byFeaturedThen(query.sort ?? 'newest'));
 

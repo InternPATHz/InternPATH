@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { AppException, OutboxWriter, asUuid } from '@internpath/common';
-import type { CompanyInvitationItem, CompanyMemberItem, CompanyStatusChangedPayload, OwnerTransferPendingResponse,
+import type { CompanyInvitationItem, CompanyMemberItem, CompanyStatusChangedPayload, JobCategory, OwnerTransferPendingResponse,
   Paginated, UserSuspendedPayload } from '@internpath/contracts';
 import { Company, Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -82,13 +82,13 @@ export class CompanyMembersService {
       ]);
       return {
         data: rows.map((row) => ({ user_id: row.userId, full_name: row.user.fullName, email: row.user.email,
-          member_role: row.memberRole, joined_at: row.joinedAt.toISOString() })),
+          member_role: row.memberRole, categories: row.memberRole === 'OWNER' ? [] : row.categories, joined_at: row.joinedAt.toISOString() })),
         meta: { page: query.page, page_size: query.page_size, total },
       };
     });
   }
 
-  async invite(ownerId: string, emailInput: string): Promise<void> {
+  async invite(ownerId: string, emailInput: string, categories: JobCategory[]): Promise<void> {
     const email = normalizedEmail(emailInput);
     const token = randomBytes(32).toString('base64url');
     await this.transaction(async (tx) => {
@@ -101,7 +101,7 @@ export class CompanyMembersService {
         acceptedAt: null, expiresAt: { gt: new Date() }, createdAt: { gt: new Date(Date.now() - 60_000) } } });
       if (recent) throw new AppException('RATE_LIMITED', 'ส่งคำเชิญซ้ำเร็วเกินไป', 429);
       await tx.companyInvitation.create({ data: { companyId: owner.companyId, email,
-        tokenHash: tokenHash(token), expiresAt: new Date(Date.now() + TOKEN_TTL_MS), invitedBy: ownerId } });
+        tokenHash: tokenHash(token), expiresAt: new Date(Date.now() + TOKEN_TTL_MS), invitedBy: ownerId, categories } });
     });
     await this.mailer.send(email, token);
   }
@@ -112,8 +112,8 @@ export class CompanyMembersService {
       const owner = await this.member(tx, ownerId, true);
       const rows = await tx.companyInvitation.findMany({ where: { companyId: owner.companyId, acceptedAt: null,
         expiresAt: { gt: new Date() } }, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
-        select: { id: true, email: true, createdAt: true, expiresAt: true } });
-      return { data: rows.map((row) => ({ id: row.id, email: row.email, invited_at: row.createdAt.toISOString(),
+        select: { id: true, email: true, categories: true, createdAt: true, expiresAt: true } });
+      return { data: rows.map((row) => ({ id: row.id, email: row.email, categories: row.categories, invited_at: row.createdAt.toISOString(),
         expires_at: row.expiresAt.toISOString() })) };
     });
   }
@@ -132,6 +132,22 @@ export class CompanyMembersService {
       if (cancelled.count !== 1) throw new AppException('NOT_FOUND', 'ไม่พบคำเชิญที่รอรับ', 404);
       await this.audit(tx, ownerId, 'COMPANY_INVITATION_CANCEL', owner.companyId,
         { invitation_id: invitationId }, { invitation_id: invitationId, cancelled: true }, cid);
+    });
+  }
+
+  /** Owner กำหนดสายงานของสมาชิก (1–3 ค่า) — มีผลกับ JWT เมื่อ refresh/ล็อกอินใหม่; เป้าหมายเป็น Owner ⇒ 400 */
+  async setCategories(ownerId: string, memberId: string, categories: JobCategory[], id?: string): Promise<void> {
+    const cid = asUuid(id);
+    await this.transaction(async (tx) => {
+      const owner = await this.member(tx, ownerId, true);
+      const target = await tx.companyMember.findUnique({ where: { userId: memberId } });
+      if (!target || target.companyId !== owner.companyId) throw new AppException('NOT_FOUND', 'ไม่พบสมาชิก', 404);
+      if (target.memberRole === 'OWNER') {
+        throw new AppException('VALIDATION_FAILED', 'Owner เห็นทุกสายงาน ไม่ต้องกำหนดสายงาน', 400, [{ field: 'user_id', issue: 'OWNER_HAS_ALL_CATEGORIES' }]);
+      }
+      await tx.companyMember.update({ where: { id: target.id }, data: { categories } });
+      await this.audit(tx, ownerId, 'COMPANY_MEMBER_CATEGORIES', owner.companyId,
+        { user_id: memberId, categories: target.categories }, { user_id: memberId, categories }, cid);
     });
   }
 
@@ -174,7 +190,7 @@ export class CompanyMembersService {
       const user = await tx.user.create({ data: { email: invitation.email, passwordHash,
         fullName: body.full_name.trim(), role: 'COMPANY_HR', status: 'ACTIVE', emailVerifiedAt: new Date() } });
       await tx.companyMember.create({ data: { companyId: invitation.companyId, userId: user.id,
-        memberRole: 'MEMBER', invitedBy: invitation.invitedBy } });
+        memberRole: 'MEMBER', invitedBy: invitation.invitedBy, categories: invitation.categories } });
     });
   }
 

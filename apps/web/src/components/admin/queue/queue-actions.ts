@@ -14,17 +14,9 @@ export const ACTIONS_BY_TYPE: Record<QueueItemType, QueueActionSpec[]> = {
     { action: 'approve', label: 'อนุมัติประกาศ', reasonRequired: false, tone: 'primary' },
     { action: 'reject', label: 'ปฏิเสธประกาศ', reasonRequired: true, tone: 'danger' },
   ],
-  JOB_APPEAL: [
-    { action: 'approve', label: 'อนุมัติประกาศ', reasonRequired: false, tone: 'primary' },
-    { action: 'reject', label: 'ปฏิเสธประกาศ', reasonRequired: true, tone: 'danger' },
-  ],
   JOB_REPORT: [
     { action: 'dismiss-report', label: 'ยกเลิกรายงาน (ไม่พบความผิด)', reasonRequired: false, tone: 'neutral' },
     { action: 'uphold-report', label: 'ยืนยันรายงาน (พบความผิด)', reasonRequired: false, tone: 'danger' },
-  ],
-  REVIEW_HELD: [
-    { action: 'publish-review', label: 'เผยแพร่รีวิว', reasonRequired: false, tone: 'primary' },
-    { action: 'remove-review', label: 'ลบรีวิว', reasonRequired: true, tone: 'danger' },
   ],
   REVIEW_REPORT: [
     { action: 'publish-review', label: 'คงรีวิวไว้ (ไม่พบความผิด)', reasonRequired: false, tone: 'primary' },

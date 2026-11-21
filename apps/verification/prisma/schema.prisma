@@ -13,30 +13,6 @@ datasource db {
 }
 
 // ---------- Enums ----------
-enum RiskLevel {
-  LOW
-  MEDIUM
-  HIGH
-
-  @@map("risk_level")
-}
-
-enum EvaluationDecision {
-  APPROVE
-  PENDING_REVIEW
-  AUTO_REJECT
-
-  @@map("evaluation_decision")
-}
-
-enum AppealStatus {
-  OPEN
-  APPROVED
-  DENIED
-
-  @@map("appeal_status")
-}
-
 enum QueueItemType {
   JOB_REVIEW
   JOB_APPEAL
@@ -65,6 +41,7 @@ enum QueuePriority {
 
 enum QueueOrigin {
   EVALUATION
+  FLAGGED_COMPANY
   VERIFY_TIMEOUT
   APPEAL
   REPORT_THRESHOLD
@@ -94,50 +71,23 @@ enum RejectionKind {
   @@map("rejection_kind")
 }
 
-enum TermSeverity {
-  HARD
-  SOFT
-
-  @@map("term_severity")
-}
-
 // ---------- ตารางเฉพาะของ Verification (docs/data-schema.md §5 + spec §5.4) ----------
-model Evaluation {
-  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  jobId                  String             @map("job_id") @db.Uuid
-  companyId              String             @map("company_id") @db.Uuid
-  submissionId           String             @unique @map("submission_id") @db.Uuid
-  submissionKind         String             @map("submission_kind")
-  /// เวลาที่ Job ส่งตรวจ (ใช้ตัดสินว่า "ผลตรวจล่าสุด" คือแถวไหน — ไม่ใช่เวลาที่ประมวลผล)
-  submittedAt            DateTime           @map("submitted_at") @db.Timestamptz(6)
-  /// ข้อความที่สแกน หลัง normalizeText (ห้าม log)
-  content                Json
-  riskScore              Int                @map("risk_score")
-  riskLevel              RiskLevel          @map("risk_level")
-  decision               EvaluationDecision
-  negatedOnly            Boolean            @map("negated_only")
-  matchedKeywords        Json               @map("matched_keywords")
-  reasons                Json
-  companyFlagUnderReview Boolean            @map("company_flag_under_review")
-  fastTrack              Boolean            @map("fast_track")
-  evaluatedAt            DateTime           @default(now()) @map("evaluated_at") @db.Timestamptz(6)
+/// สำเนาเนื้อหาประกาศที่ส่งมากับ E01 (เฉพาะบริษัทที่ติดธง UNDER_REVIEW) ให้ Admin อ่านในคิว — ห้าม log
+model JobSubmissionSnapshot {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  jobId          String   @map("job_id") @db.Uuid
+  companyId      String   @map("company_id") @db.Uuid
+  submissionId   String   @unique @map("submission_id") @db.Uuid
+  submissionKind String   @map("submission_kind")
+  /// เวลาที่ Job ส่งตรวจ (ใช้ตัดสินว่ารอบไหนใหม่กว่า — ไม่ใช่เวลาที่ประมวลผล)
+  submittedAt    DateTime @map("submitted_at") @db.Timestamptz(6)
+  /// ข้อความประกาศ หลัง normalizeText (ห้าม log)
+  content        Json
+  fastTrack      Boolean  @map("fast_track")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
   @@index([jobId, submittedAt])
-  @@map("evaluations")
-}
-
-model Appeal {
-  id           String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  /// 1 ครั้งต่อประกาศ — Verification เป็นผู้บังคับกฎนี้ (README 5.1.5)
-  jobId        String       @unique @map("job_id") @db.Uuid
-  submissionId String       @map("submission_id") @db.Uuid
-  statement    String
-  status       AppealStatus @default(OPEN)
-  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-  decidedBy    String?      @map("decided_by") @db.Uuid
-  decidedAt    DateTime?    @map("decided_at") @db.Timestamptz(6)
-
-  @@map("appeals")
+  @@map("job_submission_snapshots")
 }
 
 model QueueItem {
@@ -148,8 +98,6 @@ model QueueItem {
   companyId    String?         @map("company_id") @db.Uuid
   submissionId String?         @map("submission_id") @db.Uuid
   priority     QueuePriority   @default(NORMAL)
-  riskLevel    RiskLevel?      @map("risk_level")
-  isAppeal     Boolean         @default(false) @map("is_appeal")
   origin       QueueOrigin
   dueAt        DateTime        @map("due_at") @db.Timestamptz(6)
   status       QueueItemStatus @default(OPEN)
@@ -243,38 +191,6 @@ model CompanyFlag {
   entityVersion Int       @default(0) @map("entity_version")
 
   @@map("company_flags")
-}
-
-model BlacklistTerm {
-  id        String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  term      String       @unique
-  severity  TermSeverity
-  weight    Int?
-  category  String       @default("GENERAL")
-  enabled   Boolean      @default(true)
-  createdBy String?      @map("created_by") @db.Uuid
-  createdAt DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
-
-  @@map("blacklist_terms")
-}
-
-model RiskRule {
-  code      String   @id
-  weight    Int
-  params    Json     @default("{}")
-  enabled   Boolean  @default(true)
-  updatedBy String?  @map("updated_by") @db.Uuid
-  updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
-
-  @@map("risk_rules")
-}
-
-model NegationCue {
-  id      String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  cue     String  @unique
-  enabled Boolean @default(true)
-
-  @@map("negation_cues")
 }
 
 // ---------- ตารางร่วม (docs/data-schema.md §2.2) ----------

@@ -389,16 +389,16 @@ describe('Job report rounds (PostgreSQL + shared EventConsumer transactions)', f
     await ack(foreign);
     const active = await state(job.id);
     const matching = resolution(job, first.payload.queue_item_id);
-    const missingSubmission = {
+    const malformedSubmission = {
       ...matching,
-      payload: { ...matching.payload, submission_id: undefined },
+      payload: { ...matching.payload, submission_id: 'not-a-uuid' },
     };
     for (const event of [
       resolution(job, undefined),
       resolution(job, 'invalid'),
       resolution(job, foreign.payload.queue_item_id, 'REMOVE'),
       resolution(job, randomUUID()),
-      missingSubmission,
+      malformedSubmission,
     ]) {
       await ack(event);
       expect(await marker(event)).to.equal(1);
@@ -541,6 +541,17 @@ describe('Job report rounds (PostgreSQL + shared EventConsumer transactions)', f
     }
   });
 
+  it('applies a report decision without submission_id (company never submitted for review: published immediately)', async () => {
+    const job = await seedJob(db.prisma, 'PUBLISHED');
+    const threshold = reportThreshold(job.id, job.companyId);
+    await ack(threshold);
+    const decision = resolution(job, threshold.payload.queue_item_id, 'REMOVE');
+    await ack({ ...decision, payload: { ...decision.payload, submission_id: undefined } });
+    const current = await state(job.id);
+    expect(current.job.status).to.equal('REMOVED');
+    expect(current.rounds[0]).to.include({ status: 'CLOSED', decision: 'REMOVE' });
+  });
+
   it('acknowledges and skips report decisions with invalid timestamps or required routing fields', async () => {
     for (const active of [false, true]) {
       const job = await seedJob(db.prisma, 'PUBLISHED');
@@ -560,7 +571,7 @@ describe('Job report rounds (PostgreSQL + shared EventConsumer transactions)', f
         ].map((decided_at) => ({ decided_at })),
         { job_id: undefined },
         { queue_item_id: 'not-a-uuid' },
-        { submission_id: undefined },
+        { submission_id: 'not-a-uuid' },
         { decided_by: 'OTHER' },
       ];
       for (const fields of invalidFields) {

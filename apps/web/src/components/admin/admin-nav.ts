@@ -11,8 +11,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { label: 'คิวตรวจ', href: '/admin/queue' },
       { label: 'ธงบริษัท', href: '/admin/flags' },
-      { label: 'Blacklist', href: '/admin/blacklist' },
-      { label: 'Risk Rules', href: '/admin/risk-rules' },
       { label: 'Audit log', href: '/admin/audit' },
     ],
   },
@@ -34,6 +32,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   },
   {
     title: 'ประกาศงาน', owner: 'JR',
-    items: [{ label: 'ประกาศทุกสถานะ', href: null }],
+    items: [
+      { label: 'ประกาศทุกสถานะ', href: null },
+      { label: 'Tag ทักษะ', href: '/admin/tags' },
+    ],
   },
 ];

@@ -41,8 +41,8 @@ export interface JobSubmittedPayload {
 export type JobVerifiedDecision =
   | 'APPROVE'
   | 'PENDING_REVIEW'
-  | 'AUTO_REJECT'
-  | 'APPEAL_ACCEPTED'
+  | 'AUTO_REJECT' // เลิกใช้ (2026-11-21) — Verification ไม่ส่งแล้ว
+  | 'APPEAL_ACCEPTED' // เลิกใช้ (2026-11-21)
   | 'ADMIN_APPROVE'
   | 'ADMIN_REJECT'
   | 'REMOVE'
@@ -57,12 +57,12 @@ export interface JobVerifiedReason {
 /** E02 `JobVerified` (verification → job) */
 export interface JobVerifiedPayload {
   job_id: string;
-  submission_id: string;
+  /** ว่างได้เมื่อ `decision` เป็น `REMOVE` | `RESTORE` และประกาศไม่เคยถูกส่งตรวจ (บริษัทปกติเผยแพร่ทันที) */
+  submission_id?: string;
   decision: JobVerifiedDecision;
-  risk_score?: number;
-  risk_level?: 'LOW' | 'MEDIUM' | 'HIGH';
   reasons: JobVerifiedReason[];
-  is_appeal: boolean;
+  /** เลิกใช้ (2026-11-21: ไม่มีอุทธรณ์) — ไม่ส่งแล้ว */
+  is_appeal?: boolean;
   decided_by: 'SYSTEM' | 'ADMIN';
   decided_at: string;
   /**

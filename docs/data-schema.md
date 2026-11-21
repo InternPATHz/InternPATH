@@ -1,4 +1,4 @@
-# 🗄️ Data Schema & State Machine (InternPath)
+# Data Schema & State Machine (InternPath)
 
 > ที่เก็บหลักของ **ตาราง ฟิลด์ Enum และ State Machine** ของทุก Service
 > กฎธุรกิจดู [README.md](../README.md) | Event ดู [event-contract.md](event-contract.md) | Endpoint ดู [api-contract.md](api-contract.md)
@@ -25,22 +25,21 @@
 | Enum | ค่า | เจ้าของ |
 | :--- | :--- | :--- |
 | `Role` | `STUDENT`, `COMPANY_HR`, `ADVISOR`, `PLATFORM_ADMIN` | identity |
-| `UserStatus` | `PENDING_EMAIL`, `PENDING_APPROVAL` (อาจารย์), `ACTIVE`, `SUSPENDED`, `DELETED` | identity |
+| `UserStatus` | `PENDING_EMAIL` (รอยืนยันอีเมล — รวมนักศึกษาที่อาจารย์สร้างและยังไม่ตั้งรหัสผ่าน), `PENDING_APPROVAL` (อาจารย์), `ACTIVE`, `SUSPENDED`, `DELETED` | identity |
 | `CompanyStatus` | `PENDING`, `NEED_MORE_INFO`, `VERIFIED`, `REJECTED`, `SUSPENDED` | identity |
 | `CompanyMemberRole` | `OWNER`, `MEMBER` | identity |
-| `AdvisorLinkStatus` | `NONE`, `ADVISOR_LINK_PENDING`, `LINKED` | identity |
-| `JobStatus` | `DRAFT`, `VERIFYING`, `PUBLISHED`, `PENDING_REVIEW`, `AUTO_REJECTED`, `ADMIN_REJECTED`, `SUSPENDED`, `REMOVED`, `CLOSED` (ความหมายดู README 5.1.1) | job |
+| `AdvisorLinkStatus` | `NONE`, `ADVISOR_LINK_PENDING` (เลิกใช้ — ไม่มีขั้นที่นักศึกษาเลือกอาจารย์), `LINKED` | identity |
+| `JobStatus` | `DRAFT`, `VERIFYING`, `PUBLISHED`, `PENDING_REVIEW`, `AUTO_REJECTED` (เลิกใช้ — สงวนค่าไว้ ไม่มีเส้นทางไปสถานะนี้), `ADMIN_REJECTED`, `SUSPENDED`, `REMOVED`, `CLOSED` (ความหมายดู README 5.1.1) | job |
 | `WorkMode` | `ONSITE`, `REMOTE`, `HYBRID` | job |
 | `JobCategory` | `TECH_IT`, `BUSINESS_MARKETING`, `CORPORATE_SERVICES` | job |
 | `QuotaReservationStatus` | `RESERVED`, `CONFIRMED`, `RELEASED` | job |
-| `RiskLevel` | `LOW`, `MEDIUM`, `HIGH` | verification |
-| `QueueItemType` | `JOB_REVIEW`, `JOB_APPEAL`, `COMPANY_ACCOUNT` (ตรวจบัญชีบริษัทที่ติดธง `UNDER_REVIEW` — **ไม่ใช่** การอนุมัติบัญชีสมัครใหม่ ซึ่งอยู่ที่หน้า Admin ของ Identity), `JOB_REPORT`, `REVIEW_HELD`, `REVIEW_REPORT` | verification |
+| `QueueItemType` | `JOB_REVIEW` (ประกาศของบริษัทที่ติดธง `UNDER_REVIEW` รอ Admin), `COMPANY_ACCOUNT` (ตรวจบัญชีบริษัทที่ติดธง `UNDER_REVIEW` — **ไม่ใช่** การอนุมัติบัญชีสมัครใหม่ ซึ่งอยู่ที่หน้า Admin ของ Identity), `JOB_REPORT`, `REVIEW_REPORT` | verification |
 | `QueueItemStatus` | `OPEN`, `IN_REVIEW`, `RESOLVED` | verification |
 | `ApplicationStatus` | `PENDING`, `HR_ACCEPTED`, `ADVISOR_PENDING`, `ADVISOR_APPROVED`, `IN_PROGRESS`, `EVALUATED_PASS`, `EVALUATED_FAIL`, `FAIL_DISPUTED`, `REEVALUATION_REQUESTED`, `COMPLETED`, `TERMINATED`, `NO_EVALUATION`, `HR_REJECTED`, `STUDENT_DECLINED`, `ADVISOR_REJECTED`, `OFFER_RESCINDED`, `WITHDRAWN`, `EXPIRED`, `CANCELLED` (ความหมายดู README 5.2.1) | lifecycle |
 | `AcademicResult` | `ACADEMIC_PASS`, `ACADEMIC_FAIL`, `REPEAT_REQUIRED` | lifecycle |
 | `TerminatedBy` | `COMPANY`, `STUDENT`, `ADVISOR`, `ADMIN` | lifecycle |
 | `CertificateStatus` | `VALID`, `REVOKED` | lifecycle |
-| `ReviewStatus` | `SUBMITTED`, `PUBLISHED`, `HELD`, `REMOVED` | lifecycle |
+| `ReviewStatus` | `SUBMITTED`, `PUBLISHED`, `HELD` (เลิกใช้ — ไม่มีการสแกนเนื้อหารีวิว), `REMOVED` | lifecycle |
 | `ProblemReportStatus` | `OPEN`, `ACKNOWLEDGED`, `RESOLVED` | lifecycle |
 | `NotificationChannel` | `IN_APP`, `EMAIL` | notification |
 
@@ -112,7 +111,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | :--- | :--- | :--- |
 | id | uuid | |
 | email | citext unique | |
-| password_hash | text | argon2id |
+| password_hash | text null | argon2id — ว่างได้เฉพาะนักศึกษาที่อาจารย์สร้างและยังไม่ตั้งรหัสผ่านผ่านลิงก์คำเชิญ (`PENDING_EMAIL`); login ไม่ผ่านจนกว่าจะตั้ง |
 | role | Role | |
 | status | UserStatus | |
 | email_verified_at | timestamptz null | |
@@ -124,7 +123,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | deleted_at | timestamptz null | |
 | version | int | |
 
-**`student_profiles_identity`** (ข้อมูลระบุตัวตนขั้นต่ำ; เรซูเม่อยู่ที่ Lifecycle): `user_id PK`, `student_code`, `major`, `year_level`, `advisor_id (FK users)`, `advisor_link_status AdvisorLinkStatus`, `pending_advisor_id null`, `advisor_link_updated_at`
+**`student_profiles_identity`** (ข้อมูลระบุตัวตนขั้นต่ำ; เรซูเม่อยู่ที่ Lifecycle): `user_id PK`, `student_code` (unique ต่อ `university_id`), `major`, `year_level`, `advisor_id (FK users)`, `advisor_link_status AdvisorLinkStatus` (ตั้งเป็น `LINKED` ตอนอาจารย์สร้างนักศึกษา — ไม่มีขั้นที่นักศึกษาเลือกอาจารย์), `created_by_advisor_id (FK users)` (อาจารย์ที่สร้างบัญชี), `advisor_link_updated_at` — ถอด `pending_advisor_id` (เลิกใช้ ปรับ Requirement 2026-11-21)
 
 **`advisor_profiles`**: `user_id PK`, `department`, `approved_by`, `approved_at`
 
@@ -144,15 +143,15 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | fast_track_enabled | bool default false |
 | version | int |
 
-**`company_members`**: `id`, `company_id`, `user_id` (unique), `member_role CompanyMemberRole`, `invited_by`, `joined_at` — partial unique: **1 OWNER ต่อบริษัท** (`UNIQUE(company_id) WHERE member_role='OWNER'`)
+**`company_members`**: `id`, `company_id`, `user_id` (unique), `member_role CompanyMemberRole`, `categories JobCategory[]` (สายงานของสมาชิก — `MEMBER` ต้องมี 1–3 ค่า, `OWNER` เว้นว่าง = ทุกสายงาน; ใส่ใน JWT เป็น `company_categories`), `invited_by`, `joined_at` — partial unique: **1 OWNER ต่อบริษัท** (`UNIQUE(company_id) WHERE member_role='OWNER'`)
 
-**`company_invitations`**: `id`, `company_id`, `email`, `token_hash`, `expires_at`, `accepted_at null`, `invited_by` — Owner ยกเลิกคำเชิญ (`DELETE /companies/me/invitations/{id}`) = ตั้ง `expires_at` เป็นเวลาที่ยกเลิก (ลิงก์ใช้ไม่ได้ทันที เก็บแถวไว้ + บันทึก audit `COMPANY_INVITATION_CANCEL`; SA ตัดสิน 2026-11-19)
+**`company_invitations`**: `id`, `company_id`, `email`, `categories JobCategory[]` (สายงานที่จะให้สมาชิกใหม่ 1–3 ค่า), `token_hash`, `expires_at`, `accepted_at null`, `invited_by` — Owner ยกเลิกคำเชิญ (`DELETE /companies/me/invitations/{id}`) = ตั้ง `expires_at` เป็นเวลาที่ยกเลิก (ลิงก์ใช้ไม่ได้ทันที เก็บแถวไว้ + บันทึก audit `COMPANY_INVITATION_CANCEL`; SA ตัดสิน 2026-11-19)
 
 **`owner_transfers`**: `id`, `company_id`, `from_user_id`, `to_user_id`, `status (PENDING|ACCEPTED|CANCELLED|EXPIRED)`, `requested_at`, `responded_at`
 
 **`company_documents`**: `id`, `company_id`, `doc_type`, `object_key` (Private bucket), `mime`, `size_bytes`, `uploaded_by`, `created_at`
 
-**`email_tokens`**: `id`, `user_id`, `purpose (VERIFY_EMAIL|RESET_PASSWORD|LOGIN_UNLOCK)`, `token_hash`, `expires_at`, `used_at null`
+**`email_tokens`**: `id`, `user_id`, `purpose (VERIFY_EMAIL|RESET_PASSWORD|LOGIN_UNLOCK|STUDENT_INVITATION)`, `token_hash`, `expires_at`, `used_at null` — `STUDENT_INVITATION` = คำเชิญที่อาจารย์สร้างให้นักศึกษา (อายุ 7 วัน ใช้ครั้งเดียว; ส่งซ้ำ = ออก token ใหม่และทำให้ token เก่าใช้ไม่ได้)
 
 **`refresh_tokens`**: `id`, `user_id`, `token_hash`, `family_id`, `expires_at`, `rotated_at null`, `revoked_at null`
 
@@ -207,15 +206,19 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 
 **DRAFT ไม่ครบได้ (PM ตัดสิน 2026-11-15):** `POST /hr/jobs` สร้าง `DRAFT` ได้แม้กรอกไม่ครบ จึงให้ฟิลด์เนื้อหา/โครงสร้างข้างบน (ยกเว้น `id`, `company_id`, `created_by`, `status`, `version`, `entity_version`) เป็น nullable และมี `CHECK (status = 'DRAFT' OR (ฟิลด์ที่ README 5.1.5 บังคับทั้งหมดไม่เป็น NULL))` — ตรวจความครบตอน `actions/submit` (`400 MISSING_REQUIRED_JOB_FIELDS` + `details[]`)
 
-**ฟิลด์ที่ต้องครบก่อนส่งตรวจ (`actions/submit`, PM ตัดสิน 2026-11-15)** — ใช้เป็นเงื่อนไขของ `CHECK` ด้านบนและของ `400 MISSING_REQUIRED_JOB_FIELDS`: `category`, `job_title`, `description`, `responsibilities`, `qualifications`, `location`, `work_mode`, `hours_per_week`, `allowance_type` (ถ้าเป็น `AMOUNT` ต้องมี `allowance_amount_thb` > 0; `NONE` ไม่ต้องมีจำนวนเงิน), `internship_period_start`/`_end`, `target_majors` (≥ 1 สาขา), `quota` (≥ 1), `application_deadline` — ส่วน `allowance_text` และ `contact_notes` ไม่บังคับ (README 5.1.5 ไม่ได้ระบุ `description` และ `category` ไว้ แต่ Verification ใช้ `description` ตัดสิน และหน้าค้นหาแยกตาม `category` จึงบังคับ)
+**ฟิลด์ที่ต้องครบก่อนส่งตรวจ (`actions/submit`, PM ตัดสิน 2026-11-15)** — ใช้เป็นเงื่อนไขของ `CHECK` ด้านบนและของ `400 MISSING_REQUIRED_JOB_FIELDS`: `category`, `job_title`, `description`, `responsibilities`, `qualifications`, `location`, `work_mode`, `hours_per_week`, `allowance_type` (ถ้าเป็น `AMOUNT` ต้องมี `allowance_amount_thb` > 0; `NONE` ไม่ต้องมีจำนวนเงิน), `internship_period_start`/`_end`, `target_majors` (≥ 1 สาขา), Tag ทักษะ 1–10 รายการ (`job_tags`), `quota` (≥ 1), `application_deadline` — ส่วน `allowance_text` และ `contact_notes` ไม่บังคับ (README 5.1.5 ไม่ได้ระบุ `description` และ `category` ไว้ แต่ Verification ใช้ `description` ตัดสิน และหน้าค้นหาแยกตาม `category` จึงบังคับ)
 
-**ฟิลด์ที่ต้องตรวจซ้ำเมื่อแก้หลัง `PUBLISHED` (PM ตัดสิน 2026-11-15):** หลักการ — ถ้าฟิลด์นั้นเป็นข้อมูลที่ Verification ใช้ตัดสิน (อยู่ใน payload ของ `JobSubmitted`) ต้องตรวจซ้ำ: `job_title`, `description`, `responsibilities`, `qualifications`, `allowance_*`, `location`, `contact_notes`, `work_mode`, `hours_per_week` ⇒ `PUBLISHED → VERIFYING` (กัน Post-Approval Bypass เช่นแก้ชั่วโมงเป็น 60 หลังอนุมัติ) — ฟิลด์ที่ **ไม่ตรวจซ้ำ** (ยังเป็น `PUBLISHED`) มีเฉพาะ `quota`, `application_deadline`, `target_majors`, `internship_period_*`, `category`, `featured`
+**ฟิลด์ที่ต้องตรวจซ้ำเมื่อแก้หลัง `PUBLISHED` (PM ตัดสิน 2026-11-15; ปรับ 2026-11-21: ใช้เฉพาะบริษัทที่ติดธง `UNDER_REVIEW` — บริษัทปกติแก้แล้วคงสถานะ `PUBLISHED`):** หลักการ — ถ้าฟิลด์นั้นเป็นข้อมูลที่ Verification ใช้ตัดสิน (อยู่ใน payload ของ `JobSubmitted`) ต้องตรวจซ้ำ: `job_title`, `description`, `responsibilities`, `qualifications`, `allowance_*`, `location`, `contact_notes`, `work_mode`, `hours_per_week` ⇒ `PUBLISHED → VERIFYING` (กัน Post-Approval Bypass เช่นแก้ชั่วโมงเป็น 60 หลังอนุมัติ) — ฟิลด์ที่ **ไม่ตรวจซ้ำ** (ยังเป็น `PUBLISHED`) มีเฉพาะ `quota`, `application_deadline`, `target_majors`, `internship_period_*`, `category`, `featured`
 
 **ค้นหาข้อความ (PM ตัดสิน 2026-11-15):** แยกเป็น migration ภายหลัง (ไม่ต้องอยู่ใน migration แรก) ใช้ **trigram (`pg_trgm`)** ไม่ใช้ `tsvector` เพราะภาษาไทยไม่มีช่องว่างคั่นคำ — GIN index บน `job_title` เป็นหลัก (เพิ่ม `description`/`location` ถ้าจำเป็นหลังวัดผล) ใช้กับ `?q=` ของ `/search/jobs`
 
 **`report_rounds`** (Job — รอบรายงาน, PM ตัดสิน 2026-11-16/18): `id`, `job_id`, `queue_item_id` (ตัวระบุรอบ = `queue_item_id` ของ E04), `status (ACTIVE|CLOSED|DECIDED)`, `reached_at null` (E04; `null` เมื่อเป็น `DECIDED` ที่ E04 ยังไม่มา), `decision null (REMOVE|RESTORE)`, `decided_at null`, `decided_by null (ADMIN|SYSTEM — ค่าเดียวกับ decided_by ของ E02)`, `correlation_id null (uuid — ของ E02 ที่ตัดสิน)`, `suspended_from_status null` (`PUBLISHED`|`CLOSED` ที่ตั้งตอนระงับ — ประวัติหลังเคลียร์ `jobs.suspended_from_status`), `created_at`, `closed_at null` — `UNIQUE (job_id, queue_item_id)` กติกาการใช้ดู event-contract E04 • `decided_by`/`correlation_id` (PM ตัดสิน 2026-11-18) เก็บต้นทางของ E02 ที่มาก่อน E04 เพื่อให้ `status_history` และ E03 ของ `REMOVE` ตรงกับเหตุการณ์ที่ตัดสินจริง (ไม่สมมติ actor ไม่ใช้ correlation ของ E04) ไม่มีข้อมูลส่วนบุคคล และถูกล้างพร้อมแถว `DECIDED`
 
-**`job_submissions`**: `id (=submission_id)`, `job_id`, `kind (NEW|EDIT|RESUBMIT)`, `changed_fields text[]`, `submitted_by` (Anonymize เป็น `anonymous_actor_id` เมื่อลบบัญชี — §2.3), `submitted_at`, `result_decision null`, `resolved_at null` — ใช้นับ Rate Limit **5 ครั้ง/วัน/บริษัท** (นับตามวัน `Asia/Bangkok`)
+**`tags`** (Tag ทักษะ — รายการกลาง Admin จัดการ, ปรับ Requirement 2026-11-21): `id`, `name` (เช่น `NextJs`, `NestJs`, `Rust`), `slug` (unique, ตัวพิมพ์เล็ก ใช้กรองด้วย `?tags=`), `active bool` (ปิดแล้วไม่ให้เลือกใหม่ แต่ประกาศเดิมยังแสดง), `created_by`, `updated_by`, `created_at`, `updated_at`
+
+**`job_tags`**: `job_id`, `tag_id` (PK คู่) — 1–10 แถวต่อประกาศที่ไม่ใช่ `DRAFT`; Index (`tag_id`, `job_id`) สำหรับกรองแบบ any-of
+
+**`job_submissions`**: `id (=submission_id)`, `job_id`, `kind (NEW|EDIT|RESUBMIT)`, `changed_fields text[]`, `submitted_by` (Anonymize เป็น `anonymous_actor_id` เมื่อลบบัญชี — §2.3), `submitted_at`, `result_decision null`, `resolved_at null` — ประวัติการส่งตรวจ (ใช้งานจริงเฉพาะบริษัทที่ติดธง `UNDER_REVIEW`; ตัด Rate Limit 5 ครั้ง/วัน ตามปรับ Requirement 2026-11-21)
 
 **`quota_reservations`** (idempotent ด้วย `application_id`)
 | ฟิลด์ | ชนิด |
@@ -241,17 +244,7 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 
 ## 5. Verification & Trust Service (`verification_db`)
 
-**`blacklist_terms`** (คำต้องห้าม — แก้ได้ผ่าน API; ค่าตั้งต้น seed ใน migration แบบ insert-if-missing): `id`, `term unique` (เก็บตัวพิมพ์เล็ก; จับแบบ substring ไม่สนตัวพิมพ์), `severity (HARD|SOFT)` (`HARD` = ปฏิเสธทันทีเมื่อพบใน `job_title`/`description` โดยไม่อยู่ในประโยคปฏิเสธ; `SOFT` = เพิ่มคะแนนตาม `weight`), `weight int null` (เฉพาะ `SOFT`), `category`, `enabled`, `created_by null`, `created_at`
-
-**`negation_cues`**: `id`, `cue unique` (เช่น `ไม่มี`, `ไม่เก็บ`, `ไม่ต้อง`, `no`, `not`, `without`), `enabled` — ตรวจคำต้องห้ามในประโยคปฏิเสธ (README 5.1): cue ต้องอยู่ก่อนคำในประโยคเดียวกันและห่างไม่เกิน `NEGATION_WINDOW.max_gap` ตัวอักษร
-
-**`risk_rules`** (กฎให้คะแนน): `code PK`, `weight`, `params jsonb`, `enabled`, `updated_by null`, `updated_at` — `CONTACT_IN_TEXT`, `HARD_TERM_OTHER_FIELD`, `ALLOWANCE_HIGH`, `HOURS_EXCESSIVE`, `DESCRIPTION_TOO_SHORT`, `SOFT_TERMS`, `NO_ALLOWANCE`, `NEGATION_WINDOW` (ค่าตั้งต้นและความหมายดู `docs/superpowers/specs/2026-11-13-verification-slice1-design.md` §5.3)
-
-**`evaluations`** (ผลตรวจประกาศแต่ละ submission)
-`id`, `job_id`, `company_id`, `submission_id unique`, `submission_kind`, `submitted_at` (จาก E01 — ใช้ตัดสินว่า "ผลตรวจล่าสุด" คือแถวไหน ไม่ใช้เวลาที่ประมวลผล), `content jsonb` (ข้อความที่สแกนหลัง normalize — ไฮไลต์อ้างอิงข้อความนี้; **ห้าม log**), `risk_score int`, `risk_level`, `matched_keywords jsonb` (`[{term, field, negated, start, end}]`), `negated_only bool`, `reasons jsonb`, `decision (APPROVE|PENDING_REVIEW|AUTO_REJECT)`, `company_flag_under_review bool`, `fast_track bool` (snapshot ณ ตอนส่ง), `evaluated_at` | Index (`job_id`, `submitted_at`)
-
-**`appeals`**: `id`, `job_id unique` (1 ครั้ง/ประกาศ — **Verification เป็นผู้บังคับกฎนี้** README 5.1.5), `submission_id`, `statement text`, `status (OPEN|APPROVED|DENIED)`, `created_at`, `decided_by null`, `decided_at null` — ผล Admin เป็นที่สิ้นสุด
-
+> **ปรับ Requirement 2026-11-21:** ตัดระบบสแกนคำต้องห้ามและคะแนนความเสี่ยงออกทั้งหมด ตาราง `blacklist_terms`, `negation_cues`, `risk_rules` และ `appeals` **ถอดออก** (migration ใหม่ DROP); `evaluations` ถูกเปลี่ยนชื่อเป็น **`job_submission_snapshots`** เหลือเฉพาะสำเนาเนื้อหาที่ Admin อ่านในคิว (`id`, `job_id`, `company_id`, `submission_id` unique, `submission_kind`, `submitted_at`, `content jsonb`, `fast_track`, `created_at`); `queue_items` ถอด `risk_level`/`is_appeal`; ค่า enum เก่า (`JOB_APPEAL`, `REVIEW_HELD`, `EVALUATION`, `APPEAL`, `REVIEW_SCAN`, `AUTO_REJECTED`) คงไว้ในฐานข้อมูลเป็นค่าที่เลิกใช้ Verification เหลือคิว Admin, การรายงาน, ธงบริษัท และการตัดสินรีวิวที่ถูกรายงาน ประกาศของบริษัทที่ติดธง `UNDER_REVIEW` เข้าคิวด้วย `submission_id` จาก `JobSubmitted` โดยไม่มีการให้คะแนน
 **`company_snapshots`**: `company_id PK`, `name`, `status`, `entity_version` — ใช้แสดงชื่อบริษัทในคิว Admin และเช็กว่าบริษัท `VERIFIED` (สำเนาจาก `CompanyStatusChanged`)
 
 **`job_snapshots`** *(สไลซ์ 2)*: `job_id PK`, `company_id`, `status text`, `entity_version int`, `updated_at` — สำเนาสถานะประกาศจาก `JobStatusChanged` (เขียนเฉพาะเมื่อ `entity_version` ใหม่กว่า) ใช้ตอบว่า "รายงานได้ไหม" (`PUBLISHED`/`CLOSED`) และหา `company_id` ของประกาศ — Verification ไม่เรียก Job ตรงๆ
@@ -264,10 +257,8 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 | target_type / target_id | text / uuid | job / company / review / problem_report |
 | company_id | uuid null | |
 | submission_id | uuid null | การส่งตรวจที่รายการนี้ตัดสิน (ใช้ใน `JobVerified` ของ Admin); ว่างได้เมื่อรายการเกิดจาก `VERIFY_TIMEOUT` ที่ยังไม่มี `submission_id` |
-| origin | `EVALUATION`/`VERIFY_TIMEOUT`/`APPEAL`/`REPORT_THRESHOLD`/`REPORT_UNCOUNTED`/`REJECTION_THRESHOLD`/`ADMIN_FLAG`/`REVIEW_SCAN`/`REVIEW_REPORT` | ที่มาของรายการ (ใช้แยก "ผลตรวจที่มาหลัง Fail-safe"; `REPORT_THRESHOLD` = ประกาศถูกระงับเพราะรายงานครบเกณฑ์, `REPORT_UNCOUNTED` = รายงานที่ไม่นับเข้าเกณฑ์ ประกาศยัง `PUBLISHED`, `REJECTION_THRESHOLD` = ธงบริษัทติดอัตโนมัติ, `REVIEW_SCAN` = รีวิวติดตัวสแกนถูกพัก, `REVIEW_REPORT` = รีวิวที่เผยแพร่แล้วถูกรายงาน) |
+| origin | `FLAGGED_COMPANY`/`VERIFY_TIMEOUT`/`REPORT_THRESHOLD`/`REPORT_UNCOUNTED`/`REJECTION_THRESHOLD`/`ADMIN_FLAG`/`REVIEW_REPORT` | ที่มาของรายการ (`FLAGGED_COMPANY` = ประกาศของบริษัทที่ติดธง `UNDER_REVIEW` รอ Admin, `VERIFY_TIMEOUT` = Fail-safe, `REPORT_THRESHOLD` = ประกาศถูกระงับเพราะรายงานครบเกณฑ์, `REPORT_UNCOUNTED` = รายงานที่ไม่นับเข้าเกณฑ์ ประกาศยัง `PUBLISHED`, `REJECTION_THRESHOLD` = ธงบริษัทติดอัตโนมัติ, `ADMIN_FLAG` = Admin ตั้งธงเอง, `REVIEW_REPORT` = รีวิวที่เผยแพร่แล้วถูกรายงาน) |
 | priority | `NORMAL`/`FAST_TRACK` | ตาม entitlement ของบริษัท ณ เวลาเข้าคิว |
-| risk_level | RiskLevel null | สำหรับแถบสี เขียว/เหลือง/แดง |
-| is_appeal | bool | ป้าย APPEAL |
 | due_at | timestamptz | = created_at + 48 ชม. (หรือ 12 ชม. สำหรับ FAST_TRACK) |
 | status | QueueItemStatus | |
 | assigned_to | uuid null | |
@@ -282,7 +273,7 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 
 **`reporter_stats`**: `user_id PK`, `consecutive_dismissed int` — รีเซ็ตเป็น 0 เมื่อมีรายงานที่ถูกยืนยัน; `>= 3` ⇒ รายงานใหม่ `counted=false`
 
-**`company_rejection_events`**: `id`, `company_id`, `job_id`, `kind (AUTO_REJECTED|ADMIN_REJECTED|SUSPENDED|REMOVED)`, `occurred_at` (= `changed_at` ของ E03), `source_event_id uuid UNIQUE` (= `event_id` ของ E03 ที่ทำให้เกิดเหตุการณ์ — กันนับซ้ำเมื่อ Event ถูกส่งซ้ำ) — นับ 3 ครั้งใน 30 วัน ⇒ ติดธง; นับเฉพาะหลัง `company_flags.cleared_at` (เคลียร์ธงแล้วเริ่มนับใหม่) | index (`company_id`, `occurred_at`)
+**`company_rejection_events`**: `id`, `company_id`, `job_id`, `kind (ADMIN_REJECTED|SUSPENDED|REMOVED)` (`AUTO_REJECTED` เลิกใช้ — เหลือในแถวเก่าก่อน migration เท่านั้น), `occurred_at` (= `changed_at` ของ E03), `source_event_id uuid UNIQUE` (= `event_id` ของ E03 ที่ทำให้เกิดเหตุการณ์ — กันนับซ้ำเมื่อ Event ถูกส่งซ้ำ) — นับ 3 ครั้งใน 30 วัน ⇒ ติดธง; นับเฉพาะหลัง `company_flags.cleared_at` (เคลียร์ธงแล้วเริ่มนับใหม่) | index (`company_id`, `occurred_at`)
 
 **`company_flags`**: `company_id PK`, `under_review bool`, `set_by` (`SYSTEM`|`ADMIN`), `set_reason`, `set_at`, `trigger_count int null` (จำนวนเหตุการณ์ปฏิเสธที่ทำให้ติดธงอัตโนมัติ), `cleared_by null`, `cleared_at null`, `entity_version` (เพิ่มทีละ 1 ทุกครั้งที่ธงเปลี่ยน; ใช้เป็น `entity_version` ของ E18) — แถวถูกสร้างเมื่อมีเหตุการณ์/คำสั่งแรกของบริษัท; "เคยติดธง" = `set_at` ไม่ว่าง
 
@@ -304,7 +295,7 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 
 **`company_snapshots`**: เหมือน job_db (ชื่อ/โลโก้/สถานะ/partner)
 
-**`job_snapshots`**: `job_id PK`, `company_id`, `status JobStatus`, `target_majors text[]`, `title`, `entity_version`
+**`job_snapshots`**: `job_id PK`, `company_id`, `status JobStatus`, `category JobCategory null` (เติมจาก Internal job ตอนสมัคร ใช้ตรวจสิทธิ์ HR Member ตามสายงาน — ว่างได้สำหรับ snapshot ที่ E03 สร้างก่อนมีใบสมัคร), `target_majors text[]`, `title`, `entity_version`
 
 **`applications`**
 | ฟิลด์ | ชนิด | หมายเหตุ |
@@ -436,7 +427,7 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
              COMPLETED
 
   HR ไม่ประเมินครบ 14 วัน + Admin ยืนยัน ─► NO_EVALUATION (จาก IN_PROGRESS / TERMINATED / REEVALUATION_REQUESTED — จุดเริ่มนับดูตาราง)
-  ประกาศ AUTO_REJECTED/ADMIN_REJECTED/REMOVED (ก่อน ADVISOR_APPROVED) ─► CANCELLED (release)
+  ประกาศ ADMIN_REJECTED/REMOVED (ก่อน ADVISOR_APPROVED) ─► CANCELLED (release)
 ```
 
 **ตารางการเปลี่ยนสถานะ (Transition Table)** — ใช้เป็นแหล่งอ้างอิงตอนเขียนโค้ดและเทส
@@ -449,7 +440,7 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 | `PENDING` | `WITHDRAWN` | STUDENT | — | — |
 | `PENDING` | `EXPIRED` | SYSTEM | 14 วันหลังเข้า `PENDING` (ไม่นับช่วง Freeze) | — |
 | `PENDING` | `WITHDRAWN` | SYSTEM | นักศึกษาถูกอาจารย์อนุมัติใบอื่น | — |
-| `PENDING` | `CANCELLED` | SYSTEM | ประกาศ `AUTO_REJECTED`/`ADMIN_REJECTED`/`REMOVED` | — |
+| `PENDING` | `CANCELLED` | SYSTEM | ประกาศ `ADMIN_REJECTED`/`REMOVED` | — |
 | `HR_ACCEPTED` | `ADVISOR_PENDING` | STUDENT | ไม่มีใบ confirm อื่น | ใบอื่นที่ `HR_ACCEPTED` ของนักศึกษา → `STUDENT_DECLINED` + release |
 | `HR_ACCEPTED` | `STUDENT_DECLINED` | STUDENT / SYSTEM | — | release |
 | `HR_ACCEPTED` | `EXPIRED` | SYSTEM | 5 วัน | release |
@@ -495,17 +486,16 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 
 | จาก | ไป | ที่มา | Event |
 | :--- | :--- | :--- | :--- |
-| `DRAFT` | `VERIFYING` | HR ส่งตรวจ (ผ่าน Guard ข้อมูลบังคับ, Rate limit 5/วัน, บริษัท `VERIFIED`) | `JobStatusChanged` (`application_effect=NONE`) **และ** `JobSubmitted` |
-| `PUBLISHED` | `VERIFYING` | HR แก้ไข **ฟิลด์ข้อความอิสระ** | `JobStatusChanged` (`application_effect=FREEZE`) **และ** `JobSubmitted` (kind=EDIT) |
-| `PUBLISHED` | `PUBLISHED` | HR แก้ฟิลด์โครงสร้าง (`quota`, `deadline`, `target_majors`) | ไม่ส่ง |
-| `VERIFYING` | `PUBLISHED` | `JobVerified.APPROVE` | `JobStatusChanged` |
+| `DRAFT` | `PUBLISHED` | HR เผยแพร่ (ผ่าน Guard ข้อมูลบังคับรวม Tag 1–10, บริษัท `VERIFIED` **และไม่ติดธง `UNDER_REVIEW`**) — Job เปลี่ยนสถานะเอง ไม่รอ Verification | `JobStatusChanged` (`application_effect=NONE`) |
+| `DRAFT` | `VERIFYING` | HR ส่ง (ผ่าน Guard ข้อมูลบังคับ, บริษัท `VERIFIED` แต่ **ติดธง `UNDER_REVIEW`**) | `JobStatusChanged` (`application_effect=NONE`) **และ**`JobSubmitted` (kind=NEW) |
+| `PUBLISHED` | `VERIFYING` | HR แก้ไข **ฟิลด์ข้อความอิสระ** ของบริษัทที่ติดธง `UNDER_REVIEW` | `JobStatusChanged` (`application_effect=FREEZE`) **และ**`JobSubmitted` (kind=EDIT) |
+| `PUBLISHED` | `PUBLISHED` | HR แก้ฟิลด์โครงสร้าง (`quota`, `deadline`, `target_majors`, Tag ทักษะ) หรือแก้ข้อความอิสระของบริษัทที่ไม่ติดธง | ไม่ส่ง |
+| `VERIFYING` | `PUBLISHED` | `JobVerified.APPROVE` (ใช้เฉพาะกรณีสงวนไว้ — การส่งของบริษัทที่ติดธงตอบ `PENDING_REVIEW` เสมอ) | `JobStatusChanged` |
 | `VERIFYING` | `PENDING_REVIEW` | `JobVerified.PENDING_REVIEW` **หรือ** Fail-safe หมดเวลา 5 นาที (Job ตั้งเอง, `reason_code=VERIFY_TIMEOUT`) | `JobStatusChanged` |
-| `VERIFYING` | `AUTO_REJECTED` | `JobVerified.AUTO_REJECT` | `JobStatusChanged` |
-| `AUTO_REJECTED` | `PENDING_REVIEW` | HR อุทธรณ์ผ่าน Verification (ครั้งเดียว/ประกาศ — Verification ตรวจและบันทึก `appeals`) → `JobVerified(APPEAL_ACCEPTED)` | `JobStatusChanged` |
-| `AUTO_REJECTED` | `VERIFYING` | HR แก้ไขแล้วส่งใหม่ | `JobStatusChanged` (`NONE`) **และ** `JobSubmitted` (kind=RESUBMIT) |
 | `PENDING_REVIEW` | `PUBLISHED` | `JobVerified.ADMIN_APPROVE` | `JobStatusChanged` |
 | `PENDING_REVIEW` | `ADMIN_REJECTED` | `JobVerified.ADMIN_REJECT` | `JobStatusChanged` |
-| `ADMIN_REJECTED` | `VERIFYING` | HR แก้แล้วส่งใหม่ | `JobStatusChanged` (`NONE`) **และ** `JobSubmitted` (kind=RESUBMIT) |
+| `ADMIN_REJECTED` | `PUBLISHED` | HR แก้แล้วส่งใหม่ (บริษัทไม่ติดธง) | `JobStatusChanged` (`NONE`) |
+| `ADMIN_REJECTED` | `VERIFYING` | HR แก้แล้วส่งใหม่ (บริษัทติดธง `UNDER_REVIEW`) | `JobStatusChanged` (`NONE`) **และ**`JobSubmitted` (kind=RESUBMIT) |
 | `PUBLISHED` | `SUSPENDED` | `ReportThresholdReached` (E04) — ตั้ง `suspended_from_status = PUBLISHED` | `JobStatusChanged` (`FREEZE`, `reason_code=REPORT_THRESHOLD`) |
 | `CLOSED` | `SUSPENDED` | `ReportThresholdReached` (E04) — ตั้ง `suspended_from_status = CLOSED` *(PM ตัดสิน 2026-11-15: ประกาศ `CLOSED` รายงานได้ตาม R5-G01)* | `JobStatusChanged` (`FREEZE`, `reason_code=REPORT_THRESHOLD`) |
 | `SUSPENDED` | `PUBLISHED` | `JobVerified.RESTORE` เมื่อ `suspended_from_status = PUBLISHED` (และยังไม่เลย deadline) | `JobStatusChanged` (`UNFREEZE`, `reason_code=ADMIN_DISMISSED`) |
@@ -523,18 +513,18 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 
 ### 8.2.1 สถานะประกาศ × action ของ Verification (OD-06) — [spec สไลซ์ 2](superpowers/specs/2026-11-14-verification-slice2-design.md) §5.6
 
-Verification **ตรวจเฉพาะสิ่งที่ตัวเองบังคับ** (✓ = ตรวจจากข้อมูลของ Verification; — = ไม่ตรวจ ปล่อยให้ Job ปฏิเสธการเปลี่ยนสถานะเองตาม §8.2)
+Verification **ตรวจเฉพาะสิ่งที่ตัวเองบังคับ** (ได้ = ตรวจจากข้อมูลของ Verification; — = ไม่ตรวจ ปล่อยให้ Job ปฏิเสธการเปลี่ยนสถานะเองตาม §8.2)
 
-| สถานะประกาศ | รายงาน | ตรวจ (approve/reject) | อุทธรณ์ | ยกคำร้อง/ยืนยัน (dismiss/uphold-report) |
-| :--- | :-: | :-: | :-: | :-: |
-| `DRAFT`, `VERIFYING` | ✗ | — | ✗ | — |
-| `PUBLISHED` | ✓ (1 คน/ประกาศ) | ✗ | ✗ | — (มีเฉพาะรายการ "ไม่นับ") |
-| `PENDING_REVIEW` | ✗ | ✓ มีรายการ `JOB_REVIEW`/`JOB_APPEAL` เปิด | ✗ | ✗ |
-| `AUTO_REJECTED` | ✗ | ✗ | ✓ ผลล่าสุดเป็น `AUTO_REJECT` และยังไม่เคยอุทธรณ์ | ✗ |
-| `ADMIN_REJECTED` | ✗ | ✗ | ✗ | ✗ |
-| `SUSPENDED` | ✗ (R5-G01) | ✗ | ✗ | ✓ มีรายการ `JOB_REPORT` เปิด |
-| `REMOVED` | ✗ | ✗ | ✗ | ✗ |
-| `CLOSED` | ✓ | ✗ | ✗ | — |
+| สถานะประกาศ | รายงาน | ตรวจ (approve/reject) | ยกคำร้อง/ยืนยัน (dismiss/uphold-report) |
+| :--- | :-: | :-: | :-: |
+| `DRAFT`, `VERIFYING` | ไม่ได้ | — | — |
+| `PUBLISHED` | ได้ (1 คน/ประกาศ) | ไม่ได้ | — (มีเฉพาะรายการ "ไม่นับ") |
+| `PENDING_REVIEW` | ไม่ได้ | ได้ มีรายการ `JOB_REVIEW` เปิด (บริษัทที่ติดธง) | ไม่ได้ |
+| `AUTO_REJECTED` (เลิกใช้) | ไม่ได้ | ไม่ได้ | ไม่ได้ |
+| `ADMIN_REJECTED` | ไม่ได้ | ไม่ได้ | ไม่ได้ |
+| `SUSPENDED` | ไม่ได้ (R5-G01) | ไม่ได้ | ได้ มีรายการ `JOB_REPORT` เปิด |
+| `REMOVED` | ไม่ได้ | ไม่ได้ | ไม่ได้ |
+| `CLOSED` | ได้ | ไม่ได้ | — |
 
 หมายเหตุ: ประกาศ `CLOSED` ที่ถูกรายงานครบเกณฑ์ ⇒ Job ระงับ (`CLOSED → SUSPENDED`) และเก็บ `suspended_from_status`; `RESTORE` คืนสถานะเดิม (§8.2) — ตัดสินแล้ว 2026-11-15
 
@@ -548,10 +538,10 @@ Verification **ตรวจเฉพาะสิ่งที่ตัวเอ�
 `PENDING` → (`VERIFIED` | `NEED_MORE_INFO` | `REJECTED`)  •  `NEED_MORE_INFO` → `PENDING` (ส่งเอกสารเพิ่ม)  •  `VERIFIED` ⇄ `SUSPENDED`  •  `REJECTED` สมัครใหม่ได้โดยแก้ข้อมูล → `PENDING`
 
 ### 8.4 Advisor Link (Identity) — README 5.6
-`NONE` → (`ADVISOR_LINK_PENDING`: นักศึกษาเลือก) → (`LINKED`: อาจารย์ยืนยัน) • เปลี่ยนอาจารย์: `LINKED` → `ADVISOR_LINK_PENDING` (เลือกคนใหม่ ขณะที่ใบสมัครที่ค้างยังอยู่กับอาจารย์เดิมจนกว่าอาจารย์ใหม่ยืนยัน) หรือ Admin ย้ายตรงเป็น `LINKED`
+`NONE` → `LINKED` ตอนอาจารย์สร้างนักศึกษา (ไม่มีขั้น `ADVISOR_LINK_PENDING` — ปรับ Requirement 2026-11-21) • เปลี่ยนอาจารย์: **Admin ย้ายตรงเป็น `LINKED`** กับอาจารย์คนใหม่เท่านั้น (ใบสมัครที่ค้างย้ายตามนักศึกษาด้วย `AdvisorLinkChanged`)
 
 ### 8.5 อื่นๆ
-- **Review:** `SUBMITTED` → (`PUBLISHED` | `HELD`) ; `HELD` → (`PUBLISHED` | `REMOVED`) โดย Admin
+- **Review:** `SUBMITTED` → `PUBLISHED` (Verification ตอบให้เผยแพร่ทันที ไม่สแกนเนื้อหา; `HELD` เลิกใช้) ; รีวิวที่เผยแพร่แล้ว → `REMOVED` โดย Admin (จากคิว `REVIEW_REPORT`)
 - **Problem Report:** `OPEN` → `ACKNOWLEDGED` → `RESOLVED` (ไม่ย้อน)
 - **Certificate:** `VALID` → `REVOKED` (ไม่ย้อน)
 - **Queue Item:** `OPEN` → `IN_REVIEW` → `RESOLVED`

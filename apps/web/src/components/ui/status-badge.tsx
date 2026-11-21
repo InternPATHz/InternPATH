@@ -10,8 +10,8 @@ const TONE_STYLE: Record<StatusTone, { badge: string; icon: string }> = {
   success: { badge: 'bg-success-soft text-success-text', icon: 'text-success' },
   warning: { badge: 'bg-warning-soft text-warning-text', icon: 'text-warning' },
   danger: { badge: 'bg-danger-soft text-danger-text', icon: 'text-danger' },
-  info: { badge: 'bg-primary-soft text-primary-hover', icon: 'text-primary' },
-  neutral: { badge: 'border border-border bg-surface-muted text-ink-soft', icon: 'text-neutral' },
+  info: { badge: 'bg-info-soft text-info-text', icon: 'text-info' },
+  neutral: { badge: 'bg-surface-muted text-ink-soft', icon: 'text-neutral' },
 };
 
 export function StatusBadge({
@@ -28,7 +28,7 @@ export function StatusBadge({
   const style = TONE_STYLE[tone];
   return (
     <span
-      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1 text-sm font-semibold ${style.badge} ${className}`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-sm font-semibold ${style.badge} ${className}`}
     >
       {Icon && <Icon aria-hidden="true" className={`h-4 w-4 shrink-0 ${style.icon}`} strokeWidth={2.5} />}
       {children}

@@ -6,9 +6,9 @@ export function AuthShell({ title, subtitle, children }: { title: string; subtit
   return (
     <main className="min-h-screen bg-surface-muted px-4 py-10 sm:py-16">
       <div className="mx-auto max-w-lg">
-        <Link href="/" aria-label="InternPath หน้าแรก" className="mb-8 inline-flex text-xl font-bold text-primary"><BrandLogo label="InternPath" size="lg" /></Link>
-        <section className="rounded-2xl border border-border bg-surface p-6 shadow-sm sm:p-8">
-          <h1 className="text-2xl font-bold text-ink">{title}</h1>
+        <Link href="/" aria-label="InternPath หน้าแรก" className="mb-8 inline-flex text-xl font-semibold text-ink"><BrandLogo label="InternPath" size="lg" /></Link>
+        <section className="rounded-2xl bg-surface p-6 sm:p-10">
+          <h1 className="text-[28px] font-semibold leading-tight text-ink">{title}</h1>
           {subtitle && <p className="mt-2 text-sm text-ink-soft">{subtitle}</p>}
           <div className="mt-6">{children}</div>
         </section>
@@ -31,7 +31,7 @@ export function Field({ label, endAction, ...props }: { label: string; endAction
 }
 
 export function ActionButton({ children, busy = false }: { children: ReactNode; busy?: boolean }) {
-  return <button type="submit" disabled={busy} className="w-full rounded-lg bg-primary px-4 py-3 font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">{busy ? 'กำลังดำเนินการ…' : children}</button>;
+  return <button type="submit" disabled={busy} className="w-full rounded-full bg-primary px-4 py-3 font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">{busy ? 'กำลังดำเนินการ…' : children}</button>;
 }
 
 export function Notice({ children, error = false }: { children: ReactNode; error?: boolean }) {

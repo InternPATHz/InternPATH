@@ -45,7 +45,7 @@ function AdminFrame({ children }: { children: ReactNode }) {
                     <Link
                       href={item.href}
                       aria-current={active ? 'page' : undefined}
-                      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${active ? 'bg-primary-soft font-semibold text-primary' : 'text-ink hover:bg-surface-muted'}`}
+                      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${active ? 'bg-black/[0.06] font-semibold text-ink' : 'text-ink/80 hover:bg-black/[0.04] hover:text-ink'}`}
                     >
                       {icon}
                       {item.label}
@@ -68,12 +68,12 @@ function AdminFrame({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-surface-muted lg:flex">
       <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 lg:hidden">
-        <Link href="/admin/queue" aria-label="INTERNPATH Admin" className="font-bold text-primary"><BrandLogo label="INTERNPATH Admin" size="sm" /></Link>
+        <Link href="/admin/queue" aria-label="INTERNPATH Admin" className="font-semibold text-ink"><BrandLogo label="INTERNPATH Admin" size="sm" /></Link>
         <button type="button" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen} aria-controls="admin-sidebar"
           className="rounded-lg border border-border px-3 py-1.5 text-sm">เมนู</button>
       </header>
-      <aside id="admin-sidebar" className={`${menuOpen ? 'block' : 'hidden'} border-b border-border bg-surface p-4 lg:sticky lg:top-0 lg:block lg:h-screen lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r`}>
-        <Link href="/admin/queue" aria-label="INTERNPATH Admin" className="mb-6 hidden px-3 text-lg font-bold text-primary lg:block"><BrandLogo label="INTERNPATH Admin" size="md" /></Link>
+      <aside id="admin-sidebar" className={`${menuOpen ? 'block' : 'hidden'} border-b border-border frosted p-4 lg:sticky lg:top-0 lg:block lg:h-screen lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r`}>
+        <Link href="/admin/queue" aria-label="INTERNPATH Admin" className="mb-6 hidden px-3 text-lg font-semibold text-ink lg:block"><BrandLogo label="INTERNPATH Admin" size="md" /></Link>
         {nav}
         <div className="mt-8 border-t border-border px-3 pt-4 text-sm">
           <p className="truncate font-medium">{user.full_name}</p>

@@ -22,7 +22,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 import { addDays, bangkokToday } from '../../src/state-machine/dates';
 import { FakeJobClient } from '../support/application-fakes';
 import { createTestDatabase, type TestDatabase } from '../support/db';
-import { TEST_JWT, bearer } from '../support/jwt';
+import { ALL_CATEGORIES, TEST_JWT, bearer } from '../support/jwt';
 import { FakeIdentity, FakeStorage } from '../support/profile-resume-fakes';
 
 /** แอปจริงได้ OutboxWriter จาก MessagingModule และ S3StorageService จาก StorageModule (Global ทั้งคู่) */
@@ -71,7 +71,7 @@ describe('Lifecycle 1.7 — E-Certificate (HTTP + Postgres จริง)', funct
   const today = () => bangkokToday(new Date());
 
   const asHr = (company = companyId) =>
-    bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: company, company_role: 'MEMBER' });
+    bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: company, company_role: 'MEMBER', company_categories: ALL_CATEGORIES });
   const asStudent = (sub = student) => bearer({ role: 'STUDENT', sub });
   const asAdmin = () => bearer({ role: 'PLATFORM_ADMIN', sub: adminUser });
 
@@ -126,7 +126,7 @@ describe('Lifecycle 1.7 — E-Certificate (HTTP + Postgres จริง)', funct
     identity.setStudent(student, { full_name: 'ปิ่นมณี น้ำใส' });
     await prisma.companySnapshot.create({ data: { companyId, name: 'บริษัท ทดสอบ จำกัด', status: 'VERIFIED' } });
     await prisma.jobSnapshot.create({
-      data: { jobId, companyId, title: 'Backend Intern', status: 'PUBLISHED', targetMajors: [] },
+      data: { jobId, companyId, title: 'Backend Intern', status: 'PUBLISHED', targetMajors: [], category: 'TECH_IT' },
     });
   });
 
@@ -152,6 +152,9 @@ describe('Lifecycle 1.7 — E-Certificate (HTTP + Postgres จริง)', funct
         quotaReserved: true,
         ...data,
       },
+    });
+    await prisma.jobSnapshot.upsert({
+      where: { jobId: row.jobId }, create: { jobId: row.jobId, companyId, title: 'Backend Intern', status: 'PUBLISHED', category: 'TECH_IT' }, update: {},
     });
     // CHECK `evaluations_reason_required_on_fail` — FAIL ต้องมีเหตุผล
     const reason = result === 'FAIL' ? 'ส่งงานไม่ครบ' : null;
@@ -299,9 +302,23 @@ describe('Lifecycle 1.7 — E-Certificate (HTTP + Postgres จริง)', funct
       expect(renderer.inputs).to.have.length(0);
     });
 
+    it('HR Member นอกสายงานของประกาศ ⇒ 403 FORBIDDEN_CATEGORY ไม่ออกใบ; ในสายงาน/Owner ออกได้ (ปรับ 2026-11-21)', async () => {
+      const row = await seedEvaluated();
+      const outside = bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: companyId, company_role: 'MEMBER', company_categories: ['BUSINESS_MARKETING'] });
+      const res = await issue(row.id, outside).expect(403);
+      expect(res.body.error.code).to.equal('FORBIDDEN_ROLE');
+      expect(res.body.error.details[0].issue).to.equal('FORBIDDEN_CATEGORY');
+      expect(await myCertificates()).to.equal(0);
+      const inside = bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: companyId, company_role: 'MEMBER', company_categories: ['TECH_IT'] });
+      await issue(row.id, inside).expect(201);
+    });
+
     it('ยังไม่มี snapshot ประกาศ ⇒ 503 JOB_SNAPSHOT_MISSING', async () => {
       const row = await seedEvaluated('EVALUATED_PASS', 60, 'PASS', { jobId: randomUUID() });
-      const res = await issue(row.id).expect(503);
+      await prisma.jobSnapshot.delete({ where: { jobId: row.jobId } });
+      // Owner ไม่ถูกจำกัดสายงาน จึงไปถึงขั้นอ่าน snapshot (HR Member ที่ไม่มี snapshot ⇒ ตรวจสายงานไม่ได้ ⇒ 403)
+      const owner = bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: companyId, company_role: 'OWNER' });
+      const res = await http().post(`/v1/hr/applications/${row.id}/certificate`).set('Authorization', owner).expect(503);
       expect(res.body.error).to.include({ code: 'UPSTREAM_UNAVAILABLE' });
       expect(res.body.error.details[0].issue).to.equal('JOB_SNAPSHOT_MISSING');
     });

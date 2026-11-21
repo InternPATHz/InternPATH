@@ -167,6 +167,30 @@ describe('E02 screening/admin decisions (PostgreSQL + shared EventConsumer trans
     });
   }
 
+  it('stores the Admin rejection reason from reasons[] on ADMIN_REJECT, never leaks it to E03, and clears it on ADMIN_APPROVE', async () => {
+    const rejected = await seedJob(db.prisma, 'PENDING_REVIEW', TIMESTAMPS);
+    const reject = jobVerified(rejected.id, rejected.currentSubmissionId!, 'ADMIN_REJECT');
+    reject.payload.decided_by = 'ADMIN';
+    reject.payload.reasons = [
+      { code: 'OTHER', detail: 'ignored' },
+      { code: 'ADMIN_REASON', detail: 'ข้อความอธิบายไม่ครบ กรุณาแก้ไข' },
+    ];
+    expect(await deliver(reject)).to.deep.equal({ kind: 'ack' });
+    const after = await db.prisma.job.findUniqueOrThrow({ where: { id: rejected.id } });
+    expect(after).to.include({ status: 'ADMIN_REJECTED', adminReason: 'ข้อความอธิบายไม่ครบ กรุณาแก้ไข' });
+    const out = JSON.stringify((await writes(rejected.id)).outbox.map((row) => row.payload));
+    expect(out).to.not.include('ข้อความอธิบาย');
+
+    const bare = await seedJob(db.prisma, 'PENDING_REVIEW', TIMESTAMPS);
+    const bareReject = jobVerified(bare.id, bare.currentSubmissionId!, 'ADMIN_REJECT');
+    expect(await deliver(bareReject)).to.deep.equal({ kind: 'ack' });
+    expect((await db.prisma.job.findUniqueOrThrow({ where: { id: bare.id } })).adminReason).to.equal(null);
+
+    const approved = await seedJob(db.prisma, 'PENDING_REVIEW', { ...TIMESTAMPS, adminReason: 'เหตุผลเก่า' });
+    expect(await deliver(jobVerified(approved.id, approved.currentSubmissionId!, 'ADMIN_APPROVE'))).to.deep.equal({ kind: 'ack' });
+    expect((await db.prisma.job.findUniqueOrThrow({ where: { id: approved.id } })).adminReason).to.equal(null);
+  });
+
   it('concurrent duplicate event IDs produce one transition and one processed marker', async () => {
     const before = await seedJob(db.prisma, 'VERIFYING', TIMESTAMPS);
     const env = jobVerified(before.id, before.currentSubmissionId!);

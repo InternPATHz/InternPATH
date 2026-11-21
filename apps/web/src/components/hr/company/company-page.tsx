@@ -115,18 +115,18 @@ export function CompanyPage() {
   const canEdit = isOwner && !busy;
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-bold">บริษัทของฉัน</h1>
+      <h1 className="text-3xl font-semibold">บริษัทของฉัน</h1>
 
-      <section aria-labelledby="status-title" className="mt-6 rounded-xl border border-border bg-surface-muted p-4">
+      <section aria-labelledby="status-title" className="mt-6 rounded-xl bg-surface-muted p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <h2 id="status-title" className="text-lg font-bold">สถานะบัญชีบริษัท</h2>
+          <h2 id="status-title" className="text-lg font-semibold">สถานะบัญชีบริษัท</h2>
           <StatusBadge tone={view.tone} icon={view.icon}>{view.label}</StatusBadge>
         </div>
         <p className="mt-2 text-sm text-ink-soft">{STATUS_HINT[company.status] ?? ''}</p>
         {company.review_note && <p className="mt-2 text-sm"><span className="font-medium">หมายเหตุจากผู้ดูแลระบบ:</span> {company.review_note}</p>}
         {company.status === 'NEED_MORE_INFO' && isOwner && (
           <button type="button" disabled={busy} onClick={() => void run(() => request('/companies/me/resubmit', { method: 'POST' }), 'ส่งตรวจอีกครั้งแล้ว')}
-            className="mt-3 rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ส่งตรวจอีกครั้ง</button>
+            className="mt-3 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ส่งตรวจอีกครั้ง</button>
         )}
         {company.status === 'NEED_MORE_INFO' && !isOwner && <p className="mt-2 text-xs text-ink-soft">เฉพาะเจ้าของบัญชี (Owner) ที่ส่งเอกสารและส่งตรวจใหม่ได้</p>}
       </section>
@@ -135,13 +135,13 @@ export function CompanyPage() {
       {!isOwner && <p className="mt-4 text-xs text-ink-soft">คุณเป็นสมาชิก HR ดูข้อมูลได้อย่างเดียว การแก้ไขเป็นสิทธิ์ของเจ้าของบัญชี (Owner)</p>}
 
       <section aria-labelledby="info-title" className="mt-8">
-        <h2 id="info-title" className="text-lg font-bold">ข้อมูลบริษัท</h2>
+        <h2 id="info-title" className="text-lg font-semibold">ข้อมูลบริษัท</h2>
         <div className="mt-3 flex items-center gap-4">
           <Avatar name={company.name} src={company.logo_url} size="lg" />
           {isOwner && (
             <div>
               <input ref={logoInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => pickFile(event, 'logo')} aria-label="เลือกไฟล์โลโก้" />
-              <button type="button" disabled={!canEdit} onClick={() => logoInput.current?.click()} className="rounded-lg border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">เปลี่ยนโลโก้</button>
+              <button type="button" disabled={!canEdit} onClick={() => logoInput.current?.click()} className="rounded-full border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">เปลี่ยนโลโก้</button>
               <p className="mt-1 text-xs text-ink-soft">jpg, png หรือ webp ไม่เกิน 2 MB (โลโก้แสดงต่อสาธารณะ)</p>
             </div>
           )}
@@ -161,12 +161,12 @@ export function CompanyPage() {
               <input value={phone} onChange={(event) => setPhone(event.target.value)} disabled={!isOwner} className={inputClass} />
             </label>
           </div>
-          {isOwner && <button type="submit" disabled={busy} className="rounded-lg bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">บันทึกข้อมูล</button>}
+          {isOwner && <button type="submit" disabled={busy} className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">บันทึกข้อมูล</button>}
         </form>
       </section>
 
       <section aria-labelledby="docs-title" className="mt-10">
-        <h2 id="docs-title" className="text-lg font-bold">เอกสารยืนยันบริษัท</h2>
+        <h2 id="docs-title" className="text-lg font-semibold">เอกสารยืนยันบริษัท</h2>
         <p className="mt-1 text-sm text-ink-soft">ไฟล์ PDF ไม่เกิน 5 MB เก็บแบบส่วนตัว เปิดดูได้เฉพาะสมาชิกบริษัทและผู้ดูแลระบบ</p>
         {isOwner && (
           <div className="mt-3 flex flex-wrap items-end gap-3">
@@ -176,7 +176,7 @@ export function CompanyPage() {
               </select>
             </label>
             <input ref={docInput} type="file" accept="application/pdf,.pdf" className="sr-only" onChange={(event) => pickFile(event, 'doc')} aria-label="เลือกไฟล์เอกสาร" />
-            <button type="button" disabled={!canEdit} onClick={() => docInput.current?.click()} className="rounded-lg bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">อัปโหลดเอกสาร</button>
+            <button type="button" disabled={!canEdit} onClick={() => docInput.current?.click()} className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">อัปโหลดเอกสาร</button>
           </div>
         )}
         {documents.length === 0 ? (

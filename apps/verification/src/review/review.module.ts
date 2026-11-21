@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuditModule } from '../audit/audit.module';
 import { QueueModule } from '../queue/queue.module';
-import { RulesModule } from '../rules/rules.module';
+
 import { ReviewActionsController } from './review-actions.controller';
 import { ReviewActionsService } from './review-actions.service';
 import { ReviewModerationService } from './review-moderation.service';
@@ -10,7 +10,7 @@ import { ReviewReportService } from './review-report.service';
 
 /** ตรวจรีวิว (E09/E10), รายงานรีวิว และการตัดสินของ Admin — สไลซ์ 3 */
 @Module({
-  imports: [QueueModule, RulesModule, AuditModule],
+  imports: [QueueModule, AuditModule],
   controllers: [ReviewReportController, ReviewActionsController],
   providers: [ReviewModerationService, ReviewReportService, ReviewActionsService],
   exports: [ReviewModerationService],

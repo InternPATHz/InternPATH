@@ -9,6 +9,7 @@ export type CompanyStatus = 'PENDING' | 'NEED_MORE_INFO' | 'VERIFIED' | 'REJECTE
 
 export type CompanyMemberRole = 'OWNER' | 'MEMBER';
 
+/** `ADVISOR_LINK_PENDING` เลิกใช้ (2026-11-21: นักศึกษาไม่เลือกอาจารย์ — อาจารย์สร้างบัญชีและผูก `LINKED` ทันที) คงค่าไว้เพื่อความเข้ากันได้ */
 export type AdvisorLinkStatus = 'NONE' | 'ADVISOR_LINK_PENDING' | 'LINKED';
 
 export type JobStatus =
@@ -32,10 +33,8 @@ export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export type QueueItemType =
   | 'JOB_REVIEW'
-  | 'JOB_APPEAL'
   | 'COMPANY_ACCOUNT'
   | 'JOB_REPORT'
-  | 'REVIEW_HELD'
   | 'REVIEW_REPORT';
 
 export type QueueItemStatus = 'OPEN' | 'IN_REVIEW' | 'RESOLVED';

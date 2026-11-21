@@ -104,7 +104,7 @@ export function AuditLog() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-bold">Audit log ของ Verification</h1>
+        <h1 className="text-2xl font-semibold">Audit log ของ Verification</h1>
         <p className="mt-1 text-sm text-ink-soft">
           บันทึกการกระทำของ Admin ในส่วนตรวจสอบและความไว้วางใจ เรียงใหม่ไปเก่า ลบหรือแก้ไม่ได้ (Audit log ของ Identity และ Lifecycle แยกอยู่ที่ Service นั้น)
         </p>
@@ -131,7 +131,7 @@ export function AuditLog() {
             <input type="date" value={to} onChange={(event) => setTo(event.target.value)}
               className="rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" />
           </label>
-          <button type="submit" className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">กรอง</button>
+          <button type="submit" className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">กรอง</button>
           {hasFilter && (
             <button type="button" onClick={() => { setActor(''); setFrom(''); setTo(''); setFormError(''); router.replace(pathname); }}
               className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-muted">ล้างตัวกรอง</button>

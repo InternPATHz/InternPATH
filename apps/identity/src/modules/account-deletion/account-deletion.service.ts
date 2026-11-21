@@ -112,22 +112,19 @@ export class AccountDeletionService {
   private async unlinkAdvisor(tx: Prisma.TransactionClient, advisorId: string, anonymousId: string,
     cid: string, now: Date): Promise<void> {
     const links = await tx.studentProfileIdentity.findMany({
-      where: { OR: [{ advisorId }, { pendingAdvisorId: advisorId }] },
+      where: { advisorId },
     });
     for (const link of links) {
-      const nextAdvisor = link.advisorId === advisorId ? null : link.advisorId;
-      const nextPending = link.pendingAdvisorId === advisorId ? null : link.pendingAdvisorId;
-      const nextStatus = nextPending ? 'ADVISOR_LINK_PENDING' : nextAdvisor ? 'LINKED' : 'NONE';
+      const nextAdvisor = null;
+      const nextStatus = 'NONE' as const;
       const updated = await tx.studentProfileIdentity.updateMany({ where: { userId: link.userId,
-        advisorId: link.advisorId, pendingAdvisorId: link.pendingAdvisorId },
-      data: { advisorId: nextAdvisor, pendingAdvisorId: nextPending,
-        advisorLinkStatus: nextStatus, advisorLinkUpdatedAt: now } });
+        advisorId: link.advisorId },
+      data: { advisorId: nextAdvisor, advisorLinkStatus: nextStatus, advisorLinkUpdatedAt: now } });
       if (updated.count !== 1) throw new AppException('STATE_CONFLICT', 'การผูกอาจารย์ถูกเปลี่ยนแล้ว', 409);
       const student = await tx.user.update({ where: { id: link.userId }, data: { version: { increment: 1 } } });
       const payload: AdvisorLinkChangedPayload = { student_user_id: link.userId,
         ...(link.advisorId ? { old_advisor_id: link.advisorId } : {}),
-        ...(nextAdvisor ? { new_advisor_id: nextAdvisor } : {}),
-        link_status: nextStatus === 'NONE' ? 'UNLINKED' : nextStatus,
+        link_status: 'UNLINKED',
         changed_by: 'ADVISOR', entity_version: student.version, changed_at: now.toISOString() };
       await this.outbox.add(tx, { type: 'AdvisorLinkChanged', aggregateId: link.userId, correlationId: cid, payload });
       await tx.statusHistory.create({ data: { entity: 'USER', entityId: link.userId,

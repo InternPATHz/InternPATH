@@ -8,6 +8,7 @@ import {
   IsOptional,
   IsString,
   IsUUID,
+  Matches,
   Max,
   Min,
   NotContains,
@@ -45,6 +46,12 @@ export class SearchJobsQueryDto implements SearchJobsQuery, PageQuery {
   @IsOptional()
   @IsBoolean()
   allowance?: boolean;
+
+  /** slug ของ Tag คั่นด้วยจุลภาค (any-of) */
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-z0-9]+(-[a-z0-9]+)*(,[a-z0-9]+(-[a-z0-9]+)*){0,9}$/)
+  tags?: string;
 
   @IsOptional()
   @IsUUID('4')

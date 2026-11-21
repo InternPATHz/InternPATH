@@ -32,7 +32,7 @@ function adminUrl(): string | undefined {
 @Module({ providers: [OutboxWriter], exports: [OutboxWriter] })
 class StubMessagingModule {}
 
-describe('Identity advisor link (Postgres จริง)', function () {
+describe('Identity advisor-created students (Postgres จริง)', function () {
   this.timeout(90_000);
   let admin: Client;
   let dbName: string;
@@ -92,120 +92,168 @@ describe('Identity advisor link (Postgres จริง)', function () {
     delete process.env.JWT_PUBLIC_KEY;
   });
 
-  it('Admin approves advisor; student sees only active advisors from their university', async () => {
-    const before = await request(app.getHttpServer()).get('/v1/advisors').set('Authorization', bearer(studentId, 'STUDENT')).expect(200);
-    expect(before.body.data.map((item: { id: string }) => item.id)).to.deep.equal([advisorB]);
-    const pending = await request(app.getHttpServer()).get('/v1/admin/advisors?status=PENDING_APPROVAL').set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).expect(200);
+  const http = () => request(app.getHttpServer());
+  const advisorAuth = (id: string) => ({ Authorization: bearer(id, 'ADVISOR') });
+  const adminAuth = () => ({ Authorization: bearer(adminId, 'PLATFORM_ADMIN') });
+  const newStudent = (over: Record<string, unknown> = {}) => ({
+    email: `new${randomBytes(3).toString('hex')}@test.ac.th`, full_name: 'นักศึกษา ใหม่', student_code: `N${randomBytes(3).toString('hex')}`, major: 'CS', year_level: 3, ...over,
+  });
+
+  it('Admin approves a pending advisor once, with audit and approval timestamp', async () => {
+    const pending = await http().get('/v1/admin/advisors?status=PENDING_APPROVAL').set(adminAuth()).expect(200);
     expect(pending.body.meta.total).to.equal(2);
-    await request(app.getHttpServer()).post(`/v1/admin/advisors/${advisorA}/actions/approve`).set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).send({}).expect(204);
-    await request(app.getHttpServer()).post(`/v1/admin/advisors/${advisorA}/actions/approve`).set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).send({}).expect(409);
+    await http().post(`/v1/admin/advisors/${advisorA}/actions/approve`).set(adminAuth()).send({}).expect(204);
+    await http().post(`/v1/admin/advisors/${advisorA}/actions/approve`).set(adminAuth()).send({}).expect(409);
     const profile = await db.advisorProfile.findUniqueOrThrow({ where: { userId: advisorA } });
     expect(profile.approvedBy).to.equal(adminId);
     expect(await db.adminAuditLog.count({ where: { targetId: advisorA } })).to.equal(1);
-    const after = await request(app.getHttpServer()).get('/v1/advisors?q=Advisor').set('Authorization', bearer(studentId, 'STUDENT')).expect(200);
-    expect(after.body.meta.total).to.equal(2);
-    expect(after.body.data.map((item: { id: string }) => item.id)).to.include.members([advisorA, advisorB]);
   });
 
-  it('student request and advisor confirmation write outbox and keep history', async () => {
+  it('removed self-service routes: no student register, no advisor list, no student-chosen advisor link', async () => {
+    await http().post('/v1/auth/register/student').send(newStudent({ password: 'a-long-test-password', accept_privacy: true })).expect(404);
+    await http().get('/v1/advisors').set('Authorization', bearer(studentId, 'STUDENT')).expect(404);
+    await http().post('/v1/users/me/advisor-link').set('Authorization', bearer(studentId, 'STUDENT')).send({ advisor_id: advisorB }).expect(404);
+    await http().get('/v1/advisor-links/requests').set(advisorAuth(advisorB)).expect(404);
+  });
+
+  it('advisor creates a student: PENDING_EMAIL account without password, LINKED at once, 7-day invitation and AdvisorLinkChanged', async () => {
     const header = { 'X-Correlation-Id': randomUUID() };
-    const first = await request(app.getHttpServer()).post('/v1/users/me/advisor-link').set('Authorization', bearer(studentId, 'STUDENT')).set(header).send({ advisor_id: advisorA }).expect(201);
-    expect(first.body).to.deep.equal({});
-    expect(first.headers['x-correlation-id']).to.equal(header['X-Correlation-Id']);
-    const me = await request(app.getHttpServer()).get('/v1/users/me').set('Authorization', bearer(studentId, 'STUDENT')).expect(200);
-    expect(me.body.student.advisor_link_status).to.equal('ADVISOR_LINK_PENDING');
-    expect(me.body.student.pending_advisor_id).to.equal(advisorA);
-    const queue = await request(app.getHttpServer()).get('/v1/advisor-links/requests').set('Authorization', bearer(advisorA, 'ADVISOR')).expect(200);
-    expect(queue.body.meta.total).to.equal(1);
-    await request(app.getHttpServer()).post(`/v1/advisor-links/requests/${studentId}/actions/confirm`).set('Authorization', bearer(advisorA, 'ADVISOR')).expect(204);
-    const linked = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: studentId } });
-    expect(linked.advisorId).to.equal(advisorA);
-    expect(linked.advisorLinkStatus).to.equal('LINKED');
-    const events = await db.outboxEvent.findMany({ where: { aggregateId: studentId }, orderBy: { createdAt: 'asc' } });
-    expect(events.map((event) => event.type)).to.deep.equal(['AdvisorLinkChanged', 'AdvisorLinkChanged']);
-    expect((events[1].payload as { new_advisor_id: string }).new_advisor_id).to.equal(advisorA);
-    const requested = events.find((event) => (event.payload as { link_status: string }).link_status === 'ADVISOR_LINK_PENDING');
-    expect(requested?.correlationId).to.equal(header['X-Correlation-Id']);
-    expect(await db.statusHistory.count({ where: { entityId: studentId } })).to.equal(2);
-    const history = await db.statusHistory.findMany({ where: { entityId: studentId }, orderBy: { occurredAt: 'asc' } });
-    expect(history.map((entry) => entry.actorId)).to.deep.equal([studentId, advisorA]);
+    const body = newStudent({ email: 'Created.Student@TEST.ac.th' });
+    const res = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).set(header).send(body).expect(201);
+    expect(res.body).to.have.all.keys('student_user_id', 'email', 'invitation_expires_at');
+    expect(res.body.email).to.equal('created.student@test.ac.th');
+    const days = (new Date(res.body.invitation_expires_at).getTime() - Date.now()) / 86_400_000;
+    expect(days).to.be.within(6.99, 7.01);
+    expect(res.headers['x-correlation-id']).to.equal(header['X-Correlation-Id']);
+
+    const user = await db.user.findUniqueOrThrow({ where: { id: res.body.student_user_id }, include: { studentProfile: true } });
+    expect(user).to.include({ role: 'STUDENT', status: 'PENDING_EMAIL', passwordHash: null, emailVerifiedAt: null });
+    expect(user.universityId).to.equal((await db.user.findUniqueOrThrow({ where: { id: advisorB } })).universityId);
+    expect(user.studentProfile).to.include({ studentCode: body.student_code, major: 'CS', yearLevel: 3, advisorId: advisorB, createdByAdvisorId: advisorB, advisorLinkStatus: 'LINKED' });
+    const tokens = await db.emailToken.findMany({ where: { userId: user.id } });
+    expect(tokens.map((t) => t.purpose)).to.deep.equal(['STUDENT_INVITATION']);
+    expect(JSON.stringify(tokens)).to.not.include('"token"');
+
+    const events = await db.outboxEvent.findMany({ where: { aggregateId: user.id } });
+    expect(events).to.have.length(1);
+    expect(events[0].type).to.equal('AdvisorLinkChanged');
+    expect(events[0].correlationId).to.equal(header['X-Correlation-Id']);
+    expect(events[0].payload).to.include({ student_user_id: user.id, new_advisor_id: advisorB, link_status: 'LINKED', changed_by: 'ADVISOR' });
+    expect(events[0].payload).to.not.have.property('old_advisor_id');
+    const history = await db.statusHistory.findMany({ where: { entityId: user.id } });
+    expect(history.map((h) => h.reason).sort()).to.deep.equal(['ADVISOR_LINK', 'STUDENT_CREATED_BY_ADVISOR']);
   });
 
-  it('switches advisors only after the new advisor confirms', async () => {
-    const universityId = (await db.user.findUniqueOrThrow({ where: { id: studentId } })).universityId!;
-    const switchingStudent = await db.user.create({ data: { email: 'switch@test.ac.th', passwordHash: 'test-only', fullName: 'Switch Student', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId,
-      studentProfile: { create: { studentCode: 'S003', major: 'CS', yearLevel: 3 } } } });
-    const token = bearer(switchingStudent.id, 'STUDENT');
-    await request(app.getHttpServer()).post('/v1/users/me/advisor-link').set('Authorization', token).send({ advisor_id: advisorA }).expect(201);
-    await request(app.getHttpServer()).post(`/v1/advisor-links/requests/${switchingStudent.id}/actions/confirm`).set('Authorization', bearer(advisorA, 'ADVISOR')).expect(204);
-    await request(app.getHttpServer()).post('/v1/users/me/advisor-link').set('Authorization', token).send({ advisor_id: advisorB }).expect(201);
-    const pending = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: switchingStudent.id } });
-    expect(pending.advisorId).to.equal(advisorA);
-    expect(pending.pendingAdvisorId).to.equal(advisorB);
-    await request(app.getHttpServer()).post(`/v1/advisor-links/requests/${switchingStudent.id}/actions/confirm`).set('Authorization', bearer(advisorB, 'ADVISOR')).expect(204);
-    const linked = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: switchingStudent.id } });
-    expect(linked.advisorId).to.equal(advisorB);
-    expect(linked.pendingAdvisorId).to.equal(null);
-    const event = await db.outboxEvent.findFirstOrThrow({ where: { aggregateId: switchingStudent.id }, orderBy: { createdAt: 'desc' } });
-    expect(event.payload).to.include({ link_status: 'LINKED', old_advisor_id: advisorA, new_advisor_id: advisorB, changed_by: 'ADVISOR' });
+  it('create validations: domain, duplicate email/code, inactive advisor, wrong roles, bad body', async () => {
+    const ok = newStudent();
+    await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(ok).expect(201);
+    const domain = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ email: 'x@other.ac.th' })).expect(400);
+    expect(domain.body.error.details[0].issue).to.equal('EMAIL_DOMAIN_NOT_ALLOWED');
+    await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ email: 'x@gmail.com' })).expect(400);
+    const dupEmail = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ email: ok.email.toUpperCase() })).expect(409);
+    expect(dupEmail.body.error.details[0].issue).to.equal('EMAIL_ALREADY_REGISTERED');
+    const dupCode = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ student_code: ok.student_code })).expect(409);
+    expect(dupCode.body.error.details[0].issue).to.equal('STUDENT_CODE_ALREADY_USED');
+    for (const bad of [{ year_level: 0 }, { year_level: 11 }, { year_level: 'x' }, { major: '' }, { full_name: ' ' }, { email: 'not-an-email' }]) {
+      await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent(bad)).expect(400);
+    }
+    await http().post('/v1/advisor-links/students').set(advisorAuth(advisorC)).send(newStudent()).expect(403); // ยังไม่อนุมัติ
+    await http().post('/v1/advisor-links/students').set('Authorization', bearer(studentId, 'STUDENT')).send(newStudent()).expect(403);
+    await http().post('/v1/advisor-links/students').send(newStudent()).expect(401);
+    expect(await db.user.count({ where: { email: { startsWith: 'x@' } } })).to.equal(0);
   });
 
-  it('change request keeps previous advisor; rejection restores linked state; Admin may move', async () => {
-    await request(app.getHttpServer()).post('/v1/users/me/advisor-link').set('Authorization', bearer(studentId, 'STUDENT')).send({ advisor_id: advisorB }).expect(201);
-    const pending = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: studentId } });
-    expect(pending.advisorId).to.equal(advisorA);
-    expect(pending.pendingAdvisorId).to.equal(advisorB);
-    const students = await request(app.getHttpServer()).get('/v1/advisor-links/students').set('Authorization', bearer(advisorA, 'ADVISOR')).expect(200);
-    expect(students.body.meta.total).to.equal(1);
-    await request(app.getHttpServer()).post(`/v1/advisor-links/requests/${studentId}/actions/reject`).set('Authorization', bearer(advisorB, 'ADVISOR')).expect(204);
-    const restored = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: studentId } });
-    expect(restored.advisorId).to.equal(advisorA);
-    expect(restored.advisorLinkStatus).to.equal('LINKED');
-    await request(app.getHttpServer()).post(`/v1/admin/students/${studentId}/advisor`).set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).send({ advisor_id: advisorB }).expect(204);
-    const moved = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: studentId } });
-    expect(moved.advisorId).to.equal(advisorB);
-    expect((await db.outboxEvent.findFirstOrThrow({ where: { aggregateId: studentId }, orderBy: { createdAt: 'desc' } })).payload).to.include({ changed_by: 'ADMIN', old_advisor_id: advisorA, new_advisor_id: advisorB });
-    expect(await db.adminAuditLog.count({ where: { action: 'STUDENT_ADVISOR_MOVE' } })).to.equal(1);
+  it('simultaneous creates with the same email produce one account and one event', async () => {
+    const body = newStudent();
+    const results = await Promise.all([1, 2].map(() => http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(body)));
+    expect(results.map((r) => r.status).sort()).to.deep.equal([201, 409]);
+    expect(await db.user.count({ where: { email: body.email } })).to.equal(1);
   });
 
-  it('student may cancel a pending change without losing the current advisor', async () => {
-    await request(app.getHttpServer()).post('/v1/users/me/advisor-link').set('Authorization', bearer(studentId, 'STUDENT')).send({ advisor_id: advisorA }).expect(201);
-    await request(app.getHttpServer()).delete('/v1/users/me/advisor-link').set('Authorization', bearer(studentId, 'STUDENT')).expect(204);
-    const profile = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: studentId } });
-    expect(profile.advisorId).to.equal(advisorB);
-    expect(profile.pendingAdvisorId).to.equal(null);
-    expect(profile.advisorLinkStatus).to.equal('LINKED');
-    const latest = await db.outboxEvent.findFirstOrThrow({ where: { aggregateId: studentId }, orderBy: { createdAt: 'desc' } });
-    expect(latest.payload).to.include({ link_status: 'LINKED', new_advisor_id: advisorB, changed_by: 'STUDENT' });
+  it('lists only own students with q / year_level / activation filters and invitation expiry for pending ones', async () => {
+    const mine = await db.user.findMany({ where: { studentProfile: { is: { advisorId: advisorB } } }, include: { studentProfile: true } });
+    await db.user.update({ where: { id: mine[0].id }, data: { status: 'ACTIVE', emailVerifiedAt: new Date(), passwordHash: 'x' } });
+    const code = mine[1].studentProfile!.studentCode;
+    const all = await http().get('/v1/advisor-links/students?page_size=100').set(advisorAuth(advisorB)).expect(200);
+    expect(all.body.meta.total).to.equal(mine.length);
+    for (const row of all.body.data) {
+      expect(row).to.include.keys('user_id', 'full_name', 'email', 'student_code', 'major', 'year_level', 'activation_status');
+      if (row.activation_status === 'PENDING') expect(row.invitation_expires_at).to.be.a('string');
+      else expect(row).to.not.have.property('invitation_expires_at');
+    }
+    expect((await http().get('/v1/advisor-links/students?activation=ACTIVE').set(advisorAuth(advisorB)).expect(200)).body.data.map((r: { user_id: string }) => r.user_id)).to.deep.equal([mine[0].id]);
+    expect((await http().get('/v1/advisor-links/students?activation=PENDING&page_size=100').set(advisorAuth(advisorB)).expect(200)).body.meta.total).to.equal(mine.length - 1);
+    expect((await http().get(`/v1/advisor-links/students?q=${code.toLowerCase()}`).set(advisorAuth(advisorB)).expect(200)).body.data.map((r: { student_code: string }) => r.student_code)).to.deep.equal([code]);
+    expect((await http().get('/v1/advisor-links/students?year_level=9').set(advisorAuth(advisorB)).expect(200)).body.meta.total).to.equal(0);
+    await http().get('/v1/advisor-links/students?activation=NOPE').set(advisorAuth(advisorB)).expect(400);
+    await http().get('/v1/advisor-links/students?year_level=0').set(advisorAuth(advisorB)).expect(400);
+    expect((await http().get('/v1/advisor-links/students').set(advisorAuth(advisorA)).expect(200)).body.meta.total).to.equal(0); // ไม่เห็นของอาจารย์อื่น
   });
 
-  it('rejects cross-university, pending advisor, wrong role and repeated action', async () => {
-    const studentToken = bearer(studentId, 'STUDENT');
-    await request(app.getHttpServer()).post('/v1/users/me/advisor-link').set('Authorization', studentToken).send({ advisor_id: outsider }).expect(403);
-    await request(app.getHttpServer()).post('/v1/users/me/advisor-link').set('Authorization', studentToken).send({ advisor_id: advisorC }).expect(409);
-    await request(app.getHttpServer()).post('/v1/users/me/advisor-link').set('Authorization', bearer(advisorB, 'ADVISOR')).send({ advisor_id: advisorA }).expect(403);
-    await request(app.getHttpServer()).post(`/v1/advisor-links/requests/${studentId}/actions/confirm`).set('Authorization', bearer(advisorA, 'ADVISOR')).expect(409);
+  it('edit, resend (old link dies) and cancel only for the owning advisor and only before the password is set', async () => {
+    const created = (await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent()).expect(201)).body;
+    const id = created.student_user_id as string;
+    await http().patch(`/v1/advisor-links/students/${id}`).set(advisorAuth(advisorA)).send({ major: 'X' }).expect(404);
+    await http().patch(`/v1/advisor-links/students/${id}`).set(advisorAuth(advisorB)).send({ major: 'Data Science', year_level: 4, full_name: 'ชื่อใหม่' }).expect(204);
+    const edited = await db.user.findUniqueOrThrow({ where: { id }, include: { studentProfile: true } });
+    expect(edited.fullName).to.equal('ชื่อใหม่');
+    expect(edited.studentProfile).to.include({ major: 'Data Science', yearLevel: 4 });
+    await http().patch(`/v1/advisor-links/students/${id}`).set(advisorAuth(advisorB)).send({ major: ' ' }).expect(400);
+    await http().patch(`/v1/advisor-links/students/${id}`).set(advisorAuth(advisorB)).send({ year_level: 99 }).expect(400);
+
+    const before = await db.emailToken.findMany({ where: { userId: id } });
+    await http().post(`/v1/advisor-links/students/${id}/actions/resend-invitation`).set(advisorAuth(advisorA)).expect(404);
+    await http().post(`/v1/advisor-links/students/${id}/actions/resend-invitation`).set(advisorAuth(advisorB)).expect(503); // ไม่ได้ตั้งค่า SMTP ในเทสต์ แต่คำเชิญใหม่ถูกออกแล้ว
+    const after = await db.emailToken.findMany({ where: { userId: id }, orderBy: { createdAt: 'asc' } });
+    expect(after).to.have.length(before.length + 1);
+    expect(after.filter((t) => !t.usedAt)).to.have.length(1); // ลิงก์เดิมใช้ไม่ได้
+
+    await http().delete(`/v1/advisor-links/students/${id}/invitation`).set(advisorAuth(advisorA)).expect(404);
+    await http().delete(`/v1/advisor-links/students/${id}/invitation`).set(advisorAuth(advisorB)).expect(204);
+    const gone = await db.user.findUniqueOrThrow({ where: { id } });
+    expect(gone).to.include({ status: 'DELETED' });
+    expect(gone.email).to.match(/^deleted-.+@invalid\.example$/);
+    expect(await db.studentProfileIdentity.count({ where: { userId: id } })).to.equal(0);
+    expect(await db.emailToken.count({ where: { userId: id } })).to.equal(0);
+    const last = await db.outboxEvent.findFirstOrThrow({ where: { aggregateId: id }, orderBy: { createdAt: 'desc' } });
+    expect(last.payload).to.include({ link_status: 'UNLINKED', changed_by: 'ADVISOR', old_advisor_id: advisorB });
+    await http().delete(`/v1/advisor-links/students/${id}/invitation`).set(advisorAuth(advisorB)).expect(404);
+    expect(await db.user.count({ where: { email: created.email } })).to.equal(0); // อีเมลเดิมสร้างใหม่ได้
+
+    // ตั้งรหัสผ่านแล้ว ⇒ ส่งซ้ำ/ยกเลิกไม่ได้
+    const active = (await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent()).expect(201)).body.student_user_id as string;
+    await db.user.update({ where: { id: active }, data: { status: 'ACTIVE', emailVerifiedAt: new Date(), passwordHash: 'x' } });
+    await http().post(`/v1/advisor-links/students/${active}/actions/resend-invitation`).set(advisorAuth(advisorB)).expect(409);
+    await http().delete(`/v1/advisor-links/students/${active}/invitation`).set(advisorAuth(advisorB)).expect(409);
+  });
+
+  it('only Admin may change a student advisor (audit + event); advisor and student cannot', async () => {
+    const s = (await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent()).expect(201)).body.student_user_id as string;
+    await http().post(`/v1/admin/students/${s}/advisor`).set(adminAuth()).send({ advisor_id: advisorA }).expect(409); // บัญชียังไม่ ACTIVE
+    await db.user.update({ where: { id: s }, data: { status: 'ACTIVE', emailVerifiedAt: new Date(), passwordHash: 'x' } });
+    await http().post(`/v1/admin/students/${s}/advisor`).set(advisorAuth(advisorB)).send({ advisor_id: advisorA }).expect(403);
+    await http().post(`/v1/admin/students/${s}/advisor`).set('Authorization', bearer(s, 'STUDENT')).send({ advisor_id: advisorA }).expect(403);
+    await http().post(`/v1/admin/students/${s}/advisor`).set(adminAuth()).send({ advisor_id: outsider }).expect(403);
+    await http().post(`/v1/admin/students/${s}/advisor`).set(adminAuth()).send({ advisor_id: advisorB }).expect(409);
+    await http().post(`/v1/admin/students/${s}/advisor`).set(adminAuth()).send({ advisor_id: advisorA }).expect(204);
+    const moved = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: s } });
+    expect(moved).to.include({ advisorId: advisorA, advisorLinkStatus: 'LINKED' });
+    const event = await db.outboxEvent.findFirstOrThrow({ where: { aggregateId: s }, orderBy: { createdAt: 'desc' } });
+    expect(event.payload).to.include({ changed_by: 'ADMIN', old_advisor_id: advisorB, new_advisor_id: advisorA, link_status: 'LINKED' });
+    expect(await db.adminAuditLog.count({ where: { action: 'STUDENT_ADVISOR_MOVE', targetId: s } })).to.equal(1);
+    expect((await http().get('/v1/advisor-links/students').set(advisorAuth(advisorB)).expect(200)).body.data.map((r: { user_id: string }) => r.user_id)).to.not.include(s);
   });
 
   it('Admin rejects pending advisor and records denylist, audit and suspension event', async () => {
-    await request(app.getHttpServer()).post(`/v1/admin/advisors/${advisorC}/actions/reject`).set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).send({ reason: 'คุณสมบัติไม่ครบ' }).expect(204);
+    await http().post(`/v1/admin/advisors/${advisorC}/actions/reject`).set(adminAuth()).send({ reason: 'คุณสมบัติไม่ครบ' }).expect(204);
     expect((await db.user.findUniqueOrThrow({ where: { id: advisorC } })).status).to.equal('SUSPENDED');
     expect(await db.tokenDenylist.count({ where: { userId: advisorC } })).to.equal(1);
     expect(await db.outboxEvent.count({ where: { aggregateId: advisorC, type: 'UserSuspended' } })).to.equal(1);
     expect(await db.adminAuditLog.count({ where: { targetId: advisorC } })).to.equal(1);
   });
 
-  it('two simultaneous student requests create only one pending link and one event', async () => {
-    const universityId = (await db.user.findUniqueOrThrow({ where: { id: studentId } })).universityId!;
-    const second = await db.user.create({ data: { email: 'second@test.ac.th', passwordHash: 'test-only', fullName: 'Second Student', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId,
-      studentProfile: { create: { studentCode: 'S002', major: 'CS', yearLevel: 2 } } } });
-    const token = bearer(second.id, 'STUDENT');
-    const results = await Promise.all([advisorA, advisorB].map((advisorId) =>
-      request(app.getHttpServer()).post('/v1/users/me/advisor-link').set('Authorization', token).send({ advisor_id: advisorId }),
-    ));
-    expect(results.map((result) => result.status).sort()).to.deep.equal([201, 409]);
-    const profile = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: second.id } });
-    expect([advisorA, advisorB]).to.include(profile.pendingAdvisorId);
-    expect(await db.outboxEvent.count({ where: { aggregateId: second.id, type: 'AdvisorLinkChanged' } })).to.equal(1);
+  it('GET /users/me of a student no longer exposes pending_advisor_id', async () => {
+    const me = await http().get('/v1/users/me').set('Authorization', bearer(studentId, 'STUDENT')).expect(200);
+    expect(me.body.student).to.not.have.property('pending_advisor_id');
   });
 });

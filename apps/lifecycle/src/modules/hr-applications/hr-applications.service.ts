@@ -10,6 +10,7 @@ import type {
 import { Injectable, Logger } from '@nestjs/common';
 import type { Application } from '../../../generated/client';
 import { mapWithConcurrency } from '../../common/async/concurrency';
+import { CategoryScopeService } from '../../common/auth/category-scope.service';
 import { assertCompanyOwnership } from '../../common/auth/ownership';
 import { S3StorageService } from '../../common/storage/s3-storage.service';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
@@ -55,6 +56,7 @@ export class HrApplicationsService {
     private readonly stateMachine: ApplicationStateMachine,
     private readonly config: LifecycleConfigService,
     private readonly studentNames: StudentNamesService,
+    private readonly scope: CategoryScopeService,
   ) {}
 
   // ---------- GET ----------
@@ -63,9 +65,12 @@ export class HrApplicationsService {
     const companyId = requireCompany(user);
     const page = query.page ?? 1;
     const pageSize = query.page_size ?? 20;
+    // HR Member เห็นเฉพาะประกาศในสายงานของตน (Owner = ทุกสายงาน)
+    const scopedJobIds = await this.scope.jobIdsInScope(user, companyId);
     const where = {
       companyId,
       ...(query.job_id ? { jobId: query.job_id } : {}),
+      ...(scopedJobIds ? { jobId: { in: query.job_id ? scopedJobIds.filter((id) => id === query.job_id) : scopedJobIds } } : {}),
       ...(query.status ? { status: query.status } : {}),
     };
     const [rows, total] = await Promise.all([
@@ -259,11 +264,12 @@ export class HrApplicationsService {
     );
   }
 
-  /** ไม่มี ⇒ 404 • บริษัทอื่น ⇒ 403 `NOT_OWNER_OF_RESOURCE` (UAT-29 ข้อ 2 — เหมือนเรซูเม่ใน 1.3) */
+  /** ไม่มี ⇒ 404 • บริษัทอื่น ⇒ 403 `NOT_OWNER_OF_RESOURCE` (UAT-29 ข้อ 2) • HR Member นอกสายงาน ⇒ 403 `FORBIDDEN_ROLE` (`FORBIDDEN_CATEGORY`) */
   private async companyApplication(user: JwtClaims, applicationId: string): Promise<Application> {
     const app = await this.db.application.findUnique({ where: { id: applicationId } });
     if (!app) throw applicationNotFound();
     assertCompanyOwnership(user, app.companyId);
+    await this.scope.assertInScope(user, app);
     return app;
   }
 
