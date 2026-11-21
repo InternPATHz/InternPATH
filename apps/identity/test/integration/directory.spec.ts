@@ -6,11 +6,14 @@ import path from 'node:path';
 import { INestApplication } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { configureApp } from '@internpath/common';
-import type { ReviewPublishedPayload } from '@internpath/contracts';
+import { EventConsumer, configureApp, consumerQueueName, processDelivery } from '@internpath/common';
+import type { EventEnvelope, ReviewPublishedPayload } from '@internpath/contracts';
 import { expect } from 'chai';
 import { Client } from 'pg';
+import { createStubInstance } from 'sinon';
 import request from 'supertest';
+import type { Prisma } from '../../generated/client';
+import { ReviewPublishedConsumer } from '../../src/events/consumers/review-published.consumer';
 import { DirectoryModule } from '../../src/modules/directory/directory.module';
 import { DirectoryRatingService } from '../../src/modules/directory/directory-rating.service';
 import { PrismaModule } from '../../src/prisma/prisma.module';
@@ -142,8 +145,8 @@ describe('Identity company directory (Postgres จริง)', function () {
   });
 
   it('clears Directory statistics when the last review is removed and ignores stale totals', async () => {
-    const published: ReviewPublishedPayload = {
-      review_id: randomUUID(), company_id: betaId, rating: 4, company_review_count: 1,
+    const published = {
+      review_id: randomUUID(), company_id: betaId, change: 'PUBLISHED' as const, rating: 4, company_review_count: 1,
       company_rating_sum: 4, entity_version: 1, published_at: new Date().toISOString(),
     };
     await db.$transaction((tx) => ratings.apply(published, tx));
@@ -151,7 +154,7 @@ describe('Identity company directory (Postgres จริง)', function () {
       .to.include({ rating_avg: 4, review_count: 1 });
 
     const removed = {
-      ...published, change: 'REMOVED', company_review_count: 0,
+      ...published, change: 'REMOVED' as const, company_review_count: 0,
       company_rating_sum: 0, entity_version: 2,
     };
     await db.$transaction((tx) => ratings.apply(removed, tx));
@@ -161,15 +164,32 @@ describe('Identity company directory (Postgres จริง)', function () {
     expect(await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: betaId } }))
       .to.include({ entityVersion: 2, ratingSum: 0, reviewCount: 0 });
 
-    const legacy = { ...published, company_review_count: 0, company_rating_sum: 0, entity_version: 3 };
-    await db.$transaction((tx) => ratings.apply(legacy, tx));
+    const { change: _change, ...legacy } = published;
+    const event: EventEnvelope = {
+      event_id: randomUUID(), type: 'ReviewPublished', version: 1, producer: 'lifecycle',
+      correlation_id: randomUUID(), occurred_at: new Date().toISOString(),
+      payload: { ...legacy, company_review_count: 0, company_rating_sum: 0, entity_version: 3 },
+    };
+    expect(event.payload).not.to.have.property('change');
+    const consumer = createStubInstance(EventConsumer<Prisma.TransactionClient>);
+    consumer.subscribe.resolves();
+    await new ReviewPublishedConsumer(consumer, ratings).onModuleInit();
+    const result = await processDelivery({
+      raw: Buffer.from(JSON.stringify(event)),
+      queue: consumerQueueName('identity', event.type),
+      sub: consumer.subscribe.firstCall.args[0],
+      runInTransaction: (fn) => db.$transaction(fn),
+      retryCount: 0,
+      maxRetries: 3,
+    });
+    expect(result).to.deep.equal({ kind: 'ack' });
     expect((await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: betaId } })).entityVersion)
       .to.equal(3);
   });
 
   it('rejects impossible absolute totals without changing the Directory snapshot', async () => {
-    const original: ReviewPublishedPayload = {
-      review_id: randomUUID(), company_id: pendingId, rating: 4, company_review_count: 1,
+    const original = {
+      review_id: randomUUID(), company_id: pendingId, change: 'PUBLISHED' as const, rating: 4, company_review_count: 1,
       company_rating_sum: 4, entity_version: 1, published_at: new Date().toISOString(),
     };
     await db.$transaction((tx) => ratings.apply(original, tx));
