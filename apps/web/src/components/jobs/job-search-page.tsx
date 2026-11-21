@@ -2,13 +2,12 @@
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import type { JobCategory, SearchJobsQuery, StudentProfile, WorkMode } from '@internpath/contracts';
+import type { JobCategory, JobTag, SearchJobsQuery, StudentProfile, WorkMode } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect } from '@/components/admin/filter-fields';
 import { JobResultCard } from '@/components/jobs/job-result-card';
-import { CATEGORIES } from '@/lib/mock-landing';
-import { MOCK_TAG_NAMES } from '@/lib/mock-jobs';
-import { PAGE_SIZE, searchJobs } from '@/lib/job-search';
+import { CATEGORIES } from '@/lib/categories';
+import { PAGE_SIZE, listTags, searchJobs } from '@/lib/job-search';
 import type { JobSearchResult } from '@/lib/job-search';
 
 const CATEGORY_IDS = CATEGORIES.map((entry) => entry.id);
@@ -31,8 +30,7 @@ function readQuery(params: URLSearchParams): { query: SearchJobsQuery; page: num
       tags: (params.get('tags') ?? '').split(',').map((slug) => slug.trim().toLowerCase()).filter((slug) => /^[a-z0-9-]{1,50}$/.test(slug)).join(',') || undefined,
       allowance: params.get('allowance') === 'true' ? true : undefined,
       // ลิงก์จากหน้าบริษัท — ต้องเป็น UUID เท่านั้น (URL เป็นข้อมูลจากภายนอก)
-      company_id: /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(params.get('company_id') ?? '') || /^mock-co-\d+$/.test(params.get('company_id') ?? '')
-        ? (params.get('company_id') as string) : undefined,
+      company_id: /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(params.get('company_id') ?? '') ? (params.get('company_id') as string) : undefined,
       sort: SORTS.includes(sort as (typeof SORTS)[number]) ? (sort as (typeof SORTS)[number]) : 'newest',
     },
     page: Number.isInteger(page) && page >= 1 ? page : 1,
@@ -52,6 +50,18 @@ export function JobSearchPage() {
   const [major, setMajor] = useState(query.major ?? '');
   const { user, request } = useAuth();
   const [profileMajor, setProfileMajor] = useState<string | undefined>(undefined);
+  const [tags, setTags] = useState<JobTag[] | null>(null);
+  const [tagsFailed, setTagsFailed] = useState(false);
+
+  // Tag ทักษะที่เปิดใช้งาน — โหลดครั้งเดียว; โหลดไม่ได้ก็ยังค้นหาด้วยตัวกรองอื่นได้
+  useEffect(() => {
+    let cancelled = false;
+    listTags().then(
+      (next) => { if (!cancelled) setTags(next); },
+      () => { if (!cancelled) setTagsFailed(true); },
+    );
+    return () => { cancelled = true; };
+  }, []);
 
   // นักศึกษาที่ล็อกอิน: ใช้สาขาจากโปรไฟล์เทียบกับประกาศโดยอัตโนมัติ (เทียบแบบตรงทั้งค่า จึงไม่ให้เดาจากการพิมพ์)
   // เก็บเป็น state ไม่ใส่ใน URL เพื่อไม่ให้ข้อมูลส่วนตัวไปอยู่ในลิงก์ที่แชร์ได้
@@ -101,8 +111,6 @@ export function JobSearchPage() {
     <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-semibold">ค้นหางานฝึกงาน</h1>
       <p className="mt-2 text-sm text-ink-soft">เลือกจากประกาศที่ผ่านการตรวจสอบแล้ว กรองตามสายงาน รูปแบบการทำงาน และสาขาของคุณ</p>
-      {/* MOCK: ข้อมูลจากไฟล์ตัวอย่าง จนกว่า GET /search/jobs จะเปิดให้เรียกโดยไม่ต้องล็อกอิน (ดู src/lib/job-search.ts) */}
-      <p className="mt-1 text-xs text-warning-text">ข้อมูลในหน้านี้เป็นข้อมูลจำลอง</p>
 
       <form
         role="search"
@@ -136,7 +144,10 @@ export function JobSearchPage() {
       <div className="mt-4" role="group" aria-label="กรองตาม Tag ทักษะ">
         <span className="mb-1 block text-xs font-medium text-ink-soft">Tag ทักษะ (เลือกได้หลายรายการ — แสดงประกาศที่มี Tag ใดก็ได้)</span>
         <div className="flex flex-wrap gap-2">
-          {Object.entries(MOCK_TAG_NAMES).map(([slug, name]) => {
+          {tagsFailed && <span className="text-sm text-ink-soft">โหลดรายการ Tag ไม่สำเร็จ</span>}
+          {!tags && !tagsFailed && <span className="text-sm text-ink-soft">กำลังโหลด…</span>}
+          {tags?.length === 0 && <span className="text-sm text-ink-soft">ยังไม่มี Tag ทักษะ</span>}
+          {tags?.map(({ slug, name }) => {
             const selected = (query.tags ?? '').split(',').filter(Boolean);
             const on = selected.includes(slug);
             return (

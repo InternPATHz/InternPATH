@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { JobCategory } from '@internpath/contracts';
-import { CATEGORIES } from '@/lib/mock-landing';
+import { CATEGORIES } from '@/lib/categories';
 
 const icons: Record<JobCategory, React.ReactNode> = {
   TECH_IT: <><rect x="4" y="5" width="16" height="11" rx="1.5" /><path d="M2 19h20" /></>,

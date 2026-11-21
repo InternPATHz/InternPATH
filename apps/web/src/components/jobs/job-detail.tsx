@@ -11,7 +11,7 @@ import { ReportPanel } from '@/components/reports/report-panel';
 import { getJob } from '@/lib/job-search';
 import type { JobDetailResult } from '@/lib/job-search';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { CATEGORIES } from '@/lib/mock-landing';
+import { CATEGORIES } from '@/lib/categories';
 import { JOB_STATUS, statusView } from '@/lib/status-map';
 
 const workModeLabel: Record<WorkMode, string> = { ONSITE: 'On-Site', HYBRID: 'Hybrid', REMOTE: 'Remote' };
@@ -95,10 +95,8 @@ export function JobDetail() {
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
       <Link href="/jobs" className="text-sm font-medium text-primary hover:underline">← กลับไปค้นหางาน</Link>
-      {/* MOCK: ข้อมูลตัวอย่าง จนกว่า GET /jobs/{id} จะเปิดให้เรียกโดยไม่ต้องล็อกอิน (ดู src/lib/job-search.ts) */}
-      <p className="mt-3 text-xs text-warning-text">ข้อมูลในหน้านี้เป็นข้อมูลจำลอง</p>
 
-      <header className="mt-2">
+      <header className="mt-4">
         <div className="flex flex-wrap items-center gap-2">
           <Badge tone="neutral">{category}</Badge>
           {job.featured && <Badge tone="accent">Featured</Badge>}
