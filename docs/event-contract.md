@@ -157,7 +157,7 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
 ```ts
 {
   job_id: string
-  submission_id: string
+  submission_id?: string           // บังคับทุก decision ยกเว้น REMOVE | RESTORE (ดูด้านล่าง)
   decision: 'APPROVE' | 'PENDING_REVIEW'                     // ผลคัดกรอง: บริษัทติดธง ⇒ PENDING_REVIEW เสมอ (APPROVE สงวนไว้)
           | 'ADMIN_APPROVE' | 'ADMIN_REJECT'                 // คำตัดสิน Admin
           | 'REMOVE' | 'RESTORE'                             // ผลตัดสินคำร้อง Report (RESTORE = ยกคำร้อง)
@@ -167,7 +167,7 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
   queue_item_id?: string            // บังคับเมื่อ decision = REMOVE | RESTORE: รายการคิวรายงานที่ตัดสิน (= queue_item_id ของ E04 ที่ระงับประกาศ)
 }
 ```
-**`REMOVE`/`RESTORE` ไม่ตรวจ `submission_id` (PM ตัดสิน 2026-11-18):** คำตัดสินเรื่องรายงานไม่ใช่ผลตรวจเนื้อหา — Job ใช้เฉพาะ `queue_item_id` (รอบรายงาน) และ **ไม่เทียบ `submission_id` กับ `current_submission_id`** (ถ้าเทียบ รายการรายงานที่เปิดไว้บน submission A แล้วประกาศถูกส่งตรวจใหม่เป็น B จะทำให้คำตัดสินถูกข้ามและประกาศค้าง `SUSPENDED`) ส่วนคำตัดสินที่เป็นผลตรวจเนื้อหา (`APPROVE`, `PENDING_REVIEW`, `AUTO_REJECT`, `APPEAL_ACCEPTED`, `ADMIN_APPROVE`, `ADMIN_REJECT`) ยังต้องผ่าน Current-Submission Guard ตาม data-schema §8.2 • `submission_id` ใน payload ของ `REMOVE`/`RESTORE` ยังเป็นฟิลด์บังคับ (Verification ส่ง submission ล่าสุด ณ ตอนยกระดับรายงาน) แต่ Job ไม่ใช้ตัดสิน
+**`REMOVE`/`RESTORE` ไม่ตรวจ `submission_id` (PM ตัดสิน 2026-11-18):** คำตัดสินเรื่องรายงานไม่ใช่ผลตรวจเนื้อหา — Job ใช้เฉพาะ `queue_item_id` (รอบรายงาน) และ **ไม่เทียบ `submission_id` กับ `current_submission_id`** (ถ้าเทียบ รายการรายงานที่เปิดไว้บน submission A แล้วประกาศถูกส่งตรวจใหม่เป็น B จะทำให้คำตัดสินถูกข้ามและประกาศค้าง `SUSPENDED`) ส่วนคำตัดสินที่เป็นผลตรวจเนื้อหา (`APPROVE`, `PENDING_REVIEW`, `AUTO_REJECT`, `APPEAL_ACCEPTED`, `ADMIN_APPROVE`, `ADMIN_REJECT`) ยังต้องผ่าน Current-Submission Guard ตาม data-schema §8.2 • `submission_id` ใน payload ของ `REMOVE`/`RESTORE` **ไม่บังคับ (PM ตัดสิน 2026-11-22)** — ถ้าประกาศเคยส่งตรวจ Verification แนบ submission ล่าสุด ณ ตอนยกระดับรายงาน; ถ้าไม่เคย (บริษัทปกติเผยแพร่ทันทีตาม Requirement 2026-11-21) ไม่มีฟิลด์นี้ และ Verification ต้องไม่ปฏิเสธคำตัดสินด้วย `SUBMISSION_UNKNOWN` (เดิมทำให้ประกาศค้าง `SUSPENDED`) Job ไม่ใช้ค่านี้ตัดสินอยู่แล้ว
 
 **กันเหตุการณ์ข้ามรอบ (REMOVE/RESTORE):** Job เก็บ `queue_item_id` ของ E04 ที่ระงับประกาศอยู่ แล้วรับ `REMOVE`/`RESTORE` เฉพาะที่ `queue_item_id` ตรงกัน — ไม่ตรงหรือประกาศไม่ได้ถูกระงับอยู่ให้ข้ามพร้อม log ไม่ throw/retry (ผลตัดสินของรอบเก่าที่มาช้าจึงไม่กระทบการระงับรอบใหม่); ค่านี้ส่งเฉพาะ `REMOVE`/`RESTORE`
 การระงับชั่วคราว (`SUSPENDED`) เกิดจาก E04 `ReportThresholdReached` ไม่ใช่ `JobVerified`
