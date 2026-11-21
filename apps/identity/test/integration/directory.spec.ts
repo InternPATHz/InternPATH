@@ -16,6 +16,7 @@ import type { Prisma } from '../../generated/client';
 import { ReviewPublishedConsumer } from '../../src/events/consumers/review-published.consumer';
 import { DirectoryModule } from '../../src/modules/directory/directory.module';
 import { DirectoryRatingService } from '../../src/modules/directory/directory-rating.service';
+import { DirectoryJobClient } from '../../src/modules/directory/directory-job.client';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
@@ -43,6 +44,7 @@ describe('Identity company directory (Postgres จริง)', function () {
   let alphaId: string;
   let betaId: string;
   let pendingId: string;
+  let categoryIds = new Set<string>();
   const get = (url: string) => request(app.getHttpServer()).get(url);
 
   before(async function () {
@@ -62,7 +64,10 @@ describe('Identity company directory (Postgres จริง)', function () {
     process.env.IDENTITY_DIRECT_URL = testUrl;
     process.env.S3_PUBLIC_BASE_URL = 'https://assets.example.test';
     const moduleRef = await Test.createTestingModule({ imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
-      PrismaModule, DirectoryModule] }).compile();
+      PrismaModule, DirectoryModule] })
+      .overrideProvider(DirectoryJobClient)
+      .useValue({ companyIds: async () => categoryIds })
+      .compile();
     app = moduleRef.createNestApplication(); configureApp(app); await app.init();
     db = app.get(PrismaService); ratings = app.get(DirectoryRatingService);
     alphaId = (await db.company.create({ data: { name: 'Alpha Studio', registrationNo: 'DIR-001',
@@ -95,6 +100,20 @@ describe('Identity company directory (Postgres จริง)', function () {
     expect(ids((await get('/v1/directory/companies?partner=false').expect(200)).body)).to.deep.equal([betaId]);
     await get('/v1/directory/companies?partner=maybe').expect(400);
     await get('/v1/directory/companies?category=TECH').expect(400);
+  });
+
+  it('filters published-job companies with other filters and exact pagination', async () => {
+    categoryIds = new Set([betaId, pendingId]);
+    const matched = await get('/v1/directory/companies?category=TECH_IT&page_size=1').expect(200);
+    expect(ids(matched.body)).to.deep.equal([betaId]);
+    expect(matched.body.meta).to.deep.equal({ page: 1, page_size: 1, total: 1 });
+    expect(ids((await get(`/v1/directory/companies?category=TECH_IT&ids=${alphaId},${betaId}`).expect(200)).body))
+      .to.deep.equal([betaId]);
+    const none = await get('/v1/directory/companies?category=TECH_IT&partner=true').expect(200);
+    expect(none.body.meta.total).to.equal(0);
+    categoryIds = new Set();
+    const empty = await get('/v1/directory/companies?category=TECH_IT').expect(200);
+    expect(empty.body.meta.total).to.equal(0);
   });
 
   it('paginates with page/page_size (max 100)', async () => {
