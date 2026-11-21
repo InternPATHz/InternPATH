@@ -1,5 +1,5 @@
 import { AppException, type JwtClaims } from '@internpath/common';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import type { JobCategory } from '../../../generated/client';
 import { mapWithConcurrency } from '../async/concurrency';
 import { JobInternalClient } from '../../internal/job-client.service';
@@ -15,6 +15,8 @@ const CATEGORY_LOOKUP_CONCURRENCY = 5;
  */
 @Injectable()
 export class CategoryScopeService {
+  private readonly logger = new Logger(CategoryScopeService.name);
+
   constructor(
     private readonly db: PrismaService,
     private readonly job: JobInternalClient,
@@ -52,22 +54,32 @@ export class CategoryScopeService {
     }
   }
 
-  /** `job_id` ของบริษัทที่อยู่ในสายงานของผู้เรียก (`null` = ไม่จำกัด) — เติมสายงานที่ยังว่างของประกาศที่มีใบสมัครก่อน */
-  async jobIdsInScope(user: JwtClaims, companyId: string, correlationId?: string): Promise<string[] | null> {
+  /**
+   * `job_id` ของบริษัทที่อยู่ในสายงานของผู้เรียก (`null` = ไม่จำกัด) — เติมสายงานที่ยังว่างของประกาศที่มีใบสมัครก่อน
+   * - `category` (`?category=`): HR Member ขอสายที่ไม่ใช่ของตน ⇒ `[]` (รายการว่าง ไม่ error); Owner กรองได้ทุกสาย (PM ตัดสิน 2026-11-21)
+   * - ถามสายงานจาก Job ไม่สำเร็จ ⇒ ตัดประกาศนั้นออก + log warn (ไม่ทำให้รายการพังทั้งหน้า — PM ตัดสิน 2026-11-21)
+   */
+  async jobIdsInScope(user: JwtClaims, companyId: string, correlationId?: string, category?: JobCategory): Promise<string[] | null> {
     const scope = this.scopeOf(user);
-    if (scope === null) return null;
-    if (scope.length === 0) return [];
+    const allowed = category ? (scope === null || scope.includes(category) ? [category] : []) : scope;
+    if (allowed === null) return null;
+    if (allowed.length === 0) return [];
     const applied = await this.db.application.findMany({ where: { companyId }, distinct: ['jobId'], select: { jobId: true } });
     const ids = applied.map((row) => row.jobId);
     const known = await this.db.jobSnapshot.findMany({ where: { jobId: { in: ids } }, select: { jobId: true, category: true } });
     const byId = new Map(known.map((row) => [row.jobId, row.category]));
     const missing = ids.filter((id) => !byId.get(id));
     await mapWithConcurrency(missing, CATEGORY_LOOKUP_CONCURRENCY, async (id) => {
-      byId.set(id, await this.categoryOf(id, correlationId));
+      try {
+        byId.set(id, await this.categoryOf(id, correlationId));
+      } catch {
+        this.logger.warn(`ถามสายงานของประกาศ ${id} จาก Job ไม่สำเร็จ — ตัดออกจากรายการใบสมัคร`);
+        byId.set(id, null);
+      }
     });
     return ids.filter((id) => {
-      const category = byId.get(id);
-      return !!category && scope.includes(category);
+      const jobCategory = byId.get(id);
+      return !!jobCategory && allowed.includes(jobCategory);
     });
   }
 }

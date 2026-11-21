@@ -27,8 +27,12 @@ export class AdvisorController {
 
   /** รายชื่อนักศึกษาในความดูแล + ตัวกรองชั้นปี/กำลังฝึก/ฝึกเสร็จแล้ว (ต้องประกาศก่อน `students/:id/overview`) */
   @Get('students')
-  students(@CurrentUser() user: JwtClaims, @Query() query: AdvisorStudentsQueryDto): Promise<Paginated<AdvisorTrainingStudentItem>> {
-    return this.service.students(user, query);
+  students(
+    @CurrentUser() user: JwtClaims,
+    @Query() query: AdvisorStudentsQueryDto,
+    @Headers('x-correlation-id') cid?: string,
+  ): Promise<Paginated<AdvisorTrainingStudentItem>> {
+    return this.service.students(user, query, cid);
   }
 
   @Get('students/:id/overview')

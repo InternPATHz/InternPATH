@@ -1,5 +1,5 @@
 // ต้องตรงกับ docs/api-contract.md §7 (Lifecycle), §8 (Notification) และ §9 (Internal) — เฉพาะที่เอกสารระบุไว้
-import type { AcademicResult, ApplicationStatus, CertificateStatus } from '../enums';
+import type { AcademicResult, ApplicationStatus, CertificateStatus, JobCategory } from '../enums';
 import type { ProblemReportCategory } from './lifecycle-responses';
 
 // ---- 7.2 นักศึกษา ----
@@ -36,6 +36,8 @@ export interface CreateProblemReportRequest {
 export interface HrApplicationsQuery {
   job_id?: string;
   status?: ApplicationStatus;
+  /** สายงานของประกาศ — HR Member ขอสายที่ไม่ใช่ของตน ⇒ รายการว่าง (ไม่ error); Owner กรองได้ทุกสาย (PM ตัดสิน 2026-11-21) */
+  category?: JobCategory;
 }
 
 /** ห่าง ≥ 30 วัน (YYYY-MM-DD) */

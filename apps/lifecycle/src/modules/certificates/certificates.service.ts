@@ -201,11 +201,16 @@ export class CertificatesService {
 
   // ---------- เพิกถอน ----------
 
-  /** `POST /hr/certificates/{id}/actions/revoke` — เฉพาะใบที่บริษัทตนออก (UAT-23 ข้อ 2: บริษัทอื่น ⇒ 403) */
+  /**
+   * `POST /hr/certificates/{id}/actions/revoke` — เฉพาะใบที่บริษัทตนออก (UAT-23 ข้อ 2: บริษัทอื่น ⇒ 403)
+   * • HR Member นอกสายงานของประกาศ ⇒ 403 `FORBIDDEN_ROLE` (`FORBIDDEN_CATEGORY`) แบบเดียวกับตอนออกใบ (PM ตัดสิน 2026-11-21)
+   */
   async revokeByHr(user: JwtClaims, certificateId: string, reason: string | undefined, correlationId?: string, now = new Date()) {
     const cert = await this.db.certificate.findUnique({ where: { id: certificateId } });
     if (!cert) throw certificateNotFound();
     assertCompanyOwnership(user, cert.companyId);
+    const app = await this.db.application.findUniqueOrThrow({ where: { id: cert.applicationId }, select: { jobId: true } });
+    await this.scope.assertInScope(user, app, correlationId);
     return this.revoke(cert, user.sub, 'COMPANY_HR', reason, correlationId, now);
   }
 

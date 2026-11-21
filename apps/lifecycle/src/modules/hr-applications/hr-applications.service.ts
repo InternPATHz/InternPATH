@@ -61,12 +61,12 @@ export class HrApplicationsService {
 
   // ---------- GET ----------
 
-  async list(user: JwtClaims, query: HrApplicationsQueryDto): Promise<Paginated<HrApplicationItem>> {
+  async list(user: JwtClaims, query: HrApplicationsQueryDto, correlationId?: string): Promise<Paginated<HrApplicationItem>> {
     const companyId = requireCompany(user);
     const page = query.page ?? 1;
     const pageSize = query.page_size ?? 20;
-    // HR Member เห็นเฉพาะประกาศในสายงานของตน (Owner = ทุกสายงาน)
-    const scopedJobIds = await this.scope.jobIdsInScope(user, companyId);
+    // HR Member เห็นเฉพาะประกาศในสายงานของตน (Owner = ทุกสายงาน) • `?category=` กรองเพิ่ม (Member ขอสายอื่น ⇒ รายการว่าง)
+    const scopedJobIds = await this.scope.jobIdsInScope(user, companyId, correlationId, query.category);
     const where = {
       companyId,
       ...(query.job_id ? { jobId: query.job_id } : {}),
@@ -104,7 +104,7 @@ export class HrApplicationsService {
     correlationId?: string,
     now = new Date(),
   ): Promise<HrApplicationDetail> {
-    const app = await this.companyApplication(user, applicationId);
+    const app = await this.companyApplication(user, applicationId, correlationId);
     const [names, actions, profile, evaluation, certificate, minDays] = await Promise.all([
       loadSnapshotNames(this.db, [app]),
       this.stateMachine.availableActions(app, 'COMPANY_HR', now),
@@ -130,7 +130,7 @@ export class HrApplicationsService {
 
   /** `accept` `{start_date, end_date}` — Guard: ไม่ Freeze, ไม่ยืนยันที่อื่น (403), ช่วง ≥ 30 วัน (422) → reserve โควตา (409 QUOTA_FULL) */
   async accept(user: JwtClaims, applicationId: string, body: HrAcceptDto, correlationId?: string): Promise<HrApplicationDetail> {
-    await this.companyApplication(user, applicationId);
+    await this.companyApplication(user, applicationId, correlationId);
     await this.execute(user, applicationId, {
       trigger: 'accept',
       input: { startDate: toDateOnly(body.start_date), endDate: toDateOnly(body.end_date) },
@@ -146,7 +146,7 @@ export class HrApplicationsService {
     reason: string | undefined,
     correlationId?: string,
   ): Promise<HrApplicationDetail> {
-    await this.companyApplication(user, applicationId);
+    await this.companyApplication(user, applicationId, correlationId);
     await this.execute(user, applicationId, { trigger: action, reason }, correlationId);
     return this.detail(user, applicationId, correlationId);
   }
@@ -162,7 +162,7 @@ export class HrApplicationsService {
     correlationId?: string,
     now = new Date(),
   ): Promise<HrApplicationDetail & HrStartResponse> {
-    const app = await this.companyApplication(user, applicationId);
+    const app = await this.companyApplication(user, applicationId, correlationId);
     const actualStart = toDateOnly(body.actual_start_date);
     const startDate = body.start_date ? toDateOnly(body.start_date) : app.startDate;
     const endDate = body.end_date ? toDateOnly(body.end_date) : app.endDate;
@@ -201,7 +201,7 @@ export class HrApplicationsService {
     correlationId?: string,
     now = new Date(),
   ): Promise<HrApplicationDetail> {
-    const app = await this.companyApplication(user, applicationId);
+    const app = await this.companyApplication(user, applicationId, correlationId);
     if (body.actual_end_date) {
       const actualEnd = toDateOnly(body.actual_end_date);
       if (daysBetween(bangkokToday(now), actualEnd) > 0) throw validationFailed('actual_end_date', 'IN_FUTURE');
@@ -223,7 +223,7 @@ export class HrApplicationsService {
    * `round = 2` เฉพาะจาก `REEVALUATION_REQUESTED` (data-schema §8.1) นอกนั้น `round = 1`
    */
   async evaluate(user: JwtClaims, applicationId: string, body: HrEvaluateDto, correlationId?: string): Promise<HrApplicationDetail> {
-    await this.companyApplication(user, applicationId);
+    await this.companyApplication(user, applicationId, correlationId);
     const reason = body.reason || undefined;
     await this.execute(user, applicationId, {
       trigger: 'evaluate',
@@ -265,11 +265,11 @@ export class HrApplicationsService {
   }
 
   /** ไม่มี ⇒ 404 • บริษัทอื่น ⇒ 403 `NOT_OWNER_OF_RESOURCE` (UAT-29 ข้อ 2) • HR Member นอกสายงาน ⇒ 403 `FORBIDDEN_ROLE` (`FORBIDDEN_CATEGORY`) */
-  private async companyApplication(user: JwtClaims, applicationId: string): Promise<Application> {
+  private async companyApplication(user: JwtClaims, applicationId: string, correlationId?: string): Promise<Application> {
     const app = await this.db.application.findUnique({ where: { id: applicationId } });
     if (!app) throw applicationNotFound();
     assertCompanyOwnership(user, app.companyId);
-    await this.scope.assertInScope(user, app);
+    await this.scope.assertInScope(user, app, correlationId);
     return app;
   }
 

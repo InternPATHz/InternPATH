@@ -6,6 +6,7 @@ import type {
   HrRejectRequest,
   HrStartRequest,
   HrTerminateRequest,
+  JobCategory,
 } from '@internpath/contracts';
 import { Transform } from 'class-transformer';
 import { IsDateString, IsIn, IsOptional, IsString, IsUUID, Matches, MaxLength } from 'class-validator';
@@ -24,7 +25,10 @@ const DateOnly = (): PropertyDecorator => (target, key) => {
 /** หมายเหตุประกอบผลประเมิน — เอกสารไม่กำหนด ใช้ขอบเขตเดียวกับข้อความยาวของ 1.4 */
 export const EVALUATION_NOTE_MAX = APPLICATION_LIMITS.STATEMENT_MAX;
 
-/** GET /hr/applications — `?job_id=&status=` + Pagination มาตรฐาน */
+/** ค่าของ `?category=` (ตรงกับ enum `job_category`) */
+export const JOB_CATEGORIES: readonly JobCategory[] = ['TECH_IT', 'BUSINESS_MARKETING', 'CORPORATE_SERVICES'];
+
+/** GET /hr/applications — `?job_id=&status=&category=` + Pagination มาตรฐาน */
 export class HrApplicationsQueryDto extends PageQueryDto implements HrApplicationsQuery {
   @IsOptional()
   @IsUUID()
@@ -33,6 +37,10 @@ export class HrApplicationsQueryDto extends PageQueryDto implements HrApplicatio
   @IsOptional()
   @IsIn(APPLICATION_STATUSES)
   status?: ApplicationStatus;
+
+  @IsOptional()
+  @IsIn(JOB_CATEGORIES)
+  category?: JobCategory;
 }
 
 /** ช่วงฝึก ≥ 30 วันตรวจใน Guard `periodMin30Days` ⇒ `422 INVALID_PERIOD_MIN_30_DAYS` */

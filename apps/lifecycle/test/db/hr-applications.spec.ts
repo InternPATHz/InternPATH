@@ -276,6 +276,48 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
       await http().get(`/v1/hr/applications/${orphan.id}`).set('Authorization', memberOf(ALL_CATEGORIES)).expect(403);
       expect(await ids(owner())).to.include.members([withJob.id, orphan.id]);
     });
+
+    it('?category=: Member กรองในสายตน; ขอสายอื่น ⇒ รายการว่าง 200; Owner กรองได้ทุกสาย; ค่าผิด ⇒ 400 (PM ตัดสิน 2026-11-21)', async () => {
+      const tech = await seedIn('TECH_IT');
+      const biz = await seedIn('BUSINESS_MARKETING');
+      const corp = await seedIn('CORPORATE_SERVICES');
+      const member = memberOf(['TECH_IT', 'CORPORATE_SERVICES']);
+      expect(await ids(member, '?category=TECH_IT')).to.deep.equal([tech.id]);
+      expect(await ids(member, '?category=CORPORATE_SERVICES')).to.deep.equal([corp.id]);
+      const other = await http().get('/v1/hr/applications?category=BUSINESS_MARKETING').set('Authorization', member).expect(200);
+      expect(other.body.data).to.deep.equal([]);
+      expect(other.body.meta.total).to.equal(0);
+      expect(await ids(owner(), '?category=BUSINESS_MARKETING')).to.deep.equal([biz.id]);
+      expect(await ids(owner(), `?category=TECH_IT&job_id=${biz.jobId}`)).to.deep.equal([]);
+      expect(await ids(owner(), `?category=TECH_IT&job_id=${tech.jobId}`)).to.deep.equal([tech.id]);
+      const bad = await http().get('/v1/hr/applications?category=HR').set('Authorization', owner()).expect(400);
+      expect(bad.body.error.code).to.equal('VALIDATION_FAILED');
+    });
+
+    it('Job ล่มตอนถามสายงานของประกาศที่ยังไม่รู้สาย ⇒ รายการยัง 200 โดยตัดประกาศนั้นออก (ไม่พังทั้งหน้า) + ส่ง correlation id ต่อ', async () => {
+      const tech = await seedIn('TECH_IT');
+      const unknown = job.addJob({ company_id: companyId, category: 'TECH_IT' });
+      await prisma.jobSnapshot.create({ data: { jobId: unknown.job_id, companyId, title: 'x', status: 'PUBLISHED' } });
+      const pending = await prisma.application.create({ data: { jobId: unknown.job_id, companyId, studentUserId: randomUUID(), advisorUserId: advisorId, resumeId, status: 'PENDING' } });
+
+      job.unavailable = true;
+      const res = await http().get('/v1/hr/applications').set('Authorization', memberOf(['TECH_IT'])).set('x-correlation-id', 'cid-category-list').expect(200);
+      expect(res.body.data.map((r: { id: string }) => r.id)).to.deep.equal([tech.id]);
+      expect(job.getJobCorrelationIds).to.include('cid-category-list');
+      expect((await prisma.jobSnapshot.findUniqueOrThrow({ where: { jobId: unknown.job_id } })).category).to.equal(null);
+
+      job.unavailable = false;
+      expect(await ids(memberOf(['TECH_IT']))).to.deep.equal([tech.id, pending.id].sort());
+    });
+
+    it('รายละเอียดส่ง correlation id ต่อให้ Job ตอนเติมสายงาน', async () => {
+      const unknown = job.addJob({ company_id: companyId, category: 'TECH_IT' });
+      await prisma.jobSnapshot.create({ data: { jobId: unknown.job_id, companyId, title: 'x', status: 'PUBLISHED' } });
+      const app = await prisma.application.create({ data: { jobId: unknown.job_id, companyId, studentUserId: randomUUID(), advisorUserId: advisorId, resumeId, status: 'PENDING' } });
+      await http().get(`/v1/hr/applications/${app.id}`).set('Authorization', memberOf(['TECH_IT'])).set('x-correlation-id', 'cid-category-detail').expect(200);
+      expect(job.getJobCorrelationIds).to.include('cid-category-detail');
+      expect(job.getJobCorrelationIds).to.not.include(undefined);
+    });
   });
 
   describe('GET /hr/applications และ /hr/applications/{id}', () => {
