@@ -170,6 +170,16 @@ describe('Identity advisor-created students (Postgres จริง)', function (
     expect(await db.user.count({ where: { email: body.email } })).to.equal(1);
   });
 
+  it('simultaneous creates with one student code in the same university produce one account', async () => {
+    const code = `R${randomBytes(3).toString('hex')}`;
+    const results = await Promise.all([1, 2].map(() => http().post('/v1/advisor-links/students')
+      .set(advisorAuth(advisorB)).send(newStudent({ student_code: code }))));
+    expect(results.map((r) => r.status).sort()).to.deep.equal([201, 409]);
+    const advisor = await db.user.findUniqueOrThrow({ where: { id: advisorB } });
+    expect(await db.studentProfileIdentity.count({ where: { studentCode: code,
+      user: { universityId: advisor.universityId } } })).to.equal(1);
+  });
+
   it('lists only own students with q / year_level / activation filters and invitation expiry for pending ones', async () => {
     const mine = await db.user.findMany({ where: { studentProfile: { is: { advisorId: advisorB } } }, include: { studentProfile: true } });
     await db.user.update({ where: { id: mine[0].id }, data: { status: 'ACTIVE', emailVerifiedAt: new Date(), passwordHash: 'x' } });

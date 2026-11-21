@@ -89,6 +89,18 @@ describe('Identity Admin controls (Postgres จริง)', function () {
     delete process.env.JWT_PUBLIC_KEY;
   });
 
+  it('lists filtered users for Admin without exposing password hashes', async () => {
+    await request(app.getHttpServer()).get('/v1/admin/users')
+      .set('Authorization', bearer(memberId, 'COMPANY_HR')).expect(403);
+    const result = await request(app.getHttpServer()).get('/v1/admin/users?role=COMPANY_HR&q=member&page_size=10')
+      .set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).expect(200);
+    expect(result.body.meta.total).to.equal(1);
+    expect(result.body.data[0]).to.include({ id: memberId, email: 'member@company.test', role: 'COMPANY_HR' });
+    expect(result.body.data[0]).to.not.have.property('passwordHash');
+    await request(app.getHttpServer()).get('/v1/admin/users?role=unknown')
+      .set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).expect(400);
+  });
+
   it('sets University Partner with E05 snapshot and one audit row; repeated PUT is a no-op', async () => {
     const adminToken = bearer(adminId, 'PLATFORM_ADMIN');
     const url = `/v1/admin/companies/${companyId}/university-partner`;

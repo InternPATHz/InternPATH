@@ -17,9 +17,9 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     title: 'บัญชีและองค์กร', owner: 'SA',
     items: [
-      { label: 'บริษัท', href: null },
-      { label: 'อาจารย์ที่ปรึกษา', href: null },
-      { label: 'ผู้ใช้', href: null },
+      { label: 'บริษัท', href: '/admin/companies' },
+      { label: 'อาจารย์ที่ปรึกษา', href: '/admin/advisors' },
+      { label: 'ผู้ใช้', href: '/admin/users' },
     ],
   },
   {

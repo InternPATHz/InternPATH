@@ -21,6 +21,9 @@ describe('Gateway proxy and security', function () {
   const token = () => jwt.sign({ role: 'STUDENT' }, privateKey, {
     algorithm: 'RS256', subject: userId, expiresIn: 900, jwtid: randomUUID(),
   });
+  const advisorToken = (id: string) => jwt.sign({ role: 'ADVISOR' }, privateKey, {
+    algorithm: 'RS256', subject: id, expiresIn: 900, jwtid: randomUUID(),
+  });
   const edge = (call: request.Test) => call.set('X-Edge-Secret', 'edge-test-secret');
 
   before(async () => {
@@ -112,6 +115,24 @@ describe('Gateway proxy and security', function () {
       .set('X-Client-IP', '203.0.113.77').send({ email: 'new-ip-email@example.com' }).expect(429);
     expect(limited.body.error.code).to.equal('RATE_LIMITED');
     expect(Number(limited.headers['retry-after'])).to.be.greaterThan(0);
+  });
+
+  it('limits student creation per advisor, including requests from different IPs', async () => {
+    const first = advisorToken(randomUUID());
+    const second = advisorToken(randomUUID());
+    for (let index = 0; index < 30; index++) {
+      await edge(request(app.getHttpServer()).post('/api/v1/advisor-links/students'))
+        .set('Authorization', `Bearer ${first}`).set('X-Client-IP', `203.0.113.${index + 1}`)
+        .send({ email: `student-${index}@school.ac.th` }).expect(200);
+    }
+    const limited = await edge(request(app.getHttpServer()).post('/api/v1/advisor-links/students'))
+      .set('Authorization', `Bearer ${first}`).set('X-Client-IP', '203.0.113.99')
+      .send({ email: 'another@school.ac.th' }).expect(429);
+    expect(limited.body.error.code).to.equal('RATE_LIMITED');
+    expect(Number(limited.headers['retry-after'])).to.be.greaterThan(0);
+    await edge(request(app.getHttpServer()).post('/api/v1/advisor-links/students'))
+      .set('Authorization', `Bearer ${second}`).set('X-Client-IP', '203.0.113.99')
+      .send({ email: 'other-advisor@school.ac.th' }).expect(200);
   });
 
   it('limits login attempts for one email across different IPs', async () => {

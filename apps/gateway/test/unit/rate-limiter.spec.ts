@@ -2,6 +2,18 @@ import { expect } from 'chai';
 import { RateLimiter } from '../../src/rate-limit/rate-limiter';
 
 describe('Gateway rate limiter capacity', () => {
+  it('limits student creation per advisor without sharing a bucket across advisors', () => {
+    const limiter = new RateLimiter();
+    const rule = limiter.rule('POST', '/advisor-links/students')!;
+    expect(rule).to.include({ name: 'advisor-create-student', max: 30, windowMs: 3_600_000 });
+    expect(limiter.rule('GET', '/advisor-links/students')).to.equal(undefined);
+    for (let index = 0; index < 30; index++) expect(limiter.checkActor(rule, 'advisor-a')).to.equal(0);
+    expect(limiter.checkActor(rule, 'advisor-a')).to.be.greaterThan(0);
+    expect(limiter.checkActor(rule, 'advisor-b')).to.equal(0);
+    for (let index = 0; index < 120; index++) expect(limiter.checkAdvisorCreateIp('203.0.113.10')).to.equal(0);
+    expect(limiter.checkAdvisorCreateIp('203.0.113.10')).to.be.greaterThan(0);
+    expect(limiter.checkAdvisorCreateIp('203.0.113.11')).to.equal(0);
+  });
   it('evicts the least recently used bucket instead of rejecting every new client', () => {
     const limiter = new RateLimiter();
     const login = { name: 'login', max: 1, windowMs: 60_000 };
