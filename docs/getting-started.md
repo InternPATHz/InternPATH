@@ -19,7 +19,16 @@ pnpm install                  # ติดตั้ง + build libs/* อัต�
 pnpm keys:generate            # พิมพ์ JWT_PRIVATE_KEY / JWT_PUBLIC_KEY → วางลง .env
 ```
 
-ก่อนเปิด Gateway ให้สร้าง `IDENTITY_SERVICE_SECRET_GATEWAY` ด้วยตาม [developer-guide.md §1.1](developer-guide.md#11-ตั้งค่า-jwt-และ-service-secret-ก่อนเปิด-gateway)
+จากนั้นสร้าง Service secret ทุกคู่ใน `.env` ตาม [developer-guide.md §1.1](developer-guide.md#11-ตั้งค่า-jwt-และ-service-secret-ก่อนเปิด-gateway) (แต่ละค่า ≥ 32 ตัวอักษร ใช้ค่าเดียวกันทั้งฝั่งผู้เรียกและผู้รับ เพราะอยู่ใน `.env` ไฟล์เดียว) — ถ้าเว้นว่าง Service จะไม่เริ่มหรือตอบ 503 ในฟีเจอร์ที่เกี่ยวข้อง:
+
+| ตัวแปร | ใช้ตอน | ขาดแล้วเป็นอย่างไร |
+| :--- | :--- | :--- |
+| `IDENTITY_SERVICE_SECRET_GATEWAY` | Gateway ดึง denylist จาก Identity | Gateway ไม่เริ่ม |
+| `IDENTITY_SERVICE_SECRET_LIFECYCLE`, `JOB_SERVICE_SECRET_LIFECYCLE` | Lifecycle เรียก Identity (ชื่อ/ติดต่อ) และ Job (โควตา) | Lifecycle ไม่เริ่ม |
+| `LIFECYCLE_SERVICE_SECRET_JOB` | Job ถาม Lifecycle ตอนกระทบยอดโควตา | กระทบยอดโควตาไม่ทำงาน |
+| `LIFECYCLE_SERVICE_SECRET_IDENTITY` | Identity ถาม Lifecycle ก่อนลบบัญชี | ลบบัญชีตอบ 503 |
+| `IDENTITY_SERVICE_SECRET_NOTIFICATION` | Notification หาผู้รับและอีเมลจาก Identity | Event ที่ต้องหาผู้รับล้มซ้ำจนเข้า DLQ ไม่มีแจ้งเตือน |
+| `JOB_SERVICE_SECRET_IDENTITY` | Identity ถาม Job ว่าบริษัทไหนมีประกาศในสายงาน (Directory `?category=`) | ตัวกรองสายงานใน Company Directory ตอบ 503 |
 
 ## 3. รัน
 
@@ -27,9 +36,19 @@ pnpm keys:generate            # พิมพ์ JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
 pnpm infra:up                                   # Postgres, RabbitMQ, RustFS (S3), Mailpit
 pnpm infra:init-buckets                         # ครั้งแรกเท่านั้น: สร้าง bucket ใน RustFS (ไฟล์เรซูเม่/โลโก้)
 pnpm storage:check                              # (ไม่บังคับ) ตรวจ storage: อัปโหลด Signed URL หมดอายุ ลบ โลโก้สาธารณะ; กับ R2: pnpm storage:check -- --env .env.r2
+pnpm infra:topology                             # สร้างคิวผู้รับ Event ทุก Service ล่วงหน้า (รันซ้ำได้)
 pnpm --filter @internpath/identity start:dev    # รัน Service เดียวแบบ watch (แทน identity ด้วย job, verification, ...)
 pnpm --filter @internpath/web dev               # เว็บ http://localhost:3100
 ```
+
+**สร้างตารางในฐานข้อมูล** (ครั้งแรก และทุกครั้งที่ `git pull` แล้วมีโฟลเดอร์ใหม่ใน `apps/*/prisma/migrations`) — Postgres สร้างฐานข้อมูลว่างให้ 5 ตัวตอน `pnpm infra:up` ครั้งแรก แต่ตารางต้องสร้างด้วย migration ของแต่ละ Service; Prisma CLI ไม่อ่าน `.env` ที่ราก repo จึงต้อง export URL ของฐานข้อมูลก่อน (Git Bash):
+
+```bash
+export $(grep -E '^[A-Z]+_(DATABASE|DIRECT)_URL=' .env | xargs)
+for s in identity job verification lifecycle notification; do pnpm --filter @internpath/$s exec prisma migrate deploy; done
+```
+
+**ลำดับการเปิด Service:** Identity ก่อน แล้ว Job, Verification, Lifecycle, Notification และ **Gateway เป็นตัวท้าย** — Gateway ปฏิเสธคำขอที่ล็อกอินด้วย `503 UPSTREAM_UNAVAILABLE` จนกว่าจะดึง denylist จาก Identity สำเร็จ (fail-closed) ถ้าเปิด Gateway ก่อน Identity จะได้ 503 ไปจนถึงรอบดึงถัดไป (ทุก 30 วินาที) • เปิดผู้รับ Event ให้ครบก่อนสร้างข้อมูล ไม่เช่นนั้น Event ที่ส่งก่อนผู้รับมีคิวจะหาย (ป้องกันได้ด้วย `pnpm infra:topology` ข้างบน)
 
 | Service | Port | Health | API Docs (dev) |
 | :--- | :---: | :--- | :--- |
@@ -76,7 +95,8 @@ pnpm --filter @internpath/web dev               # เว็บ http://localhost:
 
 - Prisma ล็อกที่ **6.x** (Prisma 7+ เปลี่ยนวิธีตั้งค่า ต้องย้ายก่อนอัปเกรด) และ TypeScript ล็อกที่ 5.6 ผ่าน `pnpm.overrides`
 - `libs/common` และ `libs/contracts` ต้อง build ก่อน (`dist/`) แอปถึง import ได้ — `pnpm install` ทำให้อัตโนมัติ ถ้าแก้โค้ดใน libs ให้รัน `pnpm --filter "./libs/*" build`
-- Migration ของ Prisma: **Verification** (สไลซ์ 1-2) และ **Identity** (ฐานข้อมูลพื้นฐาน) มีแล้ว ส่วน Job, Lifecycle และ Notification ยังมีแค่ตารางร่วม (`outbox_events`/`processed_events`) — เขียนตาม [data-schema.md](data-schema.md) และขั้นตอนใน [developer-guide.md](developer-guide.md) §6.2
+- Migration ของ Prisma: ทุก Service มีแล้ว (Identity, Job, Verification, Lifecycle, Notification) — รันด้วยคำสั่งใน §3 "สร้างตารางในฐานข้อมูล"; เพิ่ม/แก้ตารางตาม [data-schema.md](data-schema.md) และขั้นตอนใน [developer-guide.md](developer-guide.md) §6.2
 - Prisma Client ของแต่ละ Service generate ไป `apps/<service>/generated/client` (ไม่ commit) — รัน `pnpm --filter "./apps/*" --if-present prisma:generate` หลัง `pnpm install` และทุกครั้งที่ `schema.prisma` เปลี่ยน
 - เพิ่ง `git pull` แล้วเจอ error เรื่อง Prisma/คิว/โมดูลหาย → ดูขั้นตอนใน [developer-guide.md](developer-guide.md) §9 (สิ่งที่ต้องทำตามหลัง merge รายครั้ง)
 - หลัง `pnpm infra:up` ให้รัน `pnpm infra:topology` หนึ่งครั้ง เพื่อสร้างคิวผู้รับ Event ของทุก Service ล่วงหน้า (ไม่เช่นนั้น Event ที่ Service หนึ่งส่งก่อนที่ผู้รับจะเคยเปิดจะหาย)
+- หน้า HR Jobs ของเว็บใช้ข้อมูลจำลองอยู่จนกว่า HR Jobs API ของ Job (#92) จะ merge — หลังจากนั้นค่าเริ่มต้นเรียก API จริง และตั้ง `NEXT_PUBLIC_HR_JOBS_MOCK=true` เมื่ออยากใช้ข้อมูลจำลอง

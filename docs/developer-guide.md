@@ -40,6 +40,8 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 
 Lifecycle ตรวจ Service Token ที่ Identity เซ็น (เรียก `deletion-eligibility`) ด้วย `LIFECYCLE_SERVICE_SECRET_IDENTITY` — ตั้งค่าเดียวกันที่ `.env` ของ Lifecycle และ Identity (สร้างด้วยคำสั่งข้างบน)
 
+ชื่อตัวแปรเป็นรูป `<ผู้รับ>_SERVICE_SECRET_<ผู้เรียก>` หนึ่งค่าต่อหนึ่งคู่ ตอนนี้มี 7 คู่: `IDENTITY_SERVICE_SECRET_GATEWAY`, `IDENTITY_SERVICE_SECRET_LIFECYCLE`, `IDENTITY_SERVICE_SECRET_NOTIFICATION`, `JOB_SERVICE_SECRET_LIFECYCLE`, `JOB_SERVICE_SECRET_IDENTITY` (Directory กรอง `category`), `LIFECYCLE_SERVICE_SECRET_JOB` (กระทบยอดโควตา), `LIFECYCLE_SERVICE_SECRET_IDENTITY` — ตารางว่าขาดตัวไหนแล้วกระทบอะไรอยู่ใน [getting-started.md](getting-started.md) §2 ถ้าเพิ่ม Internal API คู่ใหม่ ให้เพิ่มทั้งใน `.env.example` และตารางนั้น
+
 ### 1.2 Gateway หลัง proxy
 
 เมื่อวาง Gateway หลัง proxy ให้ตั้ง `EDGE_SHARED_SECRET` เป็นค่าเดียวกันที่ proxy และ Gateway แล้วให้ proxy ส่ง `X-Edge-Secret` พร้อม `x-client-ip` ซึ่งเป็น IP ผู้ใช้จริง โดย proxy ต้องเขียนทับ header ทั้งสองจากคำขอภายนอก และปิดการเข้าถึง Gateway โดยตรงจากอินเทอร์เน็ต
@@ -115,7 +117,7 @@ apps/<service>/
 6. **ห้าม commit** `.env`, คีย์ JWT, รหัสผ่านจริง (มีแค่ `.env.example`)
 7. ตรวจสิทธิ์ที่ **ทุก Service** ด้วย Guard (อย่าพึ่ง Gateway อย่างเดียว) และตรวจความเป็นเจ้าของข้อมูล เช่น `company_id` ใน Token ต้องตรงกับทรัพยากร
 8. **Contract ล็อกแล้ว — ใช้ชนิดข้อมูลจาก `@internpath/contracts` เท่านั้น** (Event E01-E18 ทุกตัวและ Enum ใน `data-schema.md` §2.1 อยู่ใน `libs/contracts/src/`) ห้ามประกาศ payload/enum ซ้ำในแอป การเปลี่ยนชื่อ/ชนิด/ความหมายของฟิลด์หรือค่า Enum ต้องบอกใน PR (ติดป้าย "contract change"), แก้ `docs/` และ `libs/contracts` พร้อมกัน และให้ PM อนุมัติ — เพิ่มฟิลด์ที่ไม่บังคับ (`?`) ได้โดยไม่ต้องรออนุมัติ แต่ต้องบอกใน PR
-9. **ทุก Service ที่ใช้ Prisma ต้องตั้ง `output = "../generated/client"` ใน `generator client` ของ `schema.prisma`** และ import `PrismaClient`/ชนิดจาก `../../generated/client` (ไม่ใช่ `@prisma/client`) — output ค่าตั้งต้นเป็นที่เดียวกันของทุก Service ทำให้ Client เขียนทับกันตอน generate ทั้ง repo ใน CI (`apps/*/generated/` ถูก gitignore) มีเทสต์ตรวจใน `libs/common/test/repo/prisma-outputs.spec.ts` (ยอมให้ใช้ค่าตั้งต้นได้ไม่เกิน 1 Service ระหว่างที่ Service นั้นยังไม่ได้ย้าย — ปัจจุบันคือ `job`)
+9. **ทุก Service ที่ใช้ Prisma ต้องตั้ง `output = "../generated/client"` ใน `generator client` ของ `schema.prisma`** และ import `PrismaClient`/ชนิดจาก `../../generated/client` (ไม่ใช่ `@prisma/client`) — output ค่าตั้งต้นเป็นที่เดียวกันของทุก Service ทำให้ Client เขียนทับกันตอน generate ทั้ง repo ใน CI (`apps/*/generated/` ถูก gitignore) มีเทสต์ตรวจใน `libs/common/test/repo/prisma-outputs.spec.ts` (ทั้ง 5 Service ย้ายครบแล้ว — Service ใหม่ต้องตั้งเหมือนกัน)
 10. **ส่ง E03 ทุกการเปลี่ยนสถานะประกาศ** พร้อม `company_id` และ `entity_version` ที่เพิ่มขึ้น (รวมทุกแถวที่เข้า `VERIFYING` ซึ่งส่งคู่กับ `JobSubmitted`) และตรวจ `submission_id === current_submission_id` ก่อนรับ `JobVerified` — รายละเอียดใน [data-schema.md](data-schema.md) §8.2
 
 ## 5. Workflow การทำงาน
@@ -222,17 +224,17 @@ npx prisma migrate dev --name <ชื่อการเปลี่ยนแป�
 
 ## 7. ยังไม่มีอะไรบ้าง (รู้ไว้จะได้ไม่งง)
 
-โครงตอนนี้รันได้และทดสอบผ่านบาง Service แล้ว ส่วนที่ยังต้องทำหรือเชื่อมต่อมีดังนี้:
+สถานะ ณ 2026-11-22 (main หลัง #102) — ส่วนที่ยังต้องทำหรือเชื่อมต่อมีดังนี้:
 
-- [ ] Prisma migration แรกของทุก Service และตารางเฉพาะ Service — **Verification และ Identity ทำแล้ว**; Job, Lifecycle และ Notification ยังมีแค่ `outbox_events` / `processed_events`
+- [x] Prisma migration ของทุก Service (Identity, Job, Verification, Lifecycle, Notification) — รันตามคำสั่งใน [getting-started.md](getting-started.md) §3
 - [x] Outbox relay และ Consumer — อยู่ใน `libs/common` (`OutboxWriter`, `OutboxRelay`, `EventConsumer`, `MessagingModule`); แต่ละ Service ต้องผูกกับงานของตนตาม §6.3
-- [ ] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก — Identity ใช้ `ServiceTokenGuard` จาก `libs/common` แล้ว; Job/Lifecycle/Notification ยังต้องผูกเมื่อเพิ่ม endpoint ภายใน
-- [x] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit, Denylist
-- [ ] การลงทะเบียน `JwtAuthGuard` ใน Service ที่เพิ่ม endpoint ซึ่งต้องล็อกอิน (Identity ใช้แล้ว)
-- [ ] **ลบบัญชี:** กติกาตัดสินแล้ว (api-contract §4.2/§9, data-schema §2.3 — PM 2026-11-17) ยังไม่มีโค้ด: Tester ทำ `POST /users/me/deletion-request` ใน `apps/identity` (เรียก `request()` แล้ว `complete()` ซิงโครนัส; PR ต้องให้ SA รีวิว), `GET /internal/v1/users/{user_id}/deletion-eligibility` ใน Lifecycle, client ฝั่ง Identity แทน provider ที่ fail-closed อยู่ตอนนี้ และ consumer E15 ของ Lifecycle — ยังไม่ควรแสดงฟังก์ชันลบบัญชีให้ผู้ใช้จนกว่าจะเสร็จ
-- [ ] Scheduler (SLA, Reconciliation โควตา, Fail-safe 5 นาที)
-- [ ] หน้าเว็บของแต่ละ Role (หน้า Auth/Account และหน้าแรกมีแล้ว; หน้า Admin เสียบเข้า Admin Shell กลางที่ PM ทำ — ตารางเจ้าของหน้าอยู่ใน [README](../README.md) หัวข้อ 11)
-- [ ] โครงเว็บรวม (Header, Footer, เมนูตามบทบาท, Admin Shell, หน้านโยบายความเป็นส่วนตัว) — PM
+- [x] Service Token สำหรับ `/internal/**` และ allow-list ผู้เรียก — Identity, Job และ Lifecycle ใช้ `ServiceTokenGuard` แล้ว; Service ที่เพิ่ม endpoint ภายในใหม่ทำตาม §6.1 และเพิ่ม secret คู่ใหม่ตาม §1.1
+- [x] Gateway: การ Route/Proxy, ตรวจ Token, Rate Limit (รวม `POST /advisor-links/students`), Denylist — ค้าง: ตอนเปิดก่อน Identity ต้องรอรอบดึง denylist 30 วินาทีกว่าจะหาย 503 (SA จะให้ลองใหม่ถี่ขึ้นจนกว่าจะดึงสำเร็จครั้งแรก)
+- [x] `JwtAuthGuard` ใน Service ที่มี endpoint ซึ่งต้องล็อกอิน (ทุก Service แล้ว)
+- [x] **ลบบัญชี:** `POST /users/me/deletion-request` (Identity), `GET /internal/v1/users/{user_id}/deletion-eligibility` (Lifecycle) และผู้รับ E15 ทำแล้ว
+- [ ] Scheduler — ทำแล้ว: SLA (Lifecycle), กระทบยอดโควตา และล้างรอบรายงาน (Job); **ค้าง:** Fail-safe 5 นาทีของ `VERIFYING` (อยู่ใน #92 ที่ยังไม่ merge) และปิดประกาศอัตโนมัติเมื่อถึง `application_deadline` (งานถัดไปของ Junior)
+- [ ] หน้าเว็บของแต่ละ Role — ทำแล้ว: Auth/Account, หน้าแรก, ค้นหางาน/รายละเอียดงาน (API จริง), Company Directory, หน้านักศึกษา, หน้าอาจารย์, หน้า Admin ของ Identity และ Verification; **ค้าง:** หน้า HR Jobs ยังใช้ข้อมูลจำลองจนกว่า #92 จะ merge — ตารางเจ้าของหน้าอยู่ใน [README](../README.md) หัวข้อ 11
+- [x] โครงเว็บรวม (Header, Footer, เมนูตามบทบาท, Admin Shell, หน้านโยบายความเป็นส่วนตัว) — PM
 - [ ] Dockerfile ของ Service ยังไม่เคยรัน; `docker compose --profile infra up -d postgres rabbitmq mailpit` รันผ่านแล้ว (2026-11-13) ส่วน **MinIO ดึง image ไม่ได้** (`minio/minio` บน Docker Hub ใช้ไม่ได้ และ `quay.io/minio/minio` ตอบ 401) จึงเปลี่ยนเป็น **RustFS** (`rustfs/rustfs:1.0.6`, PM ตัดสิน 2026-11-18): ทดสอบด้วย `S3StorageService` จริง — อัปโหลด 5 MB, Signed URL, หมดอายุ, ลบ (idempotent), public bucket — ผ่าน 13/13; ครั้งแรกหลัง `pnpm infra:up` ให้รัน `pnpm infra:init-buckets` (สร้าง bucket ด้วย region `us-east-1` เพราะ `auto` ถูกปฏิเสธตอน `CreateBucket` และตั้ง policy ให้ public bucket อ่านได้); ใช้เฉพาะ dev/สาธิตในเครื่อง ส่วนสาธิตจริงใช้ Cloudflare R2
 - [ ] การสาธิตผ่าน Cloudflare ([architecture.md](architecture.md) §8.1): Worker proxy `/api/*` + `API_ORIGIN`, ตรวจ `X-Edge-Secret` / CORS / IP ผู้ใช้ที่ Gateway, ข้อความ "ระบบหลังบ้านออฟไลน์" ใน Front, ลิงก์อีเมลจาก `WEB_BASE_URL`
 - [x] `docker-compose.yml`: Postgres / RabbitMQ / RustFS / Mailpit และพอร์ตของ Service ทั้ง 6 ตัว (gateway, identity, job, verification, lifecycle, notification) bind เฉพาะ `127.0.0.1` และมี `restart: unless-stopped` (พอร์ตของเว็บ 3100 ยังไม่ปรับ เพราะอยู่ใน PR ที่แก้บริการ web)
