@@ -3,7 +3,7 @@ import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { CompanyEntitlementChangedPayload, CompanyStatusChangedPayload, UserSuspendedPayload } from '@internpath/contracts';
 import { Company, Prisma, User } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
-import { AuditQueryDto, SetEntitlementsDto } from './admin.dto';
+import { AdminUsersQueryDto, AuditQueryDto, SetEntitlementsDto } from './admin.dto';
 
 @Injectable()
 export class AdminService {
@@ -121,6 +121,30 @@ export class AdminService {
     return { data: rows.map((row) => ({ id: row.id, admin_id: row.adminId, action: row.action, target_type: row.targetType,
       target_id: row.targetId, before: row.before, after: row.after, reason: row.reason,
       correlation_id: row.correlationId, occurred_at: row.occurredAt.toISOString() })),
+    meta: { page: query.page, page_size: query.page_size, total } };
+  }
+
+  async users(adminId: string, query: AdminUsersQueryDto) {
+    await this.admin(adminId);
+    const q = query.q?.trim();
+    const where: Prisma.UserWhereInput = {
+      ...(query.role ? { role: query.role } : {}),
+      ...(query.status ? { status: query.status } : { status: { not: 'DELETED' } }),
+      ...(q ? { OR: [
+        { fullName: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { studentProfile: { is: { studentCode: { contains: q, mode: 'insensitive' } } } },
+      ] } : {}),
+    };
+    const [rows, total] = await Promise.all([
+      this.db.user.findMany({ where, include: { studentProfile: true, companyMember: true },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.page_size, take: query.page_size }),
+      this.db.user.count({ where }),
+    ]);
+    return { data: rows.map((user) => ({ id: user.id, full_name: user.fullName, email: user.email,
+      role: user.role, status: user.status, university_id: user.universityId,
+      advisor_id: user.studentProfile?.advisorId ?? null, student_code: user.studentProfile?.studentCode ?? null,
+      company_id: user.companyMember?.companyId ?? null, created_at: user.createdAt.toISOString() })),
     meta: { page: query.page, page_size: query.page_size, total } };
   }
 }

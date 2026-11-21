@@ -10,6 +10,8 @@ import { expect } from 'chai';
 import * as jwt from 'jsonwebtoken';
 import { Client } from 'pg';
 import request from 'supertest';
+import sinon from 'sinon';
+import { AuthMailer } from '../../src/modules/auth/auth.mailer';
 import { AdvisorLinkModule } from '../../src/modules/advisor-links/advisor-link.module';
 import { UsersModule } from '../../src/modules/users/users.module';
 import { PrismaModule } from '../../src/prisma/prisma.module';
@@ -199,6 +201,16 @@ describe('Identity advisor-created students (Postgres จริง)', function (
     expect(await db.user.count({ where: { email: body.email } })).to.equal(1);
   });
 
+  it('simultaneous creates with one student code in the same university produce one account', async () => {
+    const code = `R${randomBytes(3).toString('hex')}`;
+    const results = await Promise.all([1, 2].map(() => http().post('/v1/advisor-links/students')
+      .set(advisorAuth(advisorB)).send(newStudent({ student_code: code }))));
+    expect(results.map((r) => r.status).sort()).to.deep.equal([201, 409]);
+    const advisor = await db.user.findUniqueOrThrow({ where: { id: advisorB } });
+    expect(await db.studentProfileIdentity.count({ where: { studentCode: code,
+      user: { universityId: advisor.universityId } } })).to.equal(1);
+  });
+
   it('lists only own students with q / year_level / activation filters and invitation expiry for pending ones', async () => {
     const mine = await db.user.findMany({ where: { studentProfile: { is: { advisorId: advisorB } } }, include: { studentProfile: true } });
     await db.user.update({ where: { id: mine[0].id }, data: { status: 'ACTIVE', emailVerifiedAt: new Date(), passwordHash: 'x' } });
@@ -232,7 +244,11 @@ describe('Identity advisor-created students (Postgres จริง)', function (
 
     const before = await db.emailToken.findMany({ where: { userId: id } });
     await http().post(`/v1/advisor-links/students/${id}/actions/resend-invitation`).set(advisorAuth(advisorA)).expect(404);
-    await http().post(`/v1/advisor-links/students/${id}/actions/resend-invitation`).set(advisorAuth(advisorB)).expect(503); // ไม่ได้ตั้งค่า SMTP ในเทสต์ แต่คำเชิญใหม่ถูกออกแล้ว
+    // Force a mail failure so the expected 503 does not depend on a running Mailpit or developer SMTP settings.
+    const mailFailure = sinon.stub(app.get(AuthMailer), 'send').rejects(new Error('test SMTP failure'));
+    try {
+      await http().post(`/v1/advisor-links/students/${id}/actions/resend-invitation`).set(advisorAuth(advisorB)).expect(503);
+    } finally { mailFailure.restore(); }
     const after = await db.emailToken.findMany({ where: { userId: id }, orderBy: { createdAt: 'asc' } });
     expect(after).to.have.length(before.length + 1);
     expect(after.filter((t) => !t.usedAt)).to.have.length(1); // ลิงก์เดิมใช้ไม่ได้

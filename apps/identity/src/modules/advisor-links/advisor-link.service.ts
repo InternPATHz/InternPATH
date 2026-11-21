@@ -10,6 +10,7 @@ import { AdminAdvisorQueryDto, AdvisorStudentsQueryDto, CreateStudentDto, Update
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 const isUniqueError = (error: unknown): boolean => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+const isSerializationError = (error: unknown): boolean => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
 /** P2002 จาก unique (university_id, student_code) — `meta.target` เป็นรายชื่อคอลัมน์หรือชื่อ constraint แล้วแต่ engine */
 const isStudentCodeUniqueError = (error: unknown): boolean =>
   isUniqueError(error) && /student_?code/i.test(JSON.stringify((error as Prisma.PrismaClientKnownRequestError).meta?.target ?? ''));
@@ -104,10 +105,20 @@ export class AdvisorLinkService {
           actorId: advisorId, actorRole: 'ADVISOR', reason: 'STUDENT_CREATED_BY_ADVISOR', correlationId: cid, occurredAt: now } });
         await this.linkEvent(tx, { studentId: user.id, before: { advisorId: null, advisorLinkStatus: 'NONE' } as StudentProfileIdentity,
           toStatus: 'LINKED', newAdvisorId: advisorId, changedBy: 'ADVISOR', actorId: advisorId, correlationId: cid, now });
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
       if (isStudentCodeUniqueError(error)) throw studentCodeTaken();
       if (isUniqueError(error)) throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
+      if (isSerializationError(error)) {
+        if (await this.db.user.findUnique({ where: { email } }))
+          throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
+        const duplicate = await this.db.studentProfileIdentity.findFirst({ where: {
+          studentCode: body.student_code.trim(), user: { universityId: advisor.universityId, status: { not: 'DELETED' } },
+        } });
+        if (duplicate) throw new AppException('STATE_CONFLICT', 'รหัสนักศึกษานี้ถูกใช้แล้วในสถาบันเดียวกัน', 409,
+          [{ field: 'student_code', issue: 'STUDENT_CODE_ALREADY_USED' }]);
+        throw new AppException('STATE_CONFLICT', 'ข้อมูลถูกเปลี่ยนระหว่างบันทึก กรุณาลองใหม่', 409);
+      }
       throw error;
     }
     // บัญชีถูกสร้างแล้ว: ส่งอีเมลไม่สำเร็จไม่ทำให้คำขอล้ม — อาจารย์กดส่งคำเชิญใหม่ได้

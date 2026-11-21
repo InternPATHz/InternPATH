@@ -149,6 +149,20 @@ export interface AdminAdvisorListItem {
   created_at: string;
 }
 
+/** GET /admin/users — Admin account directory and advisor transfer lookup. */
+export interface AdminUserListItem {
+  id: string;
+  full_name: string;
+  email: string;
+  role: Role;
+  status: UserStatus;
+  university_id: string | null;
+  advisor_id: string | null;
+  student_code: string | null;
+  company_id: string | null;
+  created_at: string;
+}
+
 // ---- §9 Internal (identity) ----
 /** GET /internal/v1/users/{user_id}/contact (และรายการใน /contacts?ids=) */
 export interface UserContact {

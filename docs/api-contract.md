@@ -94,7 +94,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | GET | `/users/me` | Any | ข้อมูลตนเอง + สถานะ advisor link / บริษัท |
 | PATCH | `/users/me` | Any | แก้ชื่อ/โทร |
 | POST | `/users/me/deletion-request` | Any | คำขอลบบัญชี (PM ตัดสิน 2026-11-17: **ซิงโครนัส** — Identity ตรวจสิทธิ์แล้วลบในคำขอเดียว) สำเร็จ `204` ไม่มี body และ token ของบัญชีถูกเพิกถอนทันที; `422 DELETION_BLOCKED` ถ้ามีใบสมัครที่ยังดำเนินอยู่ (ตรวจกับ Lifecycle: `ADVISOR_PENDING`, `ADVISOR_APPROVED`, `IN_PROGRESS`, `FAIL_DISPUTED`, `REEVALUATION_REQUESTED`) หรือเป็น Owner ที่ยังไม่โอน; `503 UPSTREAM_UNAVAILABLE` ถ้าตรวจกับ Lifecycle ไม่ได้ (ปฏิเสธไว้ก่อน ไม่ปล่อยผ่าน); สิ่งที่แต่ละ Service ทำหลังลบ ดู data-schema §2.3 |
-| POST | `/advisor-links/students` | A | **อาจารย์เพิ่มนักศึกษา** (อาจารย์ต้อง `ACTIVE`): `{email(@ac.th ของมหาวิทยาลัยเดียวกับอาจารย์), full_name, student_code, major, year_level}` → `201 {student_user_id, email, invitation_expires_at}` สร้างบัญชี `STUDENT` ที่ยังไม่ตั้งรหัสผ่าน ผูก `advisor_id` เป็น `LINKED` ทันที (ส่ง `AdvisorLinkChanged`) และส่งอีเมลคำเชิญ; `409 STATE_CONFLICT` (`EMAIL_ALREADY_REGISTERED`), `409 STATE_CONFLICT` (`STUDENT_CODE_ALREADY_USED`) (รหัสนักศึกษาซ้ำในมหาวิทยาลัยเดียวกัน), `400 VALIDATION_FAILED` (`EMAIL_DOMAIN_NOT_ALLOWED`); rate limit ที่ Gateway |
+| POST | `/advisor-links/students` | A | **อาจารย์เพิ่มนักศึกษา** (อาจารย์ต้อง `ACTIVE`): `{email(@ac.th ของมหาวิทยาลัยเดียวกับอาจารย์), full_name, student_code, major, year_level}` → `201 {student_user_id, email, invitation_expires_at}` สร้างบัญชี `STUDENT` ที่ยังไม่ตั้งรหัสผ่าน ผูก `advisor_id` เป็น `LINKED` ทันที (ส่ง `AdvisorLinkChanged`) และส่งอีเมลคำเชิญ; `409 STATE_CONFLICT` (`EMAIL_ALREADY_REGISTERED`), `409 STATE_CONFLICT` (`STUDENT_CODE_ALREADY_USED`) (รหัสนักศึกษาซ้ำในมหาวิทยาลัยเดียวกัน), `400 VALIDATION_FAILED` (`EMAIL_DOMAIN_NOT_ALLOWED`); Gateway จำกัด 30 ครั้ง/ชั่วโมง/อาจารย์ และ 120 ครั้ง/ชั่วโมง/IP (`429 RATE_LIMITED`) |
 | GET | `/advisor-links/students` | A | นักศึกษาที่ `LINKED` กับตน (รายชื่อพื้นฐานสำหรับจัดการบัญชี): `?q=&year_level=&activation=PENDING\|ACTIVE` + Pagination → `{user_id, full_name, email, student_code, major, year_level, activation_status, invitation_expires_at?}` (รายชื่อพร้อมสถานะการฝึกงานและตัวกรองกำลังฝึก/ฝึกเสร็จแล้ว ดู `GET /advisor/students` §7.4) |
 | PATCH | `/advisor-links/students/{student_id}` | A | `{full_name?, major?, year_level?}` แก้ข้อมูลนักศึกษาในความดูแล (ไม่ใช่ของตน ⇒ `404 NOT_FOUND`); เปลี่ยน `major`/`year_level` มีผลกับใบสมัครถัดไป ไม่ย้อนใบเดิม |
 | POST | `/advisor-links/students/{student_id}/actions/resend-invitation` | A | ส่งคำเชิญใหม่ (ลิงก์เดิมใช้ไม่ได้) → `204`; นักศึกษาตั้งรหัสผ่านแล้ว ⇒ `409 STATE_CONFLICT` |
@@ -124,7 +124,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 4.4 Company Directory (สาธารณะ — ไม่ต้องล็อกอิน)
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/directory/companies` | **Public** | `?q=&category=&partner=true&ids=<uuid>,<uuid>` + Pagination มาตรฐาน — เฉพาะบริษัท `VERIFIED`; `ids` = ดึงหลายบริษัทในครั้งเดียว (สูงสุด 50 ตัว ไม่ส่ง `q`/`category` ก็ได้; ใช้ดึงคะแนนดาวของการ์ดงานทั้งหน้าโดยไม่ต้องเรียกทีละบริษัท; มากกว่า 50 หรือรูปแบบผิด ⇒ `400 VALIDATION_FAILED`; ไม่พบ/ไม่ใช่ `VERIFIED` ⇒ ไม่อยู่ในผลลัพธ์ ไม่ error); คืน `id, name, logo_url, university_partner, rating_avg, review_count` |
+| GET | `/directory/companies` | **Public** | `?q=&category=&partner=true&ids=<uuid>,<uuid>` + Pagination มาตรฐาน — เฉพาะบริษัท `VERIFIED`; `category` = บริษัทที่มีประกาศ `PUBLISHED` อย่างน้อย 1 รายการในสายงาน `JobCategory` ที่ระบุ (กรองผ่าน Job Internal API; Job ใช้งานไม่ได้ ⇒ `503 UPSTREAM_UNAVAILABLE`); `ids` = ดึงหลายบริษัทในครั้งเดียว (สูงสุด 50 ตัว ไม่ส่ง `q`/`category` ก็ได้; ใช้ดึงคะแนนดาวของการ์ดงานทั้งหน้าโดยไม่ต้องเรียกทีละบริษัท; มากกว่า 50 หรือรูปแบบผิด ⇒ `400 VALIDATION_FAILED`; ไม่พบ/ไม่ใช่ `VERIFIED` ⇒ ไม่อยู่ในผลลัพธ์ ไม่ error); คืน `id, name, logo_url, university_partner, rating_avg, review_count` |
 | GET | `/directory/companies/{id}` | **Public** | รายละเอียด + `rating_avg/review_count` (ดึงจาก `company_rating_stats`); เฉพาะ `VERIFIED` นอกนั้น `404 NOT_FOUND`; ไม่มี `registration_no`, `phone`, เอกสาร |
 
 ### 4.5 Admin (Identity)
@@ -139,6 +139,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | GET | `/admin/advisors` | AD | `?status=PENDING_APPROVAL` |
 | POST | `/admin/advisors/{id}/actions/{approve\|reject}` | AD | |
 | POST | `/admin/students/{id}/advisor` | AD | `{advisor_id}` ย้ายอาจารย์ทันที (`LINKED`) |
+| GET | `/admin/users` | AD | `?q=&role=&status=&page=&page_size=` ค้นบัญชีตามชื่อ อีเมล หรือรหัสนักศึกษา → Pagination; คืน `id, full_name, email, role, status, university_id, advisor_id?, student_code?, company_id?, created_at` สำหรับหน้า Admin |
 | POST | `/admin/users/{id}/actions/{suspend\|unsuspend}` | AD | → `UserSuspended` |
 | GET | `/admin/audit-logs` | AD | Audit ของ Identity |
 
@@ -359,6 +360,7 @@ Tag = ป้ายทักษะ/เทคโนโลยีของประ�
 
 | Service | Method | Path | ผู้เรียก | คำอธิบาย |
 | :--- | :--- | :--- | :--- | :--- |
+| job | GET | `/internal/v1/directory/company-ids?category=<JobCategory>&after=<uuid>` | identity | คืน `{company_ids: uuid[], next_cursor: uuid\|null}` ของบริษัทที่มีประกาศ `PUBLISHED` ในสายงานนั้น เรียงตาม UUID, ครั้งละสูงสุด 1,000 บริษัท; ใช้ `JOB_SERVICE_SECRET_IDENTITY` |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/reserve` | lifecycle | `{application_id}` → `200 {reserved:true}` / `409 QUOTA_FULL`; ซ้ำด้วย `application_id` เดิมขณะการจองยังเป็น `RESERVED`/`CONFIRMED` ⇒ `200` โดยไม่หักซ้ำ • **`RELEASED` ไม่ใช่สถานะสิ้นสุด (PM ตัดสิน 2026-11-19):** reserve ด้วย `application_id` เดิมหลัง `RELEASED` ⇒ จองใหม่ตามปกติ (`RESERVED` อีกครั้ง; โควตาเต็ม ⇒ `409 QUOTA_FULL`) เพราะ Lifecycle เป็นผู้เรียกที่ล็อกใบสมัครและชี้ขาดอยู่แล้ว (ผู้ใช้กดตอบรับใหม่หลังธุรกรรมล้มและ release ชดเชย ต้องทำต่อได้ด้วยใบสมัครเดิม) • คำขอ reserve เก่าที่มาช้าแล้วจองซ้อน (ค้างโดยที่ Lifecycle ไม่ถือโควตา) ⇒ Reconciliation (`reservation-check` ทุก 30 นาที — Lifecycle ชี้ขาด) คืนให้เอง จึงไม่ใช้ Attempt Identifier และห้ามตอบ `501` |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/confirm` | lifecycle | `{application_id}` `RESERVED`→`CONFIRMED` (idempotent) |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/release` | lifecycle | `{application_id, reason}` → คืนโควตา (idempotent; ไม่มีการจอง = `200` no-op) |
