@@ -20,6 +20,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { label: 'บริษัท', href: '/admin/companies' },
       { label: 'อาจารย์ที่ปรึกษา', href: '/admin/advisors' },
       { label: 'ผู้ใช้', href: '/admin/users' },
+      { label: 'Audit log (Identity)', href: '/admin/identity-audit' },
     ],
   },
   {

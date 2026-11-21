@@ -4,6 +4,7 @@ import { AppException } from '@internpath/common';
 import type { DirectoryCompanyDetail, DirectoryCompanyListItem, Paginated } from '@internpath/contracts';
 import { Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { DirectoryJobClient } from './directory-job.client';
 import { DirectoryQueryDto } from './directory.dto';
 
 type DirectoryCompany = Prisma.CompanyGetPayload<{ include: { ratingStats: true } }>;
@@ -12,7 +13,7 @@ type DirectoryCompanySummary = DirectoryCompanyListItem & Pick<DirectoryCompanyD
 /** api-contract §4.4 — Public: output never depends on the caller. */
 @Injectable()
 export class DirectoryService {
-  constructor(private readonly db: PrismaService, private readonly config: ConfigService) {}
+  constructor(private readonly db: PrismaService, private readonly config: ConfigService, private readonly jobs: DirectoryJobClient) {}
 
   private logoUrl(key: string): string {
     const publicBase = this.config.get<string>('S3_PUBLIC_BASE_URL');
@@ -37,15 +38,15 @@ export class DirectoryService {
   }
 
   async list(query: DirectoryQueryDto): Promise<Paginated<DirectoryCompanySummary>> {
-    if (query.category?.trim()) {
-      throw new AppException('VALIDATION_FAILED', 'ยังไม่มีแหล่งข้อมูลหมวดหมู่บริษัทสำหรับตัวกรอง category', 400);
-    }
+    const categoryIds = query.category ? await this.jobs.companyIds(query.category) : undefined;
     const q = query.q?.trim();
     // Unknown / non-VERIFIED ids simply drop out of the result (no error).
     const ids = query.ids ? [...new Set(query.ids.toLowerCase().split(','))] : undefined;
+    const matchingIds = categoryIds ? (ids ? ids.filter((id) => categoryIds.has(id)) : [...categoryIds]) : ids;
+    if (matchingIds?.length === 0) return { data: [], meta: { page: query.page, page_size: query.page_size, total: 0 } };
     const where: Prisma.CompanyWhereInput = {
       status: 'VERIFIED',
-      ...(ids ? { id: { in: ids } } : {}),
+      ...(matchingIds ? { id: { in: matchingIds } } : {}),
       ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
       ...(query.partner === undefined ? {} : { universityPartner: query.partner }),
     };

@@ -37,7 +37,8 @@ describe('Internal Job API (HTTP and real PostgreSQL)', function () {
   before(async function () {
     await dbReachableOrSkip(this);
     db = await createTestDatabase();
-    config = new ConfigService({ JOB_DATABASE_URL: db.url, JOB_SERVICE_SECRET_LIFECYCLE: secret });
+    config = new ConfigService({ JOB_DATABASE_URL: db.url, JOB_SERVICE_SECRET_LIFECYCLE: secret,
+      JOB_SERVICE_SECRET_IDENTITY: secret });
     const module = await Test.createTestingModule({
       imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), InternalJobsModule],
     })
@@ -58,6 +59,26 @@ describe('Internal Job API (HTTP and real PostgreSQL)', function () {
   });
 
   const http = () => request(app.getHttpServer());
+  const directory = (category: string, after?: string) => http()
+    .get(`/internal/v1/directory/company-ids?category=${category}${after ? `&after=${after}` : ''}`)
+    .auth(signServiceToken({ issuer: 'identity', audience: 'job', secret }), { type: 'bearer' });
+
+  it('returns distinct company ids from published jobs in the requested category', async () => {
+    const first = await seedJob(db.prisma, 'PUBLISHED');
+    await seedJob(db.prisma, 'PUBLISHED', { companyId: first.companyId });
+    const second = await seedJob(db.prisma, 'PUBLISHED', { category: 'BUSINESS_MARKETING' });
+    await seedJob(db.prisma, 'CLOSED', { category: 'TECH_IT' });
+    const result = await directory('TECH_IT').expect(200);
+    expect(result.body.company_ids).to.include(first.companyId);
+    expect(result.body.company_ids).not.to.include(second.companyId);
+    expect(result.body.company_ids.filter((id: string) => id === first.companyId)).to.have.length(1);
+    expect(result.body.next_cursor).to.equal(null);
+    const after = await directory('TECH_IT', first.companyId).expect(200);
+    expect(after.body.company_ids).not.to.include(first.companyId);
+    await directory('INVALID').expect(400);
+    await http().get('/internal/v1/directory/company-ids?category=TECH_IT').expect(401);
+    await http().get('/internal/v1/directory/company-ids?category=TECH_IT').auth(token(), { type: 'bearer' }).expect(401);
+  });
   const get = (id: string) => http().get(path(id)).auth(token(), { type: 'bearer' });
   const post = (jobId: string, operation: string, applicationId: string, extra = {}) =>
     http()

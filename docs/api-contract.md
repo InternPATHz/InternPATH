@@ -124,7 +124,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 4.4 Company Directory (สาธารณะ — ไม่ต้องล็อกอิน)
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/directory/companies` | **Public** | `?q=&category=&partner=true&ids=<uuid>,<uuid>` + Pagination มาตรฐาน — เฉพาะบริษัท `VERIFIED`; `ids` = ดึงหลายบริษัทในครั้งเดียว (สูงสุด 50 ตัว ไม่ส่ง `q`/`category` ก็ได้; ใช้ดึงคะแนนดาวของการ์ดงานทั้งหน้าโดยไม่ต้องเรียกทีละบริษัท; มากกว่า 50 หรือรูปแบบผิด ⇒ `400 VALIDATION_FAILED`; ไม่พบ/ไม่ใช่ `VERIFIED` ⇒ ไม่อยู่ในผลลัพธ์ ไม่ error); คืน `id, name, logo_url, university_partner, rating_avg, review_count` |
+| GET | `/directory/companies` | **Public** | `?q=&category=&partner=true&ids=<uuid>,<uuid>` + Pagination มาตรฐาน — เฉพาะบริษัท `VERIFIED`; `category` = บริษัทที่มีประกาศ `PUBLISHED` อย่างน้อย 1 รายการในสายงาน `JobCategory` ที่ระบุ (กรองผ่าน Job Internal API; Job ใช้งานไม่ได้ ⇒ `503 UPSTREAM_UNAVAILABLE`); `ids` = ดึงหลายบริษัทในครั้งเดียว (สูงสุด 50 ตัว ไม่ส่ง `q`/`category` ก็ได้; ใช้ดึงคะแนนดาวของการ์ดงานทั้งหน้าโดยไม่ต้องเรียกทีละบริษัท; มากกว่า 50 หรือรูปแบบผิด ⇒ `400 VALIDATION_FAILED`; ไม่พบ/ไม่ใช่ `VERIFIED` ⇒ ไม่อยู่ในผลลัพธ์ ไม่ error); คืน `id, name, logo_url, university_partner, rating_avg, review_count` |
 | GET | `/directory/companies/{id}` | **Public** | รายละเอียด + `rating_avg/review_count` (ดึงจาก `company_rating_stats`); เฉพาะ `VERIFIED` นอกนั้น `404 NOT_FOUND`; ไม่มี `registration_no`, `phone`, เอกสาร |
 
 ### 4.5 Admin (Identity)
@@ -360,6 +360,7 @@ Tag = ป้ายทักษะ/เทคโนโลยีของประ�
 
 | Service | Method | Path | ผู้เรียก | คำอธิบาย |
 | :--- | :--- | :--- | :--- | :--- |
+| job | GET | `/internal/v1/directory/company-ids?category=<JobCategory>&after=<uuid>` | identity | คืน `{company_ids: uuid[], next_cursor: uuid\|null}` ของบริษัทที่มีประกาศ `PUBLISHED` ในสายงานนั้น เรียงตาม UUID, ครั้งละสูงสุด 1,000 บริษัท; ใช้ `JOB_SERVICE_SECRET_IDENTITY` |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/reserve` | lifecycle | `{application_id}` → `200 {reserved:true}` / `409 QUOTA_FULL`; ซ้ำด้วย `application_id` เดิมขณะการจองยังเป็น `RESERVED`/`CONFIRMED` ⇒ `200` โดยไม่หักซ้ำ • **`RELEASED` ไม่ใช่สถานะสิ้นสุด (PM ตัดสิน 2026-11-19):** reserve ด้วย `application_id` เดิมหลัง `RELEASED` ⇒ จองใหม่ตามปกติ (`RESERVED` อีกครั้ง; โควตาเต็ม ⇒ `409 QUOTA_FULL`) เพราะ Lifecycle เป็นผู้เรียกที่ล็อกใบสมัครและชี้ขาดอยู่แล้ว (ผู้ใช้กดตอบรับใหม่หลังธุรกรรมล้มและ release ชดเชย ต้องทำต่อได้ด้วยใบสมัครเดิม) • คำขอ reserve เก่าที่มาช้าแล้วจองซ้อน (ค้างโดยที่ Lifecycle ไม่ถือโควตา) ⇒ Reconciliation (`reservation-check` ทุก 30 นาที — Lifecycle ชี้ขาด) คืนให้เอง จึงไม่ใช้ Attempt Identifier และห้ามตอบ `501` |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/confirm` | lifecycle | `{application_id}` `RESERVED`→`CONFIRMED` (idempotent) |
 | job | POST | `/internal/v1/jobs/{job_id}/quota/release` | lifecycle | `{application_id, reason}` → คืนโควตา (idempotent; ไม่มีการจอง = `200` no-op) |

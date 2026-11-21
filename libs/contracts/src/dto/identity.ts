@@ -121,7 +121,7 @@ export type OwnerTransferAction = 'accept' | 'decline' | 'cancel';
 /** Public (ไม่ต้องล็อกอิน) — ตอบ `Paginated<DirectoryCompanyListItem>` */
 export interface DirectoryCompaniesQuery extends Pick<PageQuery, 'page' | 'page_size'> {
   q?: string;
-  category?: string;
+  category?: JobCategory;
   partner?: boolean;
   /** UUID คั่นด้วย `,` สูงสุด 50 ตัว — ดึงหลายบริษัทในครั้งเดียว (ใช้ดึงคะแนนดาวของการ์ดงาน) */
   ids?: string;

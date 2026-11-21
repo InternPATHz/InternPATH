@@ -98,6 +98,7 @@ services:
       PORT: "3001"
       IDENTITY_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/identity_db
       IDENTITY_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/identity_db
+      JOB_URL: http://job:3002
 
   job:
     <<: *service
