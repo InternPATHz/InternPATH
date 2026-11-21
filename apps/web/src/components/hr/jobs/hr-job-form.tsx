@@ -12,7 +12,7 @@ import { ApiError } from '@/lib/api';
 import { HR_JOBS_MOCK, hrJobsApi, missingRequired } from '@/lib/hr-jobs';
 import { CATEGORIES } from '@/lib/mock-landing';
 
-const CLOSED_FIELDS = ['quota', 'application_deadline', 'target_majors', 'tag_ids', 'period']; // ประกาศ `CLOSED` แก้ได้เฉพาะเหล่านี้ (api-contract §5.1)
+const CLOSED_FIELDS = ['quota', 'application_deadline', 'target_majors', 'period']; // ประกาศ `CLOSED` แก้ได้เฉพาะเหล่านี้ (api-contract §5.1)
 
 const FIELD_LABEL: Record<string, string> = {
   category: 'สายงาน', job_title: 'ชื่อตำแหน่ง', description: 'รายละเอียดงาน', responsibilities: 'หน้าที่ความรับผิดชอบ', qualifications: 'คุณสมบัติผู้สมัคร',
@@ -102,7 +102,9 @@ export function HrJobForm() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
-  const [tagOptions, setTagOptions] = useState<JobTag[]>([]);
+  const [tagOptions, setTagOptions] = useState<JobTag[] | null>(null);
+  const activeTagIds = new Set(tagOptions?.map((tag) => tag.id));
+  const previousTags = (loaded?.tags ?? []).filter((tag) => !activeTagIds.has(tag.id) && form.tagIds.includes(tag.id));
 
   useEffect(() => {
     let cancelled = false;
@@ -122,13 +124,16 @@ export function HrJobForm() {
 
   const status: JobStatus = loaded?.status ?? 'DRAFT';
   const editable = EDITABLE_STATUSES.includes(status);
-  const lockedField = (name: string) => !editable || (status === 'CLOSED' && !CLOSED_FIELDS.includes(name));
+  const lockedField = (name: string) => !editable || (name === 'category' && status !== 'DRAFT') || (status === 'CLOSED' && !CLOSED_FIELDS.includes(name));
   const set = (key: keyof FormState) => (event: { target: { value: string } }) => setForm((current) => ({ ...current, [key]: event.target.value }));
 
   const fields = toFields(form);
   const diff = loaded ? changedFields(fields, toFields(fromJob(loaded))) : fields;
+  if (loaded?.tags.length && !fields.tag_ids) diff.tag_ids = [];
 
   function validate(forSubmit: boolean): string | null {
+    if (tagOptions && diff.tag_ids?.some((id) => !activeTagIds.has(id))) return 'กรุณานำ Tag ที่ปิดใช้งานออกก่อนบันทึกการเปลี่ยนแปลง Tag';
+    if (diff.tag_ids?.length === 0) return 'เลือก Tag ทักษะอย่างน้อย 1 รายการ';
     if (form.tagIds.length > TAG_MAX) return `เลือก Tag ทักษะได้ไม่เกิน ${TAG_MAX} รายการ`;
     if (form.hours.trim() && !(Number(form.hours) >= 1 && Number(form.hours) <= 168)) return 'ชั่วโมงต่อสัปดาห์ต้องอยู่ระหว่าง 1–168';
     if (form.quota.trim() && !(Number.isInteger(Number(form.quota)) && Number(form.quota) >= 1)) return 'จำนวนที่รับต้องเป็นจำนวนเต็มตั้งแต่ 1';
@@ -206,6 +211,7 @@ export function HrJobForm() {
             <option value="">เลือกสายงาน</option>
             {CATEGORIES.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
           </select>
+          {status !== 'DRAFT' && <span className="mt-1 block text-xs font-normal text-ink-soft">หากต้องการเปลี่ยนสายงาน ให้ปิดประกาศนี้แล้วสร้างประกาศใหม่</span>}
         </label>
         <label className="block text-sm font-medium">ชื่อตำแหน่ง
           <input value={form.job_title} onChange={set('job_title')} disabled={lockedField('job_title')} className={inputClass} placeholder="เช่น Software Engineer Intern" />
@@ -279,15 +285,15 @@ export function HrJobForm() {
         </label>
         <fieldset className="rounded-xl border border-border p-4">
           <legend className="px-1 text-sm font-medium">Tag ทักษะ (1–{TAG_MAX} รายการ)</legend>
-          {tagOptions.length === 0 && <p className="text-xs text-ink-soft">ยังไม่มี Tag ให้เลือก</p>}
+          {tagOptions?.length === 0 && <p className="text-xs text-ink-soft">ยังไม่มี Tag ให้เลือก</p>}
           <div className="flex flex-wrap gap-2">
-            {tagOptions.map((tag) => {
+            {[...(tagOptions ?? []), ...previousTags].map((tag) => {
               const checked = form.tagIds.includes(tag.id);
               return (
                 <label key={tag.id} className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${checked ? 'border-primary bg-primary-soft text-primary' : 'border-border'} ${lockedField('tag_ids') ? 'opacity-60' : ''}`}>
                   <input type="checkbox" className="sr-only" checked={checked} disabled={lockedField('tag_ids')}
                     onChange={() => setForm((current) => ({ ...current, tagIds: checked ? current.tagIds.filter((tagId) => tagId !== tag.id) : [...current.tagIds, tag.id] }))} />
-                  {tag.name}
+                  {tag.name}{tagOptions && !activeTagIds.has(tag.id) ? ' (ปิดใช้งาน)' : ''}
                 </label>
               );
             })}

@@ -6,12 +6,11 @@ import type {
 /**
  * ชั้นเรียกข้อมูลของหน้าประกาศงานฝั่ง HR (api-contract §5.1)
  *
- * ตอนนี้ใช้ข้อมูลจำลอง (MOCK) เพราะ HR APIs ของ Job ยังไม่เปิด — ตั้ง `NEXT_PUBLIC_HR_JOBS_MOCK=false` เพื่อสลับไปเรียก API จริง
- * โดยไม่ต้องแก้หน้าจอ (สองฝั่งอยู่ในไฟล์นี้ไฟล์เดียว และชนิดข้อมูลมาจาก `@internpath/contracts`)
+ * เรียก HR API จริงโดยค่าเริ่มต้น ตั้ง `NEXT_PUBLIC_HR_JOBS_MOCK=true` เพื่อใช้ข้อมูลจำลองตอนพัฒนา
  * ข้อมูลจำลองเก็บใน localStorage ของเบราว์เซอร์ (เฉพาะตอนพัฒนา) ถ้าใช้ไม่ได้จะเก็บในหน่วยความจำ
  */
 
-export const HR_JOBS_MOCK = process.env.NEXT_PUBLIC_HR_JOBS_MOCK !== 'false';
+export const HR_JOBS_MOCK = process.env.NEXT_PUBLIC_HR_JOBS_MOCK === 'true';
 
 export type AuthRequest = <T>(path: string, init?: { method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; body?: unknown }) => Promise<T>;
 
@@ -71,7 +70,19 @@ function realApi(request: AuthRequest): HrJobsApi {
     submit: (id) => request<HrJobObject>(`${base(id)}/actions/submit`, { method: 'POST' }),
     close: (id) => request<HrJobObject>(`${base(id)}/actions/close`, { method: 'POST' }),
     reopen: (id) => request<HrJobObject>(`${base(id)}/actions/reopen`, { method: 'POST' }),
-    tags: async () => (await request<Paginated<JobTag>>('/tags?page_size=100')).data,
+    tags: async () => {
+      const tags: JobTag[] = [];
+      let page = 1;
+      let total: number;
+      do {
+        const response = await request<Paginated<JobTag>>(`/tags?page=${page}&page_size=100`);
+        tags.push(...response.data);
+        total = response.meta.total;
+        page += 1;
+        if (response.data.length === 0) break;
+      } while (tags.length < total);
+      return tags;
+    },
   };
 }
 
@@ -171,6 +182,14 @@ function mockApi(): HrJobsApi {
       const records = settle();
       const record = pick(records, id);
       const status = record.job.status;
+      if (status !== 'DRAFT' && body.category !== undefined) {
+        if (body.category !== record.job.category) {
+          throw Object.assign(new Error('เปลี่ยนสายงานได้เฉพาะประกาศฉบับร่าง'), { status: 400, code: 'VALIDATION_FAILED', issues: ['CATEGORY_LOCKED'] });
+        }
+        const { category: _category, ...rest } = body;
+        body = rest;
+        if (Object.keys(body).length === 0) return { ...copy(record.job), requires_reverification: false };
+      }
       if (!EDITABLE.includes(status)) throw conflict('NOT_EDITABLE');
       if (status === 'CLOSED' && Object.keys(body).some((key) => !CLOSED_FIELDS.includes(key))) throw conflict('CLOSED_FIELD_LOCKED');
       const reverify = false; // บริษัทจำลองไม่ติดธง UNDER_REVIEW จึงไม่ต้องตรวจซ้ำ
