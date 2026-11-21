@@ -81,6 +81,33 @@ describe('Internal API Clients (Unit)', () => {
     expect(capturedUrl).to.equal('http://127.0.0.1:3001/internal/v1/students/names?ids=a,b');
   });
 
+  it('IdentityInternalClient ส่ง checkConsentBatch ถูกต้อง (POST check-batch + Service Token)', async () => {
+    let capturedUrl = '';
+    let capturedMethod = '';
+    let capturedHeaders: Record<string, string> = {};
+    let capturedBody: any;
+    globalThis.fetch = (async (url: string, init?: RequestInit) => {
+      capturedUrl = url;
+      capturedMethod = init?.method ?? '';
+      capturedHeaders = init?.headers as Record<string, string>;
+      capturedBody = JSON.parse(init?.body as string);
+      return new Response(JSON.stringify([{ student_user_id: 's-1', consent_id: 'c-1' }]), { status: 200 });
+    }) as any;
+    const client = new IdentityInternalClient(
+      new ConfigService({
+        IDENTITY_URL: 'http://127.0.0.1:3001',
+        IDENTITY_SERVICE_SECRET_LIFECYCLE: 'test-identity-service-secret-lifecycle-32-chars-long',
+      }),
+    );
+    const result = await client.checkConsentBatch('comp-1', ['s-1', 's-2'], 'corr-3');
+    expect(result).to.deep.equal([{ student_user_id: 's-1', consent_id: 'c-1' }]);
+    expect(capturedMethod).to.equal('POST');
+    expect(capturedUrl).to.equal('http://127.0.0.1:3001/internal/v1/consents/check-batch');
+    expect(capturedBody).to.deep.equal({ company_id: 'comp-1', student_user_ids: ['s-1', 's-2'] });
+    expect(capturedHeaders['X-Correlation-Id']).to.equal('corr-3');
+    expect(capturedHeaders['Authorization']).to.match(/^Bearer /);
+  });
+
   it('IdentityInternalClient ส่ง checkConsent ถูกต้อง', async () => {
     let capturedUrl = '';
     let capturedHeaders: Record<string, string> = {};

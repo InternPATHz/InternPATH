@@ -103,6 +103,8 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
     identity.students.clear();
     identity.consents.clear();
     identity.consentCalls = [];
+    identity.consentBatchCalls = [];
+    identity.batchExtraIds = [];
     identity.unavailable = false;
     student = randomUUID();
     companyId = randomUUID();
@@ -320,6 +322,43 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
       const down = await http().get('/v1/hr/applications').set('Authorization', asHr()).expect(200);
       expect(down.body.data).to.have.length(2);
       expect(down.body.data.every((r: object) => !('student_name' in r))).to.equal(true);
+    });
+
+    it('รายการตรวจ Consent ด้วย consents/check-batch ครั้งเดียวต่อหน้า (ตัด id ซ้ำ) ไม่เรียกทีละคน (PM รีวิว #82)', async () => {
+      await seed('PENDING');
+      await seed('HR_REJECTED');
+      const other = randomUUID();
+      await seed('PENDING', { studentUserId: other });
+      await http().get('/v1/hr/applications').set('Authorization', asHr()).expect(200);
+      expect(identity.consentCalls).to.deep.equal([]);
+      expect(identity.consentBatchCalls).to.have.length(1);
+      expect(identity.consentBatchCalls[0].company).to.equal(companyId);
+      expect(identity.consentBatchCalls[0].students).to.have.members([student, other]);
+
+      // ไม่มีใบสมัคร ⇒ ไม่เรียก Identity
+      identity.consentBatchCalls = [];
+      const empty = bearer({ role: 'COMPANY_HR', sub: randomUUID(), company_id: randomUUID(), company_role: 'MEMBER' });
+      await http().get('/v1/hr/applications').set('Authorization', empty).expect(200);
+      expect(identity.consentBatchCalls).to.deep.equal([]);
+    });
+
+    it('id ที่ Identity ส่งมาแต่ไม่ได้ถาม ⇒ ไม่ใช้ (ไม่ทำให้เห็นชื่อคนอื่น) • มากกว่า 100 คน ⇒ แบ่งชุดละ 100', async () => {
+      await seed('PENDING');
+      const stranger = randomUUID();
+      identity.setStudent(stranger, { full_name: 'คนนอก ไม่ควรเห็น' });
+      identity.batchExtraIds = [stranger];
+      await http().get('/v1/hr/applications').set('Authorization', asHr()).expect(200);
+      expect(identity.nameCalls.flat()).to.not.include(stranger);
+      identity.batchExtraIds = [];
+
+      // page_size ≤ 100 จึงเกินไม่ได้ผ่าน HTTP — เรียกเมธอดภายในตรงเพื่อตรวจการแบ่งชุด
+      const service = app.get(HrApplicationsService, { strict: false }) as unknown as {
+        consentedNames(company: string, ids: string[]): Promise<Map<string, string>>;
+      };
+      const many = Array.from({ length: 150 }, () => randomUUID());
+      identity.consentBatchCalls = [];
+      await service.consentedNames(companyId, [...many, many[0]]);
+      expect(identity.consentBatchCalls.map((c) => c.students.length)).to.deep.equal([100, 50]);
     });
 
     it('มี Consent ⇒ มี profile (จากโปรไฟล์ของ Lifecycle + ชื่อสดจาก Identity) + cover_letter + available_actions; ไม่มีรายงานปัญหา', async () => {

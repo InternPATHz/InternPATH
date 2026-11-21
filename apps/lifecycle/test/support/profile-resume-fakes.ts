@@ -1,6 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { AppException } from '@internpath/common';
-import type { ConsentCheckResponse, InternalStudentNamesResponse, InternalStudentResponse, InternalStudentSummariesResponse } from '@internpath/contracts';
+import type {
+  ConsentCheckBatchResponse,
+  ConsentCheckResponse,
+  InternalStudentNamesResponse,
+  InternalStudentResponse,
+  InternalStudentSummariesResponse,
+} from '@internpath/contracts';
 
 /**
  * ตัวปลอมในหน่วยความจำสำหรับเทสต์ 1.3 (โปรไฟล์/เรซูเม่) — รองรับเฉพาะ query ที่ ProfilesService/ResumesService ใช้
@@ -199,6 +205,22 @@ export class FakeIdentity {
     if (!this.consents.has(key)) return { has_consent: false };
     const consentId = this.consentIds.get(key);
     return consentId === undefined ? { has_consent: true } : { has_consent: true, consent_id: consentId };
+  }
+
+  /** `POST /internal/v1/consents/check-batch` — แต่ละครั้งที่เรียก (ตรวจว่าเรียกครั้งเดียวต่อหน้า + แบ่งชุด ≤ 100) */
+  consentBatchCalls: Array<{ company: string; students: string[] }> = [];
+  /** ใส่ id ที่ไม่ได้ถามลงในผล batch (จำลอง Identity ตอบผิด) */
+  batchExtraIds: string[] = [];
+
+  async checkConsentBatch(company: string, students: readonly string[]): Promise<ConsentCheckBatchResponse> {
+    if (this.unavailable) throw new AppException('UPSTREAM_UNAVAILABLE', 'identity down', 502);
+    if (students.length < 1 || students.length > 100) throw new AppException('VALIDATION_FAILED', 'student_user_ids 1–100', 400);
+    this.consentBatchCalls.push({ company, students: [...students] });
+    const ids = [...new Set(students)].filter((s) => this.consents.has(`${s}:${company}`));
+    return [...ids, ...this.batchExtraIds].map((s) => ({
+      student_user_id: s,
+      consent_id: this.consentIds.get(`${s}:${company}`) ?? randomUUID(),
+    }));
   }
 
   /** `GET /internal/v1/students/names?ids=` — แต่ละครั้งที่เรียก (ตรวจการแบ่ง batch ≤ 100) */
