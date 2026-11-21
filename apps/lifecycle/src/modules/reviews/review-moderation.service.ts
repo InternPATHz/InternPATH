@@ -124,7 +124,7 @@ export class ReviewModerationService {
       type: REVIEW_PUBLISHED,
       aggregateId: review.companyId,
       correlationId,
-      payload: buildReviewPublished(review, stats, at),
+      payload: buildReviewPublished(review, stats, direction === 1 ? 'PUBLISHED' : 'REMOVED', at),
     });
   }
 }

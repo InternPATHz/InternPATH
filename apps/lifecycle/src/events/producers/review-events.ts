@@ -37,11 +37,13 @@ export function buildReviewSubmitted(review: ReviewEventSource): ReviewSubmitted
 export function buildReviewPublished(
   review: Pick<ReviewEventSource, 'id' | 'companyId' | 'rating'>,
   stats: { reviewCount: number; ratingSum: number; entityVersion: number },
+  change: ReviewPublishedPayload['change'],
   at: Date,
 ): ReviewPublishedPayload {
   return {
     review_id: review.id,
     company_id: review.companyId,
+    change,
     rating: review.rating,
     company_review_count: stats.reviewCount,
     company_rating_sum: stats.ratingSum,

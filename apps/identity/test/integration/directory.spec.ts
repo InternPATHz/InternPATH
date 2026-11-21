@@ -124,7 +124,7 @@ describe('Identity company directory (Postgres จริง)', function () {
   });
 
   it('applies absolute review statistics only when entity_version increases', async () => {
-    const base: ReviewPublishedPayload = { review_id: randomUUID(), company_id: alphaId, rating: 5,
+    const base: ReviewPublishedPayload = { review_id: randomUUID(), company_id: alphaId, change: 'PUBLISHED', rating: 5,
       company_review_count: 2, company_rating_sum: 9, entity_version: 2, published_at: new Date().toISOString() };
     await db.$transaction((tx) => ratings.apply(base, tx));
     await db.$transaction((tx) => ratings.apply({ ...base, company_review_count: 1, company_rating_sum: 1,
