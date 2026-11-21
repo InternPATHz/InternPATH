@@ -393,15 +393,15 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 
 | Event | ผู้ได้รับแจ้ง | เงื่อนไข |
 | :--- | :--- | :--- |
-| `JobStatusChanged` | HR ของบริษัท | to ∈ {`PUBLISHED`, `PENDING_REVIEW`, `ADMIN_REJECTED`, `SUSPENDED`, `REMOVED`} |
+| `JobStatusChanged` | HR ของบริษัท | to ∈ {`PUBLISHED`, `PENDING_REVIEW`, `ADMIN_REJECTED`, `SUSPENDED`, `REMOVED`}; `ADMIN_REJECTED` แจ้งทางอีเมลด้วย (README UAT-32) |
 | `ReportThresholdReached` | Admin | เสมอ |
 | `CompanyStatusChanged` | HR Owner | เมื่อสถานะ = `VERIFIED` / `NEED_MORE_INFO` / `REJECTED` / `SUSPENDED` |
-| `AdvisorLinkChanged` | อาจารย์ที่ผูกกับนักศึกษา, นักศึกษา | ตาม `link_status` (อาจารย์สร้างนักศึกษา = `LINKED` ทันที `changed_by=ADVISOR`) |
+| `AdvisorLinkChanged` | อาจารย์ที่ผูกกับนักศึกษา, นักศึกษา | In-app ตาม `link_status` และกฎผู้รับด้านล่าง อาจารย์สร้างนักศึกษา = `LINKED` ทันที (`changed_by=ADVISOR`); ยกเลิกบัญชีที่ยังไม่ตั้งรหัสผ่าน = `UNLINKED` (`changed_by=ADVISOR`). อีเมลคำเชิญและการส่งซ้ำเป็นหน้าที่ของ Identity |
 | `ApplicationStatusChanged` | ตาม **Recipient Matrix §6.1** (แยกตาม `to_status`) | ผู้รับ: นักศึกษา, HR, อาจารย์ ตามสถานะ |
-| `ReviewModerationResult` | นักศึกษา (`student_user_id` ใน payload; เมื่อ `HOLD`/`ADMIN_REMOVE`), Admin (เมื่อ `HOLD` — รายชื่อจาก `GET /internal/v1/admins`) | — |
+| `ReviewModerationResult` | นักศึกษา (`student_user_id` ใน payload) | เฉพาะ `ADMIN_REMOVE` |
 | `ReviewPublished` | HR ของบริษัท | มีรีวิวใหม่ (เฉพาะ `change = PUBLISHED`) |
 | `CertificateIssued` / `CertificateRevoked` | นักศึกษา | — |
-| `ReminderDue` | `audience` ใน Payload; **ชนิดยกระดับ 5 ชนิด** (`ADVISOR_APPROVE_ESCALATE_ADMIN_D7`, `START_CONFIRM_ESCALATE_D7`, `EVALUATE_ESCALATE_D14`, `ISSUE_CERT_ESCALATE_D14`, `DISPUTE_ESCALATE_D7`) Notification **เพิ่ม Admin เอง** (รายชื่อจาก `GET /internal/v1/admins` — Lifecycle เรียก Identity endpoint นี้ไม่ได้ จึงไม่ใส่ Admin ใน `audience`) • `audience` ว่างได้ (เช่น `ADVISOR_APPROVE_ESCALATE_ADMIN_D7` ส่งถึง Admin อย่างเดียว) ⇒ Notification **ต้องไม่ทิ้ง Event** ต้องเติม Admin แล้วส่งตามปกติ (PM ตัดสิน 2026-11-18) | — |
+| `ReminderDue` | `audience` ใน Payload; **ชนิดยกระดับ 5 ชนิด** (`ADVISOR_APPROVE_ESCALATE_ADMIN_D7`, `START_CONFIRM_ESCALATE_D7`, `EVALUATE_ESCALATE_D14`, `ISSUE_CERT_ESCALATE_D14`, `DISPUTE_ESCALATE_D7`) Notification **เพิ่ม Admin เอง** (รายชื่อจาก `GET /internal/v1/admins` — Lifecycle เรียก Identity endpoint นี้ไม่ได้ จึงไม่ใส่ Admin ใน `audience`) • `audience` ว่างได้ (เช่น `ADVISOR_APPROVE_ESCALATE_ADMIN_D7` ส่งถึง Admin อย่างเดียว) ⇒ Notification **ต้องไม่ทิ้ง Event** ต้องเติม Admin แล้วส่งตามปกติ (PM ตัดสิน 2026-11-18) | In-App และอีเมล (README UAT-32) |
 | `ProblemReportCreated` | อาจารย์ + Admin | เสมอ |
 | `CompanyFlagChanged` | Admin | `active=true` |
 | `UserDeletionRequested` | — | ลบกล่องข้อความ/บันทึกส่ง |

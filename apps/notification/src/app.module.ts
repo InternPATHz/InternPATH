@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { HealthModule, createLoggingModule } from '@internpath/common';
+import { NotificationModule } from './notification.module';
+
+const infra = process.env.DISABLE_INFRA === 'true' ? [] : [NotificationModule];
 
 @Module({
   imports: [
@@ -8,7 +11,7 @@ import { HealthModule, createLoggingModule } from '@internpath/common';
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['.env', '../../.env'] }),
     createLoggingModule('notification'),
     HealthModule.register({ service: 'notification', databaseUrlEnv: 'NOTIFICATION_DATABASE_URL', requireBroker: true }),
-    // TODO: ต่อ modules/* ตาม docs/architecture.md §2
+    ...infra,
   ],
 })
 export class AppModule {}

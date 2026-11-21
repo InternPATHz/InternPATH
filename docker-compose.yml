@@ -142,6 +142,7 @@ services:
     environment:
       <<: *service-env
       PORT: "3005"
+      IDENTITY_URL: http://identity:3001
       NOTIFICATION_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/notification_db
       NOTIFICATION_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/notification_db
 
