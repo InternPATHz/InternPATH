@@ -382,7 +382,11 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 **`templates`**: `id`, `key` (เช่น `application.ADVISOR_APPROVED`), `channel`, `subject_th`, `body_th`, `active`
 **`preferences`** *(optional)*: `user_id`, `channel`, `enabled`
 
-+ `processed_events`, `status_history` ไม่จำเป็น
+**`recipient_states`**: `recipient_key` (PK, SHA-256 ของ UUID ผู้รับ), `suspended`, `deleted`, `suspension_version`, `advisor_link_version` — เก็บสิทธิ์การรับแจ้งเตือนและเวอร์ชันล่าสุดของ E07/E16 เพื่อไม่สร้างแจ้งเตือนซ้ำจาก Event เก่าหลังยกเลิกบัญชีหรือระงับบัญชี
+
+**`review_notices`**: `review_id` (PK) — กันแจ้ง HR ซ้ำสำหรับ E11 ที่เป็น `PUBLISHED` รวมถึง Event รุ่นเดิมที่ไม่มี `change`
+
++ `processed_events` สำหรับ deduplicate Event
 
 ---
 

@@ -1,3 +1,4 @@
+import { rejects } from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -138,5 +139,48 @@ describe('Identity company directory (Postgres จริง)', function () {
     expect(detail.body.rating_avg).to.equal(13 / 3);
     expect(detail.body.review_count).to.equal(3);
     expect((await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: alphaId } })).entityVersion).to.equal(3);
+  });
+
+  it('clears Directory statistics when the last review is removed and ignores stale totals', async () => {
+    const published: ReviewPublishedPayload = {
+      review_id: randomUUID(), company_id: betaId, rating: 4, company_review_count: 1,
+      company_rating_sum: 4, entity_version: 1, published_at: new Date().toISOString(),
+    };
+    await db.$transaction((tx) => ratings.apply(published, tx));
+    expect((await get(`/v1/directory/companies/${betaId}`).expect(200)).body)
+      .to.include({ rating_avg: 4, review_count: 1 });
+
+    const removed = {
+      ...published, change: 'REMOVED', company_review_count: 0,
+      company_rating_sum: 0, entity_version: 2,
+    };
+    await db.$transaction((tx) => ratings.apply(removed, tx));
+    await db.$transaction((tx) => ratings.apply(published, tx));
+    expect((await get(`/v1/directory/companies/${betaId}`).expect(200)).body)
+      .to.include({ rating_avg: 0, review_count: 0 });
+    expect(await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: betaId } }))
+      .to.include({ entityVersion: 2, ratingSum: 0, reviewCount: 0 });
+
+    const legacy = { ...published, company_review_count: 0, company_rating_sum: 0, entity_version: 3 };
+    await db.$transaction((tx) => ratings.apply(legacy, tx));
+    expect((await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: betaId } })).entityVersion)
+      .to.equal(3);
+  });
+
+  it('rejects impossible absolute totals without changing the Directory snapshot', async () => {
+    const original: ReviewPublishedPayload = {
+      review_id: randomUUID(), company_id: pendingId, rating: 4, company_review_count: 1,
+      company_rating_sum: 4, entity_version: 1, published_at: new Date().toISOString(),
+    };
+    await db.$transaction((tx) => ratings.apply(original, tx));
+    const before = await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: pendingId } });
+    for (const [count, sum] of [[-1, 0], [0, 1], [1, 0], [1, 6], [1, 1.5]]) {
+      const payload: ReviewPublishedPayload = {
+        ...original, company_review_count: count, company_rating_sum: sum, entity_version: 2,
+      };
+      await rejects(db.$transaction((tx) => ratings.apply(payload, tx)), /Invalid ReviewPublished rating statistics/);
+    }
+    const after = await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: pendingId } });
+    expect(after).to.deep.equal(before);
   });
 });
