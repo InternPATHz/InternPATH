@@ -70,7 +70,7 @@ describe('Identity profile and resume consent (Postgres จริง)', function
       advisorProfile: { create: { department: 'Engineering' } } } })).id;
     studentId = (await db.user.create({ data: { email: 'student@test.ac.th', passwordHash: 'secret',
       fullName: 'Student', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId,
-      studentProfile: { create: { studentCode: 'S001', major: 'CS', yearLevel: 3,
+      studentProfile: { create: { universityId, studentCode: 'S001', major: 'CS', yearLevel: 3,
         advisorId, advisorLinkStatus: 'LINKED' } } } })).id;
     companyId = (await db.company.create({ data: { name: 'Test Company', registrationNo: 'UP-001',
       emailDomain: 'company.test', status: 'VERIFIED' } })).id;

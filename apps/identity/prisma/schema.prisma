@@ -106,6 +106,7 @@ model University {
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
   users       User[]
+  students    StudentProfileIdentity[]
 
   @@map("universities")
 }
@@ -147,6 +148,8 @@ model User {
 
 model StudentProfileIdentity {
   userId               String            @id @map("user_id") @db.Uuid
+  /// สำเนา `users.university_id` ของนักศึกษา (ต้องตรงกันเสมอ) — มีไว้ทำ unique (university_id, student_code) ระดับ DB
+  universityId         String            @map("university_id") @db.Uuid
   studentCode          String            @map("student_code")
   major                String
   yearLevel            Int               @map("year_level")
@@ -159,7 +162,10 @@ model StudentProfileIdentity {
   user                 User              @relation("student", fields: [userId], references: [id])
   advisor              User?             @relation("current_advisor", fields: [advisorId], references: [id])
   createdByAdvisor     User?             @relation("created_by_advisor", fields: [createdByAdvisorId], references: [id])
+  university           University        @relation(fields: [universityId], references: [id])
 
+  /// รหัสนักศึกษาซ้ำในสถาบันเดียวกันไม่ได้ (409 STUDENT_CODE_ALREADY_USED) — กันคำขอพร้อมกันที่หลุดการเช็กระดับ API
+  @@unique([universityId, studentCode])
   @@index([advisorId, advisorLinkStatus])
   @@map("student_profiles_identity")
 }
