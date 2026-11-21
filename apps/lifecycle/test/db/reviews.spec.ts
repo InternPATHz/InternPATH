@@ -281,7 +281,7 @@ describe('Lifecycle 1.8 — รีวิวบริษัท (HTTP + Postgres �
 
       const events = await publishedEvents();
       expect(events).to.have.length(2);
-      expect(events[1]).to.include({ review_id: b.id, company_id: companyId, rating: 2, company_review_count: 2, company_rating_sum: 6, entity_version: 2 });
+      expect(events[1]).to.include({ review_id: b.id, company_id: companyId, change: 'PUBLISHED', rating: 2, company_review_count: 2, company_rating_sum: 6, entity_version: 2 });
 
       const history = await prisma.statusHistory.findMany({ where: { entity: 'REVIEW', entityId: a.id }, orderBy: { occurredAt: 'asc' } });
       expect(history.map((h) => [h.fromStatus, h.toStatus, h.actorRole])).to.deep.equal([
@@ -314,7 +314,7 @@ describe('Lifecycle 1.8 — รีวิวบริษัท (HTTP + Postgres �
       expect(await reviewStatus(a.id)).to.equal('REMOVED');
       expect(await stats()).to.include({ reviewCount: 1, ratingSum: 3, entityVersion: 3 });
       const last = (await publishedEvents()).at(-1)!;
-      expect(last).to.include({ review_id: a.id, company_review_count: 1, company_rating_sum: 3, entity_version: 3 });
+      expect(last).to.include({ review_id: a.id, change: 'REMOVED', company_review_count: 1, company_rating_sum: 3, entity_version: 3 });
 
       const c = await submitted();
       await deliver(c.id, 'HOLD');
@@ -332,7 +332,7 @@ describe('Lifecycle 1.8 — รีวิวบริษัท (HTTP + Postgres �
       await deliver(r.id, 'ADMIN_REMOVE');
       expect(await reviewStatus(r.id)).to.equal('REMOVED');
       expect(await stats()).to.include({ reviewCount: 0, ratingSum: 0 });
-      expect((await publishedEvents()).at(-1)).to.include({ review_id: r.id, company_review_count: 0, company_rating_sum: 0 });
+      expect((await publishedEvents()).at(-1)).to.include({ review_id: r.id, change: 'REMOVED', company_review_count: 0, company_rating_sum: 0 });
     });
 
     it('สถานะไม่ตรง ⇒ ข้ามไม่ throw (ack): ADMIN_PUBLISH ของ PUBLISHED, PUBLISH/HOLD ของ HELD/REMOVED, ADMIN_REMOVE ซ้ำ, ไม่พบรีวิว', async () => {
