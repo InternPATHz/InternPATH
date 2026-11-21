@@ -318,6 +318,7 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
 {
   review_id: string
   company_id: string
+  change: 'PUBLISHED' | 'REMOVED' // PUBLISHED = รีวิวเพิ่งเผยแพร่; REMOVED = Admin ถอดรีวิวที่เผยแพร่แล้ว (ADMIN_REMOVE) — PM ตัดสิน 2026-11-22
   rating: number
   company_review_count: number     // จำนวนรีวิวที่เผยแพร่รวมของบริษัท หลังรวมรีวิวนี้
   company_rating_sum: number       // ผลรวมคะแนน (Identity คำนวณค่าเฉลี่ยเอง)
@@ -326,6 +327,8 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
 }
 ```
 ส่งสถิติรวมแบบ absolute (ไม่ใช่ delta) เพื่อให้ Idempotent และรองรับลำดับสลับ
+
+**`change` (PM ตัดสิน 2026-11-22):** event เดียวใช้ทั้งตอนเผยแพร่และตอนถอดรีวิว (คงชื่อเดิม) — Identity ใช้เฉพาะสถิติ (ไม่สน `change`, เลือกค่าตาม `entity_version`) ส่วน Notification แจ้ง HR "มีรีวิวใหม่" **เฉพาะ `change = PUBLISHED`** และข้าม `REMOVED` เงียบ ๆ; ผู้รับที่ได้ event ไม่มี `change` (ส่งก่อนเพิ่มฟิลด์นี้) ให้ถือเป็น `PUBLISHED`; `published_at` ของ `REMOVED` คือเวลาที่ถอด
 
 ### E12 `CertificateIssued`  (lifecycle → notification)
 ```ts
@@ -396,7 +399,7 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 | `AdvisorLinkChanged` | อาจารย์ที่ผูกกับนักศึกษา, นักศึกษา | ตาม `link_status` (อาจารย์สร้างนักศึกษา = `LINKED` ทันที `changed_by=ADVISOR`) |
 | `ApplicationStatusChanged` | ตาม **Recipient Matrix §6.1** (แยกตาม `to_status`) | ผู้รับ: นักศึกษา, HR, อาจารย์ ตามสถานะ |
 | `ReviewModerationResult` | นักศึกษา (`student_user_id` ใน payload; เมื่อ `HOLD`/`ADMIN_REMOVE`), Admin (เมื่อ `HOLD` — รายชื่อจาก `GET /internal/v1/admins`) | — |
-| `ReviewPublished` | HR ของบริษัท | มีรีวิวใหม่ |
+| `ReviewPublished` | HR ของบริษัท | มีรีวิวใหม่ (เฉพาะ `change = PUBLISHED`) |
 | `CertificateIssued` / `CertificateRevoked` | นักศึกษา | — |
 | `ReminderDue` | `audience` ใน Payload; **ชนิดยกระดับ 5 ชนิด** (`ADVISOR_APPROVE_ESCALATE_ADMIN_D7`, `START_CONFIRM_ESCALATE_D7`, `EVALUATE_ESCALATE_D14`, `ISSUE_CERT_ESCALATE_D14`, `DISPUTE_ESCALATE_D7`) Notification **เพิ่ม Admin เอง** (รายชื่อจาก `GET /internal/v1/admins` — Lifecycle เรียก Identity endpoint นี้ไม่ได้ จึงไม่ใส่ Admin ใน `audience`) • `audience` ว่างได้ (เช่น `ADVISOR_APPROVE_ESCALATE_ADMIN_D7` ส่งถึง Admin อย่างเดียว) ⇒ Notification **ต้องไม่ทิ้ง Event** ต้องเติม Admin แล้วส่งตามปกติ (PM ตัดสิน 2026-11-18) | — |
 | `ProblemReportCreated` | อาจารย์ + Admin | เสมอ |
