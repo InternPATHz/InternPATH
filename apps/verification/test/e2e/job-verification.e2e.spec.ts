@@ -30,7 +30,6 @@ describe('e2e: ตรวจประกาศงานผ่าน RabbitMQ จ�
   let collector: Collector;
   const kit = createJwtKit();
   const admin = () => ({ Authorization: `Bearer ${kit.token({ role: 'PLATFORM_ADMIN' })}` });
-  const hr = (companyId: string) => ({ Authorization: `Bearer ${kit.token({ role: 'COMPANY_HR', company_id: companyId })}` });
 
   let started = false; // false เมื่อ before ถูกข้าม (ไม่มี infra) — after ต้องไม่แตะ RabbitMQ/DB
 

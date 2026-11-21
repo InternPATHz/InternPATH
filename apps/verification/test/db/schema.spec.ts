@@ -1,5 +1,3 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { expect } from 'chai';
 import { Client } from 'pg';
