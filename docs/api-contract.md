@@ -376,7 +376,7 @@ Tag = ป้ายทักษะ/เทคโนโลยีของประ�
 | identity | POST | `/internal/v1/consents/check` | lifecycle | `{student_user_id, company_id}` → `{has_consent, consent_id?}` (`consent_id` = Consent ที่ใช้อยู่ ส่งเมื่อ `has_consent=true`; ใช้ผูก `applications.resume_consent_id` — PM ตัดสิน 2026-11-18) |
 | identity | POST | `/internal/v1/consents/check-batch` | lifecycle | `{company_id, student_user_ids[]}` (1–100, ตัดซ้ำ) → `[{student_user_id, consent_id}]` เฉพาะคนที่มี Consent เรียงตามคำขอ (id ที่ไม่อยู่ในผล = ไม่มี Consent) เงื่อนไขเดียวกับ `consents/check` — สำหรับหน้ารายการใบสมัครของ HR แทนการเรียกทีละคน (SA ตัดสิน 2026-11-19) |
 | identity | GET | `/internal/v1/admins` | notification | รายชื่อ `user_id` ของ Admin |
-| identity | GET | `/internal/v1/denylist` | gateway | รายการ `user_id` ที่ถูกระงับ (ดึงตอนเริ่มระบบ/ทุก 30 วินาที) |
+| identity | GET | `/internal/v1/denylist` | gateway | รายการ `user_id` ที่ถูกระงับ (ดึงตอนเริ่มระบบ/ทุก 30 วินาที; ถ้าครั้งแรกล้มจะลองใหม่ทุก 3 วินาทีจนสำเร็จ) |
 | verification | GET | `/internal/v1/jobs/{job_id}/flags` | job | (สำรอง) สถานะธงบริษัท |
 
 ข้อกำหนด: ทุก Endpoint ภายในต้องตรวจ `aud` ของ Service Token และ allow-list ผู้เรียก; คืน Error รูปแบบเดียวกับ §2

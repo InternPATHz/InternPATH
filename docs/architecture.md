@@ -100,7 +100,7 @@ Sync Call ภายในทั้งหมดที่มี (รายละ�
 | Job | Lifecycle | (Reconciliation) ถามว่าใบสมัครของแต่ละการจองควรถือโควตาอยู่หรือไม่ |
 | Lifecycle | Identity | ดึงสาขา/ชั้นปี/สถานะผูกอาจารย์ตอนสมัคร, ตรวจ Consent, ดึงรายชื่อ HR ของบริษัท |
 | Notification | Identity | ดึงอีเมลปลายทางด้วย `user_id`, รายชื่อ Admin |
-| Gateway | Identity | ดึง Denylist ตอนเริ่มระบบ/ทุก 30 วินาที |
+| Gateway | Identity | ดึง Denylist ตอนเริ่มระบบ/ทุก 30 วินาที (ครั้งแรกล้ม → ลองใหม่ทุก 3 วินาทีจนสำเร็จ) |
 
 > คะแนนดาวบริษัทไม่ถูกดึงใน Job — หน้าเว็บเรียก Directory (Identity) แยกต่างหาก (README 4.3) • ธง `UNDER_REVIEW` ตั้ง/เคลียร์โดย Admin ผ่านหน้าเว็บ → API ของ Verification ตรง (ไม่ใช่การเรียกระหว่าง Service)
 
