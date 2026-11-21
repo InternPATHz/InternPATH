@@ -1,88 +1,68 @@
-import type { DirectoryCompanyListItem, PageMeta, SearchJobItem, SearchJobsQuery } from '@internpath/contracts';
-import { MOCK_COMPANIES, MOCK_SEARCH_JOBS } from '@/lib/mock-jobs';
+import type { DirectoryCompanyListItem, JobObject, JobTag, PageMeta, Paginated, SearchJobItem, SearchJobsQuery } from '@internpath/contracts';
+import { ApiError, apiRequest } from '@/lib/api';
 
 /**
- * ชั้นเรียกข้อมูลของหน้าค้นหางาน — ตอนนี้ใช้ข้อมูลจำลอง (MOCK) เมื่อ API พร้อมให้แทนที่ภายในไฟล์นี้ไฟล์เดียว:
- *   1) `GET /search/jobs?...&page=&page_size=` (Job, สาธารณะ) → `Paginated<SearchJobItem>`
- *   2) `GET /directory/companies?ids=<id>,<id>` (Identity, สาธารณะ, สูงสุด 50 ตัว) → คะแนนดาวของบริษัททั้งหน้าในครั้งเดียว
- * พฤติกรรมของ mock ตรงกับ api-contract §5.2: เฉพาะ `PUBLISHED`, `featured` ขึ้นก่อนเสมอ แล้วตาม `sort` (ค่าเริ่มต้น `newest`),
- * `major_mismatch` คำนวณจากพารามิเตอร์ `major` เท่านั้น (ไม่พึ่งตัวตนผู้เรียก)
+ * ชั้นเรียกข้อมูลของหน้าค้นหางาน หน้ารายละเอียดงาน และหน้าแรก — ทุก endpoint เป็น Public (ไม่ส่ง Token)
+ *   1) `GET /search/jobs?...&page=&page_size=` (Job) → `Paginated<SearchJobItem>` (api-contract §5.2)
+ *   2) `GET /jobs/{id}` (Job) → `JobObject` เฉพาะ `PUBLISHED`/`CLOSED` อื่น ๆ ⇒ 404
+ *   3) `GET /directory/companies?ids=<id>,<id>` (Identity, สูงสุด 50 ตัว) → คะแนนดาวของบริษัททั้งหน้าในครั้งเดียว
+ *   4) `GET /tags` (Job) → Tag ทักษะที่เปิดใช้งาน
+ * `major_mismatch` คำนวณที่ Job จากพารามิเตอร์ `major` (ไม่พึ่งตัวตนผู้เรียก)
  */
 
 export type CompanyRating = Pick<DirectoryCompanyListItem, 'rating_avg' | 'review_count'>;
 
 export type JobSearchResult = {
   jobs: SearchJobItem[];
-  /** คีย์ = `company.id` — ได้จาก Directory แยกต่างหาก บริษัทที่ไม่อยู่ในผลลัพธ์ (ไม่ใช่ VERIFIED) จะไม่มีรายการ */
+  /** คีย์ = `company.id` — บริษัทที่ไม่อยู่ใน Directory (ไม่ใช่ VERIFIED) หรือโหลดคะแนนไม่สำเร็จจะไม่มีรายการ */
   ratings: Record<string, CompanyRating>;
   meta: PageMeta;
 };
 
 export const PAGE_SIZE = 6;
+const DIRECTORY_IDS_MAX = 50;
 
-const MOCK_LATENCY_MS = 250;
-
-const normalize = (text: string) => text.toLocaleLowerCase('th-TH').trim();
-
-/**
- * กฎเทียบสาขาเดียวกับ `POST /applications` ของ Lifecycle (api-contract §7.2, §5.2 — PM ตัดสิน 2026-11-18):
- * ตัดช่องว่างหัวท้าย ยุบช่องว่างซ้อน ไม่สนตัวพิมพ์ แล้วเทียบ "ตรงทั้งค่า" (ไม่ใช่ substring)
- */
-export const normalizeMajor = (text: string) => text.replace(/\s+/g, ' ').trim().toLocaleLowerCase('th-TH');
-
-/** `major_mismatch`: ประกาศที่ไม่ระบุสาขา ⇒ false (เตือนเท่านั้น ไม่บล็อก) */
-export const isMajorMismatch = (targetMajors: string[], major: string) =>
-  targetMajors.length > 0 && !targetMajors.some((target) => normalizeMajor(target) === normalizeMajor(major));
-
-function byFeaturedThen(sort: NonNullable<SearchJobsQuery['sort']>) {
-  return (a: SearchJobItem, b: SearchJobItem) => {
-    if (a.featured !== b.featured) return a.featured ? -1 : 1;
-    if (sort === 'deadline') return a.application_deadline.localeCompare(b.application_deadline);
-    return (b.published_at ?? '').localeCompare(a.published_at ?? '');
-  };
+/** คะแนนดาวเป็นข้อมูลเสริม — Directory ล่มต้องไม่ทำให้ผลค้นหาหายทั้งหน้า (การ์ดจะแสดงว่ายังไม่มีคะแนน) */
+async function ratingsOf(companyIds: string[]): Promise<Record<string, CompanyRating>> {
+  const ids = [...new Set(companyIds)].slice(0, DIRECTORY_IDS_MAX);
+  if (ids.length === 0) return {};
+  const params = new URLSearchParams({ ids: ids.join(','), page_size: String(ids.length) });
+  try {
+    const result = await apiRequest<Paginated<DirectoryCompanyListItem>>(`/directory/companies?${params}`);
+    return Object.fromEntries(result.data.map((company) => [company.id, { rating_avg: company.rating_avg, review_count: company.review_count }]));
+  } catch {
+    return {};
+  }
 }
 
 export async function searchJobs(query: SearchJobsQuery, page: number, pageSize = PAGE_SIZE): Promise<JobSearchResult> {
-  // MOCK: เลียนแบบเวลาตอบของเครือข่าย เพื่อให้เห็นสถานะกำลังโหลดตอนพัฒนา
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
-
-  const q = query.q ? normalize(query.q) : '';
-  const tagSlugs = (query.tags ?? '').split(',').map((slug) => slug.trim().toLowerCase()).filter(Boolean);
-  // `major` ที่มีแต่ช่องว่างถือว่าไม่ส่ง (เหมือนฝั่ง API)
-  const major = query.major && normalizeMajor(query.major) ? query.major : '';
-  const matched = MOCK_SEARCH_JOBS
-    .filter((job) => job.status === 'PUBLISHED')
-    .filter((job) => !query.category || job.category === query.category)
-    .filter((job) => !query.work_mode || job.work_mode === query.work_mode)
-    .filter((job) => !query.allowance || job.allowance.type === 'AMOUNT')
-    .filter((job) => !query.company_id || job.company.id === query.company_id)
-    .filter((job) => tagSlugs.length === 0 || job.tags.some((tag) => tagSlugs.includes(tag.slug))) // any-of
-    .filter((job) => !q || normalize(`${job.job_title} ${job.company.name}`).includes(q))
-    .sort(byFeaturedThen(query.sort ?? 'newest'));
-
-  const jobs = matched
-    .slice((page - 1) * pageSize, page * pageSize)
-    .map((job): SearchJobItem => (major
-      ? { ...job, major_mismatch: isMajorMismatch(job.target_majors, major) }
-      : job));
-
-  const ratings: Record<string, CompanyRating> = {};
-  for (const job of jobs) {
-    const company = MOCK_COMPANIES.find((entry) => entry.id === job.company.id);
-    if (company) ratings[company.id] = company.rating;
+  const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(query)) {
+    if (value !== undefined && value !== '' && value !== false) params.set(name, String(value));
   }
-  return { jobs, ratings, meta: { page, page_size: pageSize, total: matched.length } };
+  params.set('page', String(page));
+  params.set('page_size', String(pageSize));
+  const result = await apiRequest<Paginated<SearchJobItem>>(`/search/jobs?${params}`);
+  const ratings = await ratingsOf(result.data.map((job) => job.company.id));
+  return { jobs: result.data, ratings, meta: result.meta };
 }
 
-export type JobDetailResult = { job: SearchJobItem; rating?: CompanyRating };
+export type JobDetailResult = { job: JobObject; rating?: CompanyRating };
 
-/**
- * `GET /jobs/{id}` (สาธารณะ): เฉพาะ `PUBLISHED`/`CLOSED` สถานะอื่นหรือไม่พบ ⇒ `404` (ที่นี่คืน `null`)
- * MOCK: ใช้ข้อมูลตัวอย่างชุดเดียวกับหน้าค้นหา; คะแนนดาวมาจาก `GET /directory/companies/{id}` ในของจริง
- */
+/** `null` = ไม่พบ/ไม่เปิดเผยต่อสาธารณะ (404) หรือ id ผิดรูปแบบ (400) — error อื่นโยนต่อให้หน้าจอแสดงว่าระบบไม่พร้อม */
 export async function getJob(id: string): Promise<JobDetailResult | null> {
-  await new Promise((resolve) => setTimeout(resolve, MOCK_LATENCY_MS));
-  const job = MOCK_SEARCH_JOBS.find((entry) => entry.id === id);
-  if (!job || (job.status !== 'PUBLISHED' && job.status !== 'CLOSED')) return null;
-  return { job, rating: MOCK_COMPANIES.find((entry) => entry.id === job.company.id)?.rating };
+  let job: JobObject;
+  try {
+    job = await apiRequest<JobObject>(`/jobs/${encodeURIComponent(id)}`);
+  } catch (cause) {
+    if (cause instanceof ApiError && (cause.status === 404 || cause.status === 400)) return null;
+    throw cause;
+  }
+  const ratings = await ratingsOf([job.company.id]);
+  return { job, rating: ratings[job.company.id] };
+}
+
+/** Tag ทักษะที่เปิดใช้งานทั้งหมด (เรียงตามชื่อ) สำหรับตัวกรองหน้าค้นหา */
+export async function listTags(): Promise<JobTag[]> {
+  return (await apiRequest<Paginated<JobTag>>('/tags?page_size=100')).data;
 }
