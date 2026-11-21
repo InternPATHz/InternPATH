@@ -29,7 +29,6 @@ export type JobCategory = 'TECH_IT' | 'BUSINESS_MARKETING' | 'CORPORATE_SERVICES
 
 export type QuotaReservationStatus = 'RESERVED' | 'CONFIRMED' | 'RELEASED';
 
-export type RiskLevel = 'LOW' | 'MEDIUM' | 'HIGH';
 
 export type QueueItemType =
   | 'JOB_REVIEW'
