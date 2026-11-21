@@ -71,7 +71,7 @@ export class AdvisorService {
    * ชื่อ/รหัส/สาขา/ชั้นปีดึงสดจาก Identity `students/summaries` ทุกครั้ง **ห้ามเก็บ `full_name` ลง DB/cache/Event/log**
    * ตัวกรองชั้นปี/คำค้นอยู่ที่ Identity จึงกรองหลังดึงสรุป แล้วแบ่งหน้า (รายชื่อในความดูแลของอาจารย์หนึ่งคนมีจำนวนจำกัด)
    */
-  async students(user: JwtClaims, query: AdvisorStudentsQueryDto): Promise<Paginated<AdvisorTrainingStudentItem>> {
+  async students(user: JwtClaims, query: AdvisorStudentsQueryDto, correlationId?: string): Promise<Paginated<AdvisorTrainingStudentItem>> {
     const page = query.page ?? 1;
     const pageSize = query.page_size ?? 20;
     const links = await this.db.studentAdvisorLink.findMany({
@@ -99,7 +99,7 @@ export class AdvisorService {
 
     const summaries = new Map<string, { full_name: string; student_code: string; major: string; year_level: number }>();
     for (let i = 0; i < candidates.length; i += STUDENT_NAMES_BATCH_MAX) {
-      for (const row of await this.identity.getStudentSummaries(candidates.slice(i, i + STUDENT_NAMES_BATCH_MAX))) summaries.set(row.user_id, row);
+      for (const row of await this.identity.getStudentSummaries(candidates.slice(i, i + STUDENT_NAMES_BATCH_MAX), correlationId)) summaries.set(row.user_id, row);
     }
     const q = query.q?.trim().toLocaleLowerCase('th-TH');
     const matched = candidates.filter((id) => {
