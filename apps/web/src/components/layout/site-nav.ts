@@ -29,5 +29,6 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
 };
 
 export const FOOTER_LINKS: NavItem[] = [
+  { label: 'ตรวจสอบใบรับรอง', href: '/public/certificates', ready: true },
   { label: 'นโยบายความเป็นส่วนตัว', href: '/privacy', ready: true },
 ];
