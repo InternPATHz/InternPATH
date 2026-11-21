@@ -16,6 +16,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
   STUDENT: [
     { label: 'ใบสมัครของฉัน', href: '/student/applications', ready: true },
     { label: 'ใบรับรองของฉัน', href: '/student/certificates', ready: true },
+    { label: 'รีวิวบริษัท', href: '/student/reviews', ready: true },
     { label: 'โปรไฟล์และเรซูเม่', href: '/student/profile', ready: true },
   ],
   COMPANY_HR: [
