@@ -10,6 +10,11 @@ import { AdminAdvisorQueryDto, AdvisorStudentsQueryDto, CreateStudentDto, Update
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 const isUniqueError = (error: unknown): boolean => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+/** P2002 จาก unique (university_id, student_code) — `meta.target` เป็นรายชื่อคอลัมน์หรือชื่อ constraint แล้วแต่ engine */
+const isStudentCodeUniqueError = (error: unknown): boolean =>
+  isUniqueError(error) && /student_?code/i.test(JSON.stringify((error as Prisma.PrismaClientKnownRequestError).meta?.target ?? ''));
+const studentCodeTaken = () =>
+  new AppException('STATE_CONFLICT', 'รหัสนักศึกษานี้ถูกใช้แล้วในสถาบันเดียวกัน', 409, [{ field: 'student_code', issue: 'STUDENT_CODE_ALREADY_USED' }]);
 
 type Page<T> = { data: T[]; meta: { page: number; page_size: number; total: number } };
 
@@ -65,8 +70,9 @@ export class AdvisorLinkService {
    */
   async createStudent(advisorId: string, body: CreateStudentDto, correlationId: string): Promise<CreateStudentResponse> {
     const advisor = await this.actor(advisorId, 'ADVISOR');
-    if (!advisor.universityId) throw new AppException('FORBIDDEN_ROLE', 'อาจารย์ยังไม่ผูกสถาบัน', 403);
-    const university = await this.db.university.findUniqueOrThrow({ where: { id: advisor.universityId } });
+    const universityId = advisor.universityId;
+    if (!universityId) throw new AppException('FORBIDDEN_ROLE', 'อาจารย์ยังไม่ผูกสถาบัน', 403);
+    const university = await this.db.university.findUniqueOrThrow({ where: { id: universityId } });
     const email = normalizeEmail(body.email);
     if (email.split('@')[1] !== university.emailDomain.toLowerCase()) {
       throw new AppException('VALIDATION_FAILED', 'อีเมลนักศึกษาต้องใช้โดเมนสถาบันเดียวกับอาจารย์', 400, [{ field: 'email', issue: 'EMAIL_DOMAIN_NOT_ALLOWED' }]);
@@ -80,14 +86,15 @@ export class AdvisorLinkService {
         if (await tx.user.findUnique({ where: { email } })) {
           throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
         }
+        // เช็กก่อนเพื่อตอบ 409 ที่ชัดเจน; คำขอพร้อมกันที่หลุดไปชน unique (university_id, student_code) ใน DB ⇒ แปลงเป็น 409 เดียวกันด้านล่าง
         const studentCode = body.student_code.trim();
         const duplicate = await tx.studentProfileIdentity.findFirst({
-          where: { studentCode, user: { universityId: advisor.universityId, status: { not: 'DELETED' } } }, select: { userId: true } });
-        if (duplicate) throw new AppException('STATE_CONFLICT', 'รหัสนักศึกษานี้ถูกใช้แล้วในสถาบันเดียวกัน', 409, [{ field: 'student_code', issue: 'STUDENT_CODE_ALREADY_USED' }]);
+          where: { studentCode, universityId, user: { status: { not: 'DELETED' } } }, select: { userId: true } });
+        if (duplicate) throw studentCodeTaken();
         const now = new Date();
         const user = await tx.user.create({ data: {
-          email, passwordHash: null, fullName: body.full_name.trim(), role: 'STUDENT', status: 'PENDING_EMAIL', universityId: advisor.universityId,
-          studentProfile: { create: { studentCode, major: body.major.trim(), yearLevel: body.year_level, advisorId,
+          email, passwordHash: null, fullName: body.full_name.trim(), role: 'STUDENT', status: 'PENDING_EMAIL', universityId,
+          studentProfile: { create: { universityId, studentCode, major: body.major.trim(), yearLevel: body.year_level, advisorId,
             advisorLinkStatus: 'LINKED', createdByAdvisorId: advisorId, advisorLinkUpdatedAt: now } },
         } });
         studentId = user.id;
@@ -99,6 +106,7 @@ export class AdvisorLinkService {
           toStatus: 'LINKED', newAdvisorId: advisorId, changedBy: 'ADVISOR', actorId: advisorId, correlationId: cid, now });
       });
     } catch (error) {
+      if (isStudentCodeUniqueError(error)) throw studentCodeTaken();
       if (isUniqueError(error)) throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
       throw error;
     }

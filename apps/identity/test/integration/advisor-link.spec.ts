@@ -74,7 +74,7 @@ describe('Identity advisor-created students (Postgres จริง)', function (
     const uni = await db.university.create({ data: { name: 'Test University', emailDomain: 'test.ac.th' } });
     const otherUni = await db.university.create({ data: { name: 'Other University', emailDomain: 'other.ac.th' } });
     const user = await db.user.create({ data: { email: 'student@test.ac.th', passwordHash: 'test-only', fullName: 'Student', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId: uni.id,
-      studentProfile: { create: { studentCode: 'S001', major: 'CS', yearLevel: 3 } } } });
+      studentProfile: { create: { universityId: uni.id, studentCode: 'S001', major: 'CS', yearLevel: 3 } } } });
     studentId = user.id;
     adminId = (await db.user.create({ data: { email: 'admin@test.ac.th', passwordHash: 'test-only', fullName: 'Admin', role: 'PLATFORM_ADMIN', status: 'ACTIVE', emailVerifiedAt: new Date() } })).id;
     advisorA = (await db.user.create({ data: { email: 'a@test.ac.th', passwordHash: 'test-only', fullName: 'Advisor A', role: 'ADVISOR', status: 'PENDING_APPROVAL', emailVerifiedAt: new Date(), universityId: uni.id, advisorProfile: { create: { department: 'Science' } } } })).id;
@@ -142,6 +142,35 @@ describe('Identity advisor-created students (Postgres จริง)', function (
     expect(events[0].payload).to.not.have.property('old_advisor_id');
     const history = await db.statusHistory.findMany({ where: { entityId: user.id } });
     expect(history.map((h) => h.reason).sort()).to.deep.equal(['ADVISOR_LINK', 'STUDENT_CREATED_BY_ADVISOR']);
+  });
+
+  it('student code is unique per university in the DB: same code in another university is allowed, concurrent duplicates ⇒ 409', async () => {
+    const code = `U${randomBytes(3).toString('hex')}`;
+    const first = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ student_code: code })).expect(201);
+    const firstProfile = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: first.body.student_user_id }, include: { user: true } });
+    expect(firstProfile.universityId).to.equal(firstProfile.user.universityId);
+
+    // สถาบันอื่นใช้รหัสเดียวกันได้
+    const other = await http().post('/v1/advisor-links/students').set(advisorAuth(outsider))
+      .send(newStudent({ email: `o${randomBytes(3).toString('hex')}@other.ac.th`, student_code: code })).expect(201);
+    expect((await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: other.body.student_user_id } })).universityId).to.not.equal(firstProfile.universityId);
+
+    // constraint ระดับ DB (ข้ามการเช็กของ API)
+    const err = await db.user.create({ data: { email: `raw${randomBytes(3).toString('hex')}@test.ac.th`, fullName: 'Raw', role: 'STUDENT', status: 'PENDING_EMAIL', universityId: firstProfile.universityId,
+      studentProfile: { create: { universityId: firstProfile.universityId, studentCode: code, major: 'CS', yearLevel: 1 } } } }).then(() => null, (e: unknown) => e as { code?: string; meta?: { target?: unknown } });
+    expect(err?.code).to.equal('P2002');
+    expect(JSON.stringify(err?.meta?.target)).to.match(/student_?code/i);
+
+    // คำขอพร้อมกันด้วยรหัสใหม่เดียวกัน: สำเร็จ 1 คำขอ ที่เหลือได้ 409 STUDENT_CODE_ALREADY_USED (ไม่ใช่ 500)
+    const raced = `R${randomBytes(3).toString('hex')}`;
+    const results = await Promise.all(Array.from({ length: 6 }, () =>
+      http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ student_code: raced }))));
+    expect(results.map((r) => r.status).sort()).to.deep.equal([201, 409, 409, 409, 409, 409]);
+    for (const r of results.filter((x) => x.status === 409)) {
+      expect(r.body.error.code).to.equal('STATE_CONFLICT');
+      expect(r.body.error.details[0]).to.deep.equal({ field: 'student_code', issue: 'STUDENT_CODE_ALREADY_USED' });
+    }
+    expect(await db.studentProfileIdentity.count({ where: { studentCode: raced } })).to.equal(1);
   });
 
   it('create validations: domain, duplicate email/code, inactive advisor, wrong roles, bad body', async () => {

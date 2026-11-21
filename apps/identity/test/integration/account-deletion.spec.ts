@@ -36,6 +36,7 @@ describe('Identity account deletion (Postgres)', function () {
   let app: INestApplication;
   let db: PrismaService;
   let service: AccountDeletionService;
+  let universityId: string;
   let allowApplications = true;
   const eligibility: DeletionEligibility = {
     async assertNoActiveApplications() {
@@ -66,6 +67,7 @@ describe('Identity account deletion (Postgres)', function () {
     await app.init();
     db = app.get(PrismaService);
     service = app.get(AccountDeletionService);
+    universityId = (await db.university.create({ data: { name: 'Uni', emailDomain: 'uni.test' } })).id;
   });
 
   after(async () => {
@@ -79,8 +81,8 @@ describe('Identity account deletion (Postgres)', function () {
   it('anonymizes a student, revokes tokens, and emits E15/E16 once', async () => {
     const email = 'student@example.test';
     const user = await db.user.create({ data: { email, passwordHash: 'old-hash', fullName: 'Student Name',
-      phone: '0800000000', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(),
-      studentProfile: { create: { studentCode: 'S-01', major: 'CS', yearLevel: 3 } },
+      phone: '0800000000', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId,
+      studentProfile: { create: { universityId, studentCode: 'S-01', major: 'CS', yearLevel: 3 } },
       consents: { create: { type: 'PRIVACY_POLICY', policyVersion: 'v1' } },
       refreshTokens: { create: { tokenHash: 'refresh-01', familyId: randomUUID(), expiresAt: new Date(Date.now() + 60_000) } },
       emailTokens: { create: { purpose: 'RESET_PASSWORD', tokenHash: 'email-01', expiresAt: new Date(Date.now() + 60_000) } },
@@ -151,8 +153,8 @@ describe('Identity account deletion (Postgres)', function () {
       fullName: 'Advisor', role: 'ADVISOR', status: 'ACTIVE',
       advisorProfile: { create: { department: 'CS' } } } });
     const student = await db.user.create({ data: { email: 'linked@uni.test', passwordHash: 'hash',
-      fullName: 'Linked', role: 'STUDENT', status: 'ACTIVE',
-      studentProfile: { create: { studentCode: 'S-02', major: 'CS', yearLevel: 3,
+      fullName: 'Linked', role: 'STUDENT', status: 'ACTIVE', universityId,
+      studentProfile: { create: { universityId, studentCode: 'S-02', major: 'CS', yearLevel: 3,
         advisorId: advisor.id, advisorLinkStatus: 'LINKED' } } } });
     await service.complete(await service.request(advisor.id));
     const link = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: student.id } });

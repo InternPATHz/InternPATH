@@ -123,7 +123,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | deleted_at | timestamptz null | |
 | version | int | |
 
-**`student_profiles_identity`** (ข้อมูลระบุตัวตนขั้นต่ำ; เรซูเม่อยู่ที่ Lifecycle): `user_id PK`, `student_code` (unique ต่อ `university_id`), `major`, `year_level`, `advisor_id (FK users)`, `advisor_link_status AdvisorLinkStatus` (ตั้งเป็น `LINKED` ตอนอาจารย์สร้างนักศึกษา — ไม่มีขั้นที่นักศึกษาเลือกอาจารย์), `created_by_advisor_id (FK users)` (อาจารย์ที่สร้างบัญชี), `advisor_link_updated_at` — ถอด `pending_advisor_id` (เลิกใช้ ปรับ Requirement 2026-11-21)
+**`student_profiles_identity`** (ข้อมูลระบุตัวตนขั้นต่ำ; เรซูเม่อยู่ที่ Lifecycle): `user_id PK`, `university_id uuid NOT NULL (FK universities)` (สำเนา `users.university_id` ของนักศึกษา ตั้งตอนสร้างโปรไฟล์และต้องตรงกันเสมอ — มีไว้เพราะ unique ข้ามตารางไม่ได้), `student_code` — **`UNIQUE(university_id, student_code)`** (PM ตัดสิน 2026-11-22: กันรหัสซ้ำในสถาบันเดียวกันระดับ DB เป็นด่านสุดท้ายของคำขอพร้อมกัน; API ยังเช็กก่อนเหมือนเดิม และแปลง unique violation เป็น `409 STATE_CONFLICT` / `STUDENT_CODE_ALREADY_USED`; สถาบันต่างกันใช้รหัสเดียวกันได้; ลบบัญชีนักศึกษา = ลบแถวนี้ รหัสจึงกลับมาใช้ได้), `major`, `year_level`, `advisor_id (FK users)`, `advisor_link_status AdvisorLinkStatus` (ตั้งเป็น `LINKED` ตอนอาจารย์สร้างนักศึกษา — ไม่มีขั้นที่นักศึกษาเลือกอาจารย์), `created_by_advisor_id (FK users)` (อาจารย์ที่สร้างบัญชี), `advisor_link_updated_at` — ถอด `pending_advisor_id` (เลิกใช้ ปรับ Requirement 2026-11-21)
 
 **`advisor_profiles`**: `user_id PK`, `department`, `approved_by`, `approved_at`
 
