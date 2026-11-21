@@ -123,11 +123,15 @@ export interface HrApplicationDetail extends HrApplicationItem {
   accept_blocked_reason?: string;
 }
 
-/** รายการ GET /advisor/applications */
+/**
+ * รายการ GET /advisor/applications (และ response ของ action ฝั่งอาจารย์)
+ * `academic_result` = ผลวิชาที่อาจารย์บันทึกแล้ว (ไม่มีเมื่อยังไม่บันทึก) — หน้าบันทึกผลใช้แยกรายการที่บันทึกแล้ว (PM ตัดสิน 2026-11-22)
+ */
 export interface AdvisorApplicationItem extends ApplicationBase {
   student_user_id: string;
   student_name: string;
   flagged_for_advisor: boolean;
+  academic_result?: AcademicResult;
 }
 
 /**
