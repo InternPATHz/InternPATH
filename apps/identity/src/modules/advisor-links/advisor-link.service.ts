@@ -65,6 +65,13 @@ export class AdvisorLinkService {
     await this.outbox.add(tx, { type: 'AdvisorLinkChanged', aggregateId: args.studentId, correlationId: args.correlationId, payload });
   }
 
+  /** รหัสนักศึกษาซ้ำในสถาบันเดียวกัน — ดูจาก `university_id` ของโปรไฟล์ ให้ตรงกับ unique (university_id, student_code) */
+  private async studentCodeInUse(client: Prisma.TransactionClient, universityId: string, studentCode: string): Promise<boolean> {
+    const duplicate = await client.studentProfileIdentity.findFirst({
+      where: { studentCode, universityId, user: { status: { not: 'DELETED' } } }, select: { userId: true } });
+    return duplicate !== null;
+  }
+
   /**
    * อาจารย์เพิ่มนักศึกษา (ปรับ Requirement 2026-11-21): สร้างบัญชี `STUDENT` ที่ยังไม่มีรหัสผ่าน ผูกอาจารย์เป็น `LINKED` ทันที
    * (ส่ง AdvisorLinkChanged) และส่งอีเมลคำเชิญอายุ 7 วัน — นักศึกษาตั้งรหัสผ่านผ่าน `POST /auth/student-invitations/accept`
@@ -89,9 +96,7 @@ export class AdvisorLinkService {
         }
         // เช็กก่อนเพื่อตอบ 409 ที่ชัดเจน; คำขอพร้อมกันที่หลุดไปชน unique (university_id, student_code) ใน DB ⇒ แปลงเป็น 409 เดียวกันด้านล่าง
         const studentCode = body.student_code.trim();
-        const duplicate = await tx.studentProfileIdentity.findFirst({
-          where: { studentCode, universityId, user: { status: { not: 'DELETED' } } }, select: { userId: true } });
-        if (duplicate) throw studentCodeTaken();
+        if (await this.studentCodeInUse(tx, universityId, studentCode)) throw studentCodeTaken();
         const now = new Date();
         const user = await tx.user.create({ data: {
           email, passwordHash: null, fullName: body.full_name.trim(), role: 'STUDENT', status: 'PENDING_EMAIL', universityId,
@@ -112,11 +117,7 @@ export class AdvisorLinkService {
       if (isSerializationError(error)) {
         if (await this.db.user.findUnique({ where: { email } }))
           throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
-        const duplicate = await this.db.studentProfileIdentity.findFirst({ where: {
-          studentCode: body.student_code.trim(), user: { universityId: advisor.universityId, status: { not: 'DELETED' } },
-        } });
-        if (duplicate) throw new AppException('STATE_CONFLICT', 'รหัสนักศึกษานี้ถูกใช้แล้วในสถาบันเดียวกัน', 409,
-          [{ field: 'student_code', issue: 'STUDENT_CODE_ALREADY_USED' }]);
+        if (await this.studentCodeInUse(this.db, universityId, body.student_code.trim())) throw studentCodeTaken();
         throw new AppException('STATE_CONFLICT', 'ข้อมูลถูกเปลี่ยนระหว่างบันทึก กรุณาลองใหม่', 409);
       }
       throw error;
