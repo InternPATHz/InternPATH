@@ -51,7 +51,11 @@ export class AdvisorService {
   async list(user: JwtClaims, query: AdvisorApplicationsQueryDto): Promise<Paginated<AdvisorApplicationItem>> {
     const page = query.page ?? 1;
     const pageSize = query.page_size ?? 20;
-    const where: Prisma.ApplicationWhereInput = { advisorUserId: user.sub, ...(query.status ? { status: query.status } : {}) };
+    const where: Prisma.ApplicationWhereInput = {
+      advisorUserId: user.sub,
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.academic_recorded === undefined ? {} : { academicResult: query.academic_recorded ? { not: null } : null }),
+    };
     const [rows, total] = await Promise.all([
       this.db.application.findMany({
         where,

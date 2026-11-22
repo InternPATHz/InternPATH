@@ -243,6 +243,28 @@ describe('Lifecycle 1.6 — ฝั่งอาจารย์ที่ปรึ�
       const filtered = await http().get('/v1/advisor/applications?status=TERMINATED').set('Authorization', asAdvisor()).expect(200);
       expect(filtered.body.data[0]).to.include({ id: terminated.id, academic_result: 'REPEAT_REQUIRED' });
     });
+
+    it('?academic_recorded=false ⇒ เฉพาะใบที่ยังไม่บันทึกผล • true ⇒ บันทึกแล้ว • meta.total นับตามตัวกรอง • ใช้ร่วมกับ ?status= ได้ • ค่าอื่น ⇒ 400', async () => {
+      const recorded = await seed('TERMINATED', { terminatedBy: 'COMPANY' });
+      const waiting = await seed('TERMINATED', { studentUserId: randomUUID(), terminatedBy: 'COMPANY' });
+      const otherStatus = await seed('EVALUATED_PASS', { studentUserId: randomUUID() });
+      await act(recorded.id, 'academic-result', { academic_result: 'REPEAT_REQUIRED' }).expect(200);
+      const ids = async (query: string) => {
+        const res = await http().get(`/v1/advisor/applications?${query}`).set('Authorization', asAdvisor()).expect(200);
+        expect(res.body.meta.total).to.equal(res.body.data.length);
+        return res.body.data.map((r: { id: string }) => r.id);
+      };
+
+      expect(await ids('academic_recorded=false')).to.have.members([waiting.id, otherStatus.id]);
+      expect(await ids('academic_recorded=true')).to.deep.equal([recorded.id]);
+      expect(await ids('status=TERMINATED&academic_recorded=false')).to.deep.equal([waiting.id]);
+      expect(await ids('status=TERMINATED&academic_recorded=true')).to.deep.equal([recorded.id]);
+      expect(await ids('status=TERMINATED')).to.have.members([recorded.id, waiting.id]);
+      for (const bad of ['1', 'yes', 'TRUE', '']) {
+        const res = await http().get(`/v1/advisor/applications?academic_recorded=${bad}`).set('Authorization', asAdvisor()).expect(400);
+        expect(res.body.error.code).to.equal('VALIDATION_FAILED');
+      }
+    });
   });
 
   // ------------------------------------------------------------------

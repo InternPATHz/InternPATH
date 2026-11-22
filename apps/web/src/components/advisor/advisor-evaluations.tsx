@@ -22,6 +22,15 @@ const RECORDABLE: Array<[ApplicationStatus, string]> = [
   ['COMPLETED', 'บันทึกผลแล้ว (เสร็จสิ้น)'],
 ];
 
+/** `COMPLETED` = บันทึกผลแล้วเสมอ จึงไม่อยู่ในตัวเลือกของ "รอบันทึกผล" */
+const PENDING_STATUSES = RECORDABLE.filter(([value]) => value !== 'COMPLETED');
+
+type View = 'pending' | 'recorded';
+const VIEWS: Array<[View, string]> = [
+  ['pending', 'รอบันทึกผล'],
+  ['recorded', 'บันทึกผลแล้ว'],
+];
+
 /** `academic_result` มีเมื่อบันทึกแล้ว (PM ตัดสิน 2026-11-22) — TERMINATED / NO_EVALUATION ยังอยู่สถานะเดิมหลังบันทึก จึงต้องแยกด้วยฟิลด์นี้ */
 const ACADEMIC_TONE: Record<AcademicResult, StatusTone> = {
   ACADEMIC_PASS: 'success',
@@ -44,7 +53,7 @@ function allowedResults(status: ApplicationStatus): AcademicResult[] {
 /**
  * หน้าอาจารย์ประเมินผล (README §5.2 / §8 Advisor Dashboard)
  * 1. คิวคำโต้แย้งผล `FAIL` — `GET /advisor/disputes` → `request-reevaluation` (ให้บริษัทประเมินซ้ำ 1 รอบ) หรือ `uphold-fail`
- * 2. บันทึกผลทางวิชาการ — `GET /advisor/applications?status=` → `POST /advisor/applications/{id}/academic-result`
+ * 2. บันทึกผลทางวิชาการ — `GET /advisor/applications?status=&academic_recorded=false|true` → `POST /advisor/applications/{id}/academic-result`
  */
 export function AdvisorEvaluations() {
   return (
@@ -137,6 +146,7 @@ function DisputeQueue() {
 
 function AcademicResults() {
   const { request } = useAuth();
+  const [view, setView] = useState<View>('pending');
   const [status, setStatus] = useState<ApplicationStatus>('EVALUATED_PASS');
   const [page, setPage] = useState(1);
   const [list, setList] = useState<Paginated<AdvisorApplicationItem> | null>(null);
@@ -148,18 +158,32 @@ function AcademicResults() {
 
   const load = useCallback(async () => {
     try {
-      const query = new URLSearchParams({ status, page: String(page), page_size: String(PAGE_SIZE) });
+      // กรองที่เซิร์ฟเวอร์ ⇒ จำนวนและการแบ่งหน้าตรงกับรายการที่แสดง
+      const query = new URLSearchParams({
+        status,
+        academic_recorded: String(view === 'recorded'),
+        page: String(page),
+        page_size: String(PAGE_SIZE),
+      });
       setList(await request<Paginated<AdvisorApplicationItem>>(`/advisor/applications?${query.toString()}`));
     } catch (cause) {
       setList(null);
       setMessage({ tone: 'error', text: failure(cause) });
     }
-  }, [request, status, page]);
+  }, [request, view, status, page]);
 
   useEffect(() => { void load(); }, [load]);
 
-  const pending = list?.data.filter((app) => !app.academic_result) ?? [];
-  const recorded = list?.data.filter((app) => app.academic_result) ?? [];
+  const pending = view === 'pending' ? list?.data ?? [] : [];
+  const recorded = view === 'recorded' ? list?.data ?? [] : [];
+  const total = list?.meta.total ?? 0;
+
+  function changeView(next: View) {
+    setView(next);
+    if (next === 'pending' && status === 'COMPLETED') setStatus('EVALUATED_PASS');
+    setPage(1);
+    setEditing(null);
+  }
 
   function open(app: AdvisorApplicationItem) {
     setEditing(app.id);
@@ -197,16 +221,19 @@ function AcademicResults() {
   return (
     <section aria-labelledby="academic-title" className="mt-12">
       <h2 id="academic-title" className="text-xl font-semibold">บันทึกผลทางวิชาการ</h2>
-      <p className="mt-1 text-sm text-ink-soft">ถ้าบริษัทประเมินไม่ผ่าน บันทึกได้เฉพาะ "ไม่ผ่านรายวิชา" หรือ "ต้องฝึกซ้ำ" • บันทึกได้ครั้งเดียว รายการที่บันทึกแล้วแยกไว้ด้านล่าง</p>
+      <p className="mt-1 text-sm text-ink-soft">ถ้าบริษัทประเมินไม่ผ่าน บันทึกได้เฉพาะ "ไม่ผ่านรายวิชา" หรือ "ต้องฝึกซ้ำ" • บันทึกได้ครั้งเดียว ดูรายการที่บันทึกแล้วได้จากตัวเลือก "แสดง"</p>
       <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl bg-surface-muted p-4">
-        <FilterSelect label="ผลจากบริษัท" value={status} onChange={(value) => { setStatus(value as ApplicationStatus); setPage(1); setEditing(null); }} options={RECORDABLE} />
+        <FilterSelect label="แสดง" value={view} onChange={(value) => changeView(value as View)} options={VIEWS} />
+        <FilterSelect label="ผลจากบริษัท" value={status} onChange={(value) => { setStatus(value as ApplicationStatus); setPage(1); setEditing(null); }}
+          options={view === 'pending' ? PENDING_STATUSES : RECORDABLE} />
       </div>
       {message && <div className="mt-3"><Notice tone={message.tone}>{message.text}</Notice></div>}
-      {list && list.data.length === 0 && <p className="mt-3 rounded-xl bg-surface-muted p-6 text-center text-sm text-ink-soft">ไม่มีรายการในสถานะนี้</p>}
-      {pending.length > 0 && <h3 className="mt-6 text-base font-semibold">รอบันทึกผล ({pending.length})</h3>}
-      {list && list.data.length > 0 && pending.length === 0 && status !== 'COMPLETED' && (
-        <p className="mt-3 rounded-xl bg-surface-muted p-6 text-center text-sm text-ink-soft">บันทึกผลครบทุกรายการในหน้านี้แล้ว</p>
+      {list && list.data.length === 0 && (
+        <p className="mt-3 rounded-xl bg-surface-muted p-6 text-center text-sm text-ink-soft">
+          {view === 'pending' ? 'ไม่มีรายการรอบันทึกผลในสถานะนี้' : 'ยังไม่มีรายการที่บันทึกผลในสถานะนี้'}
+        </p>
       )}
+      {pending.length > 0 && <h3 className="mt-6 text-base font-semibold">รอบันทึกผล ({total})</h3>}
       <ul className="mt-3 space-y-4">
         {pending.map((app) => (
           <li key={app.id} className="rounded-xl border border-border bg-surface p-5">
@@ -241,7 +268,7 @@ function AcademicResults() {
       </ul>
       {recorded.length > 0 && (
         <>
-          <h3 className="mt-8 text-base font-semibold">บันทึกผลแล้ว ({recorded.length})</h3>
+          <h3 className="mt-6 text-base font-semibold">บันทึกผลแล้ว ({total})</h3>
           <ul className="mt-3 space-y-4">
             {recorded.map((app) => (
               <li key={app.id} className="rounded-xl border border-border bg-surface-muted p-5">

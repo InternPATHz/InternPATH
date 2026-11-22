@@ -76,6 +76,8 @@ export interface HrEvaluateRequest {
 // ---- 7.4 อาจารย์ ----
 export interface AdvisorApplicationsQuery {
   status?: ApplicationStatus;
+  /** `true` = บันทึก `academic_result` แล้ว • `false` = ยังไม่บันทึก ("รอบันทึกผล") • ไม่ส่ง = ทั้งหมด (ตกลงตอน #108) */
+  academic_recorded?: boolean;
 }
 
 /** GET /advisor/students — ตัวกรองสถานะการฝึกงาน (ปรับ 2026-11-21; ตัวกรองเพิ่มเติม PM จะแจ้งภายหลัง) */

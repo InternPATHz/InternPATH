@@ -8,22 +8,29 @@ import type {
   ProblemReportStatus,
 } from '@internpath/contracts';
 import { Transform, Type } from 'class-transformer';
-import { IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { AcademicResult as PrismaAcademicResult, ProblemReportStatus as PrismaProblemReportStatus } from '../../../generated/client';
 import { APPLICATION_LIMITS, APPLICATION_STATUSES } from '../applications/applications.dto';
 import { PageQueryDto } from '../resumes/resumes.dto';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
+/** query string รับเฉพาะ `true`/`false` ตรงตัว — ค่าอื่นผ่านไปให้ `@IsBoolean` ตอบ 400 */
+const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : value === 'false' ? false : value);
 
 /** ค่าที่รับได้ อ่านจาก enum ของ Prisma schema (ไม่ประกาศรายการซ้ำ) */
 export const ACADEMIC_RESULTS = Object.values(PrismaAcademicResult) as AcademicResult[];
 export const PROBLEM_REPORT_STATUSES = Object.values(PrismaProblemReportStatus) as ProblemReportStatus[];
 
-/** GET /advisor/applications — `?status=` (เช่น `ADVISOR_PENDING`) + Pagination มาตรฐาน */
+/** GET /advisor/applications — `?status=` (เช่น `ADVISOR_PENDING`) `&academic_recorded=true|false` + Pagination มาตรฐาน */
 export class AdvisorApplicationsQueryDto extends PageQueryDto implements AdvisorApplicationsQuery {
   @IsOptional()
   @IsIn(APPLICATION_STATUSES)
   status?: ApplicationStatus;
+
+  @IsOptional()
+  @Transform(toBool)
+  @IsBoolean()
+  academic_recorded?: boolean;
 }
 
 /** GET /advisor/students — `?q=&year_level=&training_status=` + Pagination มาตรฐาน */
