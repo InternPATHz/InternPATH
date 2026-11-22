@@ -44,7 +44,7 @@ export class AdvisorLinkService {
   }
 
   private async linkEvent(tx: Prisma.TransactionClient, args: {
-    studentId: string; before: StudentProfileIdentity; toStatus: StudentProfileIdentity['advisorLinkStatus'];
+    studentId: string; before: StudentProfileIdentity; toStatus: Extract<StudentProfileIdentity['advisorLinkStatus'], 'LINKED' | 'NONE'>;
     newAdvisorId?: string; changedBy: AdvisorLinkChangedPayload['changed_by']; actorId: string; correlationId: string; now: Date;
   }): Promise<void> {
     const student = await tx.user.update({ where: { id: args.studentId }, data: { version: { increment: 1 } } });

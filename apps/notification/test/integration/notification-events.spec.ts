@@ -183,14 +183,24 @@ describe('Notification event consumption (PostgreSQL)', function () {
     expect(await deliver(cancelled)).to.deep.equal([]);
     expect(await deliver(linked)).to.deep.equal([]);
     expect(await deliver({ ...linked, event_id: randomUUID() })).to.deep.equal([]);
+  });
+
+  it('skips E07 with a link_status outside the contract for an active student', async () => {
+    // Fresh active student and a complete payload, so link_status is the only invalid field.
+    const activeStudent = randomUUID();
+    const oldAdvisor = randomUUID();
+    const event = envelope('AdvisorLinkChanged', {
+      student_user_id: activeStudent,
+      old_advisor_id: oldAdvisor,
+      link_status: 'NONE',
+      changed_by: 'ADMIN',
+      entity_version: 2,
+      changed_at: new Date().toISOString(),
+    });
+    expect(await deliver(event)).to.deep.equal([]);
     expect(
-      await deliver(
-        envelope('AdvisorLinkChanged', {
-          student_user_id: student,
-          link_status: 'ADVISOR_LINK_PENDING',
-        }),
-      ),
-    ).to.deep.equal([]);
+      await db!.notification.count({ where: { userId: { in: [activeStudent, oldAdvisor] } } }),
+    ).to.equal(0);
   });
 
   it('skips retired decisions, notifies the student for ADMIN_REMOVE, and adds Admin for an empty escalation', async () => {
