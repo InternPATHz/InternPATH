@@ -1,7 +1,7 @@
-'use client';
-
 import { Suspense } from 'react';
 import { CertificateVerify } from '@/components/certificates/certificate-verify';
+
+export const metadata = { title: 'ตรวจสอบใบรับรองการฝึกงาน' };
 
 // ไม่ต้องล็อกอิน — QR ในใบรับรองชี้มาที่ `/public/certificates?code=` (api-contract §7.5) ใช้ query แทนเส้นทางไดนามิกเพื่อส่งออก static ได้
 export default function PublicCertificatePage() {
