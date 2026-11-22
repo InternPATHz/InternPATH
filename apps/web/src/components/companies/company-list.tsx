@@ -9,6 +9,7 @@ import { Notice } from '@/components/admin/filter-fields';
 import { Avatar } from '@/components/ui/avatar';
 import { RatingSummary } from '@/components/ui/rating';
 import { ApiError } from '@/lib/api';
+import { CATEGORIES } from '@/lib/categories';
 import { listCompanies } from '@/lib/directory';
 
 const PAGE_SIZE = 12;
@@ -20,6 +21,8 @@ export function CompanyList() {
   const { request } = useAuth();
   const q = searchParams.get('q')?.trim() ?? '';
   const partner = searchParams.get('partner') === 'true';
+  const categoryParam = searchParams.get('category');
+  const category = CATEGORIES.find((item) => item.id === categoryParam)?.id;
   const pageParam = Number(searchParams.get('page'));
   const page = Number.isInteger(pageParam) && pageParam >= 1 ? pageParam : 1;
 
@@ -33,13 +36,12 @@ export function CompanyList() {
     let cancelled = false;
     setResult(null);
     setError(null);
-    // เส้นทางสาธารณะ (ไม่ต้องล็อกอิน) — `request` ส่ง token เมื่อมี (ดูหมายเหตุใน lib/directory.ts เรื่องฉบับชั่วคราวของ Identity)
-    listCompanies(request, { q: q || undefined, partner }, page, PAGE_SIZE).then(
+    listCompanies(request, { q: q || undefined, category, partner }, page, PAGE_SIZE).then(
       (data) => { if (!cancelled) setResult(data); },
       (cause) => { if (!cancelled) setError(cause instanceof ApiError ? cause.message : 'โหลดรายชื่อบริษัทไม่สำเร็จ กรุณาลองใหม่'); },
     );
     return () => { cancelled = true; };
-  }, [request, q, partner, page]);
+  }, [request, q, category, partner, page]);
 
   function update(changes: Record<string, string | undefined>, keepPage = false) {
     const next = new URLSearchParams(searchParams.toString());
@@ -57,11 +59,19 @@ export function CompanyList() {
 
       <form role="search" onSubmit={(event) => { event.preventDefault(); update({ q: text.trim() || undefined }); }}
         className="mt-6 flex flex-col gap-3 rounded-xl bg-surface-muted p-4 sm:flex-row sm:items-end">
-        <label className="flex-1 text-sm">
-          <span className="mb-1 block text-xs font-medium text-ink-soft">ชื่อบริษัท</span>
-          <input type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder="ค้นหาชื่อบริษัท"
+        <div className="flex-1 text-sm">
+          <label htmlFor="company-q" className="mb-1 block text-xs font-medium text-ink-soft">ชื่อบริษัท</label>
+          <input id="company-q" type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder="ค้นหาชื่อบริษัท"
             className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary" />
-        </label>
+        </div>
+        <div className="text-sm">
+          <label htmlFor="company-category" className="mb-1 block text-xs font-medium text-ink-soft">สายงาน</label>
+          <select id="company-category" value={category ?? ''} onChange={(event) => update({ category: event.target.value || undefined })}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary">
+            <option value="">ทุกสายงาน</option>
+            {CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </div>
         <label className="flex items-center gap-2 pb-2 text-sm">
           <input type="checkbox" checked={partner} onChange={(event) => update({ partner: event.target.checked ? 'true' : undefined })} className="h-4 w-4 accent-primary" />
           เฉพาะ University Partner

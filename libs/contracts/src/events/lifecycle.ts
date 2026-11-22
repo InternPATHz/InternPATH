@@ -42,6 +42,11 @@ export interface ReviewSubmittedPayload {
 export interface ReviewPublishedPayload {
   review_id: string;
   company_id: string;
+  /**
+   * `PUBLISHED` = รีวิวเพิ่งเผยแพร่; `REMOVED` = Admin ถอดรีวิวที่เผยแพร่แล้ว (`ADMIN_REMOVE`) — PM ตัดสิน 2026-11-22
+   * ผู้รับที่ได้ event ไม่มีฟิลด์นี้ (ส่งก่อนเพิ่ม) ให้ถือเป็น `PUBLISHED`
+   */
+  change: 'PUBLISHED' | 'REMOVED';
   rating: number;
   /** จำนวนรีวิวที่เผยแพร่รวมของบริษัท หลังรวมรีวิวนี้ */
   company_review_count: number;

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Roles, RolesGuard } from '@internpath/common';
 import { AdminService } from './admin.service';
-import { AuditQueryDto, SetEntitlementsDto, SetPartnerDto, UserActionDto } from './admin.dto';
+import { AdminUsersQueryDto, AuditQueryDto, SetEntitlementsDto, SetPartnerDto, UserActionDto } from './admin.dto';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -26,6 +26,9 @@ export class AdminController {
     @Param('action') action: string, @Body() body: UserActionDto, @Headers('x-correlation-id') correlationId: string) {
     return this.service.userAction(actor.sub, userId, action, body.reason, correlationId);
   }
+
+  @Get('users')
+  users(@CurrentUser() actor: JwtClaims, @Query() query: AdminUsersQueryDto) { return this.service.users(actor.sub, query); }
 
   @Get('audit-logs')
   audit(@CurrentUser() actor: JwtClaims, @Query() query: AuditQueryDto) { return this.service.audit(actor.sub, query); }

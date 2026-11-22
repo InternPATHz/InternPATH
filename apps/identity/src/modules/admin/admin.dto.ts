@@ -1,5 +1,6 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { Role, UserStatus } from '../../../generated/client';
 
 export class SetPartnerDto {
   @IsBoolean() enabled!: boolean;
@@ -12,6 +13,14 @@ export class SetEntitlementsDto {
 
 export class UserActionDto {
   @IsOptional() @IsString() @MaxLength(1000) reason?: string;
+}
+
+export class AdminUsersQueryDto {
+  @IsOptional() @IsString() @MaxLength(100) q?: string;
+  @IsOptional() @IsEnum(Role) role?: Role;
+  @IsOptional() @IsEnum(UserStatus) status?: UserStatus;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) page_size = 20;
 }
 
 export class AuditQueryDto {

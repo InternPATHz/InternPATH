@@ -11,6 +11,8 @@ export class RateLimiter {
   rule(method: string, path: string): Rule | undefined {
     // README §5.7 fixes categories; these conservative defaults can be tuned by env later.
     if (method === 'POST' && path === '/auth/login') return { name: 'login', max: 10, windowMs: 60_000 };
+    if (method === 'POST' && path === '/advisor-links/students')
+      return { name: 'advisor-create-student', max: 30, windowMs: 3_600_000 };
     if (method === 'POST' && path.startsWith('/auth/register/')) return { name: 'register', max: 5, windowMs: 3_600_000 };
     if (method === 'POST' && ['/auth/password/forgot', '/auth/password/reset', '/auth/resend-verification',
       '/auth/login/unlock/request'].includes(path))
@@ -24,6 +26,15 @@ export class RateLimiter {
 
   checkIp(rule: Rule, clientIp: string): number {
     return this.limit(`${rule.name}:ip:${clientIp}`, rule.max, rule.windowMs);
+  }
+
+  checkActor(rule: Rule, userId: string): number {
+    return this.limit(`${rule.name}:actor:${userId}`, rule.max, rule.windowMs);
+  }
+
+  checkAdvisorCreateIp(clientIp: string): number {
+    // A university may have several advisors behind one IP; retain a broader network cap.
+    return this.limit(`advisor-create-student:ip:${clientIp}`, 120, 3_600_000);
   }
 
   checkAccount(rule: Rule, path: string, body: Buffer): number {

@@ -24,6 +24,7 @@ export const ADMIN_NAV_ICONS: Record<string, LucideIcon> = {
   'บริษัท': Building2,
   'อาจารย์ที่ปรึกษา': GraduationCap,
   'ผู้ใช้': Users,
+  'Audit log (Identity)': ScrollText,
   'ใบสมัครที่รอดำเนินการ': FileText,
   'รายงานปัญหา': TriangleAlert,
   'ใบรับรอง': Award,

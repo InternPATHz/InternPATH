@@ -22,8 +22,12 @@ export class HrApplicationsController {
   constructor(private readonly service: HrApplicationsService) {}
 
   @Get()
-  list(@CurrentUser() user: JwtClaims, @Query() query: HrApplicationsQueryDto): Promise<Paginated<HrApplicationItem>> {
-    return this.service.list(user, query);
+  list(
+    @CurrentUser() user: JwtClaims,
+    @Query() query: HrApplicationsQueryDto,
+    @Headers('x-correlation-id') cid?: string,
+  ): Promise<Paginated<HrApplicationItem>> {
+    return this.service.list(user, query, cid);
   }
 
   @Get(':id')

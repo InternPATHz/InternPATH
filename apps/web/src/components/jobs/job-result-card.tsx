@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import type { SearchJobItem, WorkMode } from '@internpath/contracts';
-import { CATEGORIES } from '@/lib/mock-landing';
+import { CATEGORIES } from '@/lib/categories';
 import type { CompanyRating } from '@/lib/job-search';
 
 const workModeLabel: Record<WorkMode, string> = { ONSITE: 'On-Site', HYBRID: 'Hybrid', REMOTE: 'Remote' };

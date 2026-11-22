@@ -18,3 +18,71 @@ model ProcessedEvent {
   @@id([eventId, consumer])
   @@map("processed_events")
 }
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+
+  @@map("notification_channel")
+}
+
+enum DeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+
+  @@map("delivery_status")
+}
+
+model Notification {
+  id            String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId        String        @map("user_id") @db.Uuid
+  type          String
+  title         String
+  body          String
+  link          String?
+  data          Json?
+  sourceEventId String        @map("source_event_id") @db.Uuid
+  readAt        DateTime?     @map("read_at") @db.Timestamptz(6)
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  deliveries    DeliveryLog[]
+
+  @@unique([sourceEventId, userId, type])
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
+  @@index([userId, readAt])
+  @@map("notifications")
+}
+
+model DeliveryLog {
+  id             String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  notificationId String              @map("notification_id") @db.Uuid
+  channel        NotificationChannel
+  toUserId       String              @map("to_user_id") @db.Uuid
+  status         DeliveryStatus
+  error          String?
+  attempts       Int                 @default(0)
+  sentAt         DateTime?           @map("sent_at") @db.Timestamptz(6)
+  notification   Notification        @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+
+  @@unique([notificationId, channel])
+  @@index([status, attempts])
+  @@map("delivery_logs")
+}
+
+// E15/E16 and E07 may arrive out of order. Keep only delivery eligibility and versions.
+model RecipientState {
+  recipientKey       String  @id @map("recipient_key") @db.Char(64)
+  suspended          Boolean @default(false)
+  deleted            Boolean @default(false)
+  suspensionVersion Int     @default(0) @map("suspension_version")
+  advisorLinkVersion Int     @default(0) @map("advisor_link_version")
+
+  @@map("recipient_states")
+}
+
+// E11 also carries revised totals when a published review is removed.
+model ReviewNotice {
+  reviewId String @id @map("review_id") @db.Uuid
+
+  @@map("review_notices")
+}

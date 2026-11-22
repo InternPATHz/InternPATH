@@ -76,7 +76,7 @@ describe('Identity Internal API (Postgres จริง)', function () {
     universityId = (await db.university.create({ data: { name: 'Test University', emailDomain: 'test.ac.th' } })).id;
     studentId = (await db.user.create({ data: { email: 'student@test.ac.th', passwordHash: 'secret', fullName: 'Student',
       role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId,
-      studentProfile: { create: { studentCode: 'S001', major: 'CS', yearLevel: 3 } } } })).id;
+      studentProfile: { create: { universityId, studentCode: 'S001', major: 'CS', yearLevel: 3 } } } })).id;
     adminId = (await db.user.create({ data: { email: 'admin@test.local', passwordHash: 'secret', fullName: 'Admin',
       role: 'PLATFORM_ADMIN', status: 'ACTIVE', emailVerifiedAt: new Date() } })).id;
     deletedId = (await db.user.create({ data: { email: 'deleted@test.local', passwordHash: 'secret', fullName: 'Deleted',
@@ -133,7 +133,7 @@ describe('Identity Internal API (Postgres จริง)', function () {
   it('checks consent in batch for Lifecycle: latest active consent per student, request order, consented only', async () => {
     const student = (email: string, code: string, status: 'ACTIVE' | 'SUSPENDED' = 'ACTIVE') => db.user.create({ data: {
       email, passwordHash: 'secret', fullName: code, role: 'STUDENT', status, emailVerifiedAt: new Date(), universityId,
-      studentProfile: { create: { studentCode: code, major: 'CS', yearLevel: 3 } } } });
+      studentProfile: { create: { universityId, studentCode: code, major: 'CS', yearLevel: 3 } } } });
     const [a, b, c, suspended] = await Promise.all([student('a@test.ac.th', 'B001'), student('b@test.ac.th', 'B002'),
       student('c@test.ac.th', 'B003'), student('s@test.ac.th', 'B004', 'SUSPENDED')]);
     const otherCompany = await db.company.create({ data: { name: 'Other', registrationNo: 'REG-002', emailDomain: 'other.test' } });
@@ -169,10 +169,10 @@ describe('Identity Internal API (Postgres จริง)', function () {
   it('returns student names in batch only to Lifecycle (no email, active students only like students/{id})', async () => {
     const suspendedId = (await db.user.create({ data: { email: 'suspended@test.ac.th', passwordHash: 'secret',
       fullName: 'Suspended Student', role: 'STUDENT', status: 'SUSPENDED', universityId,
-      studentProfile: { create: { studentCode: 'S002', major: 'CS', yearLevel: 2 } } } })).id;
+      studentProfile: { create: { universityId, studentCode: 'S002', major: 'CS', yearLevel: 2 } } } })).id;
     const pendingId = (await db.user.create({ data: { email: 'pending@test.ac.th', passwordHash: 'secret',
       fullName: 'Pending Student', role: 'STUDENT', status: 'PENDING_EMAIL', universityId,
-      studentProfile: { create: { studentCode: 'S003', major: 'CS', yearLevel: 1 } } } })).id;
+      studentProfile: { create: { universityId, studentCode: 'S003', major: 'CS', yearLevel: 1 } } } })).id;
     const unknownId = randomUUID();
     const lifecycle = `Bearer ${serviceToken('lifecycle')}`;
     const names = await request(app.getHttpServer())
@@ -194,7 +194,7 @@ describe('Identity Internal API (Postgres จริง)', function () {
   it('returns student summaries in batch only to Lifecycle (code, major, year; includes not-yet-active students; skips deleted and non-students)', async () => {
     const pendingId = (await db.user.create({ data: { email: 'summary-pending@test.ac.th', passwordHash: null,
       fullName: 'Summary Pending', role: 'STUDENT', status: 'PENDING_EMAIL', universityId,
-      studentProfile: { create: { studentCode: 'SUM-1', major: 'Data Science', yearLevel: 4 } } } })).id;
+      studentProfile: { create: { universityId, studentCode: 'SUM-1', major: 'Data Science', yearLevel: 4 } } } })).id;
     const lifecycle = `Bearer ${serviceToken('lifecycle')}`;
     const res = await request(app.getHttpServer())
       .get(`/internal/v1/students/summaries?ids=${pendingId},${studentId},${deletedId},${hrId},${randomUUID()},${pendingId}`)

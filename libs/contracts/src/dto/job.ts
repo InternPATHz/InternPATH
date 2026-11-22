@@ -1,6 +1,12 @@
 // ต้องตรงกับ docs/api-contract.md §5 (Job) และ §9 (Internal) — เฉพาะที่เอกสารระบุไว้
 import type { JobCategory, JobStatus, WorkMode } from '../enums';
 
+/** Internal Job → Identity lookup for Directory category filtering (§9). */
+export interface DirectoryCompanyIdsResponse {
+  company_ids: string[];
+  next_cursor: string | null;
+}
+
 /** Tag ทักษะ (api-contract §5.4) — รายการกลางที่ Admin จัดการ */
 export interface JobTag {
   id: string;

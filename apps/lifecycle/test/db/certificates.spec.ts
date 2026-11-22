@@ -422,6 +422,17 @@ describe('Lifecycle 1.7 — E-Certificate (HTTP + Postgres จริง)', funct
 
   // ------------------------------------------------------------------
   describe('เพิกถอน (UAT-23)', () => {
+    it('HR Member นอกสายงานของประกาศ ⇒ 403 FORBIDDEN_CATEGORY ใบยัง VALID; ในสายงานเพิกถอนได้ (PM ตัดสิน 2026-11-21)', async () => {
+      const { certificate } = await issued();
+      const outside = bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: companyId, company_role: 'MEMBER', company_categories: ['BUSINESS_MARKETING'] });
+      const res = await revokeHr(certificate.id, undefined, outside).expect(403);
+      expect(res.body.error.code).to.equal('FORBIDDEN_ROLE');
+      expect(res.body.error.details[0].issue).to.equal('FORBIDDEN_CATEGORY');
+      expect((await prisma.certificate.findUniqueOrThrow({ where: { id: certificate.id } })).status).to.equal('VALID');
+      const inside = bearer({ role: 'COMPANY_HR', sub: hrUser, company_id: companyId, company_role: 'MEMBER', company_categories: ['TECH_IT'] });
+      await revokeHr(certificate.id, undefined, inside).expect(200);
+    });
+
     it('HR เพิกถอนใบของบริษัทตน ⇒ REVOKED + status_history + E13; ไม่มี admin_audit_log', async () => {
       const { application, certificate } = await issued();
       const res = await revokeHr(certificate.id, { reason: '  ข้อมูลไม่ถูกต้อง  ' }).expect(200);

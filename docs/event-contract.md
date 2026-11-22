@@ -157,7 +157,7 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
 ```ts
 {
   job_id: string
-  submission_id: string
+  submission_id?: string           // บังคับทุก decision ยกเว้น REMOVE | RESTORE (ดูด้านล่าง)
   decision: 'APPROVE' | 'PENDING_REVIEW'                     // ผลคัดกรอง: บริษัทติดธง ⇒ PENDING_REVIEW เสมอ (APPROVE สงวนไว้)
           | 'ADMIN_APPROVE' | 'ADMIN_REJECT'                 // คำตัดสิน Admin
           | 'REMOVE' | 'RESTORE'                             // ผลตัดสินคำร้อง Report (RESTORE = ยกคำร้อง)
@@ -167,7 +167,7 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
   queue_item_id?: string            // บังคับเมื่อ decision = REMOVE | RESTORE: รายการคิวรายงานที่ตัดสิน (= queue_item_id ของ E04 ที่ระงับประกาศ)
 }
 ```
-**`REMOVE`/`RESTORE` ไม่ตรวจ `submission_id` (PM ตัดสิน 2026-11-18):** คำตัดสินเรื่องรายงานไม่ใช่ผลตรวจเนื้อหา — Job ใช้เฉพาะ `queue_item_id` (รอบรายงาน) และ **ไม่เทียบ `submission_id` กับ `current_submission_id`** (ถ้าเทียบ รายการรายงานที่เปิดไว้บน submission A แล้วประกาศถูกส่งตรวจใหม่เป็น B จะทำให้คำตัดสินถูกข้ามและประกาศค้าง `SUSPENDED`) ส่วนคำตัดสินที่เป็นผลตรวจเนื้อหา (`APPROVE`, `PENDING_REVIEW`, `AUTO_REJECT`, `APPEAL_ACCEPTED`, `ADMIN_APPROVE`, `ADMIN_REJECT`) ยังต้องผ่าน Current-Submission Guard ตาม data-schema §8.2 • `submission_id` ใน payload ของ `REMOVE`/`RESTORE` ยังเป็นฟิลด์บังคับ (Verification ส่ง submission ล่าสุด ณ ตอนยกระดับรายงาน) แต่ Job ไม่ใช้ตัดสิน
+**`REMOVE`/`RESTORE` ไม่ตรวจ `submission_id` (PM ตัดสิน 2026-11-18):** คำตัดสินเรื่องรายงานไม่ใช่ผลตรวจเนื้อหา — Job ใช้เฉพาะ `queue_item_id` (รอบรายงาน) และ **ไม่เทียบ `submission_id` กับ `current_submission_id`** (ถ้าเทียบ รายการรายงานที่เปิดไว้บน submission A แล้วประกาศถูกส่งตรวจใหม่เป็น B จะทำให้คำตัดสินถูกข้ามและประกาศค้าง `SUSPENDED`) ส่วนคำตัดสินที่เป็นผลตรวจเนื้อหา (`APPROVE`, `PENDING_REVIEW`, `AUTO_REJECT`, `APPEAL_ACCEPTED`, `ADMIN_APPROVE`, `ADMIN_REJECT`) ยังต้องผ่าน Current-Submission Guard ตาม data-schema §8.2 • `submission_id` ใน payload ของ `REMOVE`/`RESTORE` **ไม่บังคับ (PM ตัดสิน 2026-11-22)** — ถ้าประกาศเคยส่งตรวจ Verification แนบ submission ล่าสุด ณ ตอนยกระดับรายงาน; ถ้าไม่เคย (บริษัทปกติเผยแพร่ทันทีตาม Requirement 2026-11-21) ไม่มีฟิลด์นี้ และ Verification ต้องไม่ปฏิเสธคำตัดสินด้วย `SUBMISSION_UNKNOWN` (เดิมทำให้ประกาศค้าง `SUSPENDED`) Job ไม่ใช้ค่านี้ตัดสินอยู่แล้ว
 
 **กันเหตุการณ์ข้ามรอบ (REMOVE/RESTORE):** Job เก็บ `queue_item_id` ของ E04 ที่ระงับประกาศอยู่ แล้วรับ `REMOVE`/`RESTORE` เฉพาะที่ `queue_item_id` ตรงกัน — ไม่ตรงหรือประกาศไม่ได้ถูกระงับอยู่ให้ข้ามพร้อม log ไม่ throw/retry (ผลตัดสินของรอบเก่าที่มาช้าจึงไม่กระทบการระงับรอบใหม่); ค่านี้ส่งเฉพาะ `REMOVE`/`RESTORE`
 การระงับชั่วคราว (`SUSPENDED`) เกิดจาก E04 `ReportThresholdReached` ไม่ใช่ `JobVerified`
@@ -318,6 +318,7 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
 {
   review_id: string
   company_id: string
+  change: 'PUBLISHED' | 'REMOVED' // PUBLISHED = รีวิวเพิ่งเผยแพร่; REMOVED = Admin ถอดรีวิวที่เผยแพร่แล้ว (ADMIN_REMOVE) — PM ตัดสิน 2026-11-22
   rating: number
   company_review_count: number     // จำนวนรีวิวที่เผยแพร่รวมของบริษัท หลังรวมรีวิวนี้
   company_rating_sum: number       // ผลรวมคะแนน (Identity คำนวณค่าเฉลี่ยเอง)
@@ -326,6 +327,8 @@ Lifecycle ย้าย `advisor_id` ของใบสมัครที่ย�
 }
 ```
 ส่งสถิติรวมแบบ absolute (ไม่ใช่ delta) เพื่อให้ Idempotent และรองรับลำดับสลับ
+
+**`change` (PM ตัดสิน 2026-11-22):** event เดียวใช้ทั้งตอนเผยแพร่และตอนถอดรีวิว (คงชื่อเดิม) — Identity ใช้เฉพาะสถิติ (ไม่สน `change`, เลือกค่าตาม `entity_version`) ส่วน Notification แจ้ง HR "มีรีวิวใหม่" **เฉพาะ `change = PUBLISHED`** และข้าม `REMOVED` เงียบ ๆ; ผู้รับที่ได้ event ไม่มี `change` (ส่งก่อนเพิ่มฟิลด์นี้) ให้ถือเป็น `PUBLISHED`; `published_at` ของ `REMOVED` คือเวลาที่ถอด
 
 ### E12 `CertificateIssued`  (lifecycle → notification)
 ```ts
@@ -390,15 +393,15 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 
 | Event | ผู้ได้รับแจ้ง | เงื่อนไข |
 | :--- | :--- | :--- |
-| `JobStatusChanged` | HR ของบริษัท | to ∈ {`PUBLISHED`, `PENDING_REVIEW`, `ADMIN_REJECTED`, `SUSPENDED`, `REMOVED`} |
+| `JobStatusChanged` | HR ของบริษัท | to ∈ {`PUBLISHED`, `PENDING_REVIEW`, `ADMIN_REJECTED`, `SUSPENDED`, `REMOVED`}; `ADMIN_REJECTED` แจ้งทางอีเมลด้วย (README UAT-32) |
 | `ReportThresholdReached` | Admin | เสมอ |
 | `CompanyStatusChanged` | HR Owner | เมื่อสถานะ = `VERIFIED` / `NEED_MORE_INFO` / `REJECTED` / `SUSPENDED` |
-| `AdvisorLinkChanged` | อาจารย์ที่ผูกกับนักศึกษา, นักศึกษา | ตาม `link_status` (อาจารย์สร้างนักศึกษา = `LINKED` ทันที `changed_by=ADVISOR`) |
+| `AdvisorLinkChanged` | อาจารย์ที่ผูกกับนักศึกษา, นักศึกษา | In-app ตาม `link_status` และกฎผู้รับด้านล่าง อาจารย์สร้างนักศึกษา = `LINKED` ทันที (`changed_by=ADVISOR`); ยกเลิกบัญชีที่ยังไม่ตั้งรหัสผ่าน = `UNLINKED` (`changed_by=ADVISOR`). อีเมลคำเชิญและการส่งซ้ำเป็นหน้าที่ของ Identity |
 | `ApplicationStatusChanged` | ตาม **Recipient Matrix §6.1** (แยกตาม `to_status`) | ผู้รับ: นักศึกษา, HR, อาจารย์ ตามสถานะ |
-| `ReviewModerationResult` | นักศึกษา (`student_user_id` ใน payload; เมื่อ `HOLD`/`ADMIN_REMOVE`), Admin (เมื่อ `HOLD` — รายชื่อจาก `GET /internal/v1/admins`) | — |
-| `ReviewPublished` | HR ของบริษัท | มีรีวิวใหม่ |
+| `ReviewModerationResult` | นักศึกษา (`student_user_id` ใน payload) | เฉพาะ `ADMIN_REMOVE` |
+| `ReviewPublished` | HR ของบริษัท | มีรีวิวใหม่ (เฉพาะ `change = PUBLISHED`) |
 | `CertificateIssued` / `CertificateRevoked` | นักศึกษา | — |
-| `ReminderDue` | `audience` ใน Payload; **ชนิดยกระดับ 5 ชนิด** (`ADVISOR_APPROVE_ESCALATE_ADMIN_D7`, `START_CONFIRM_ESCALATE_D7`, `EVALUATE_ESCALATE_D14`, `ISSUE_CERT_ESCALATE_D14`, `DISPUTE_ESCALATE_D7`) Notification **เพิ่ม Admin เอง** (รายชื่อจาก `GET /internal/v1/admins` — Lifecycle เรียก Identity endpoint นี้ไม่ได้ จึงไม่ใส่ Admin ใน `audience`) • `audience` ว่างได้ (เช่น `ADVISOR_APPROVE_ESCALATE_ADMIN_D7` ส่งถึง Admin อย่างเดียว) ⇒ Notification **ต้องไม่ทิ้ง Event** ต้องเติม Admin แล้วส่งตามปกติ (PM ตัดสิน 2026-11-18) | — |
+| `ReminderDue` | `audience` ใน Payload; **ชนิดยกระดับ 5 ชนิด** (`ADVISOR_APPROVE_ESCALATE_ADMIN_D7`, `START_CONFIRM_ESCALATE_D7`, `EVALUATE_ESCALATE_D14`, `ISSUE_CERT_ESCALATE_D14`, `DISPUTE_ESCALATE_D7`) Notification **เพิ่ม Admin เอง** (รายชื่อจาก `GET /internal/v1/admins` — Lifecycle เรียก Identity endpoint นี้ไม่ได้ จึงไม่ใส่ Admin ใน `audience`) • `audience` ว่างได้ (เช่น `ADVISOR_APPROVE_ESCALATE_ADMIN_D7` ส่งถึง Admin อย่างเดียว) ⇒ Notification **ต้องไม่ทิ้ง Event** ต้องเติม Admin แล้วส่งตามปกติ (PM ตัดสิน 2026-11-18) | In-App และอีเมล (README UAT-32) |
 | `ProblemReportCreated` | อาจารย์ + Admin | เสมอ |
 | `CompanyFlagChanged` | Admin | `active=true` |
 | `UserDeletionRequested` | — | ลบกล่องข้อความ/บันทึกส่ง |

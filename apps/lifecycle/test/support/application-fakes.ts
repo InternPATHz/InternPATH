@@ -11,6 +11,8 @@ export class FakeJobClient {
   reserved = new Set<string>();
   calls: Array<{ op: 'reserve' | 'confirm' | 'release'; jobId: string; applicationId: string; reason?: string }> = [];
   unavailable = false;
+  /** correlation id ที่ `getJob` ได้รับ (ตรวจการส่งต่อ — PM รีวิว 2026-11-21) */
+  getJobCorrelationIds: Array<string | undefined> = [];
   /** ตั้งให้ `reserveQuota` ตอบ `409 QUOTA_FULL` (1.5 — HR ตอบรับเมื่อโควตาเต็ม) */
   quotaFull = false;
 
@@ -30,6 +32,7 @@ export class FakeJobClient {
     this.jobs.clear();
     this.reserved.clear();
     this.calls = [];
+    this.getJobCorrelationIds = [];
     this.unavailable = false;
     this.quotaFull = false;
     this.strict = false;
@@ -60,7 +63,8 @@ export class FakeJobClient {
     return job;
   }
 
-  async getJob(jobId: string): Promise<InternalJobResponse> {
+  async getJob(jobId: string, correlationId?: string): Promise<InternalJobResponse> {
+    this.getJobCorrelationIds.push(correlationId);
     if (this.unavailable) throw new AppException('UPSTREAM_UNAVAILABLE', 'job down', 502);
     const job = this.jobs.get(jobId);
     if (!job) throw new AppException('NOT_FOUND', 'job not found', 404);

@@ -123,7 +123,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 | deleted_at | timestamptz null | |
 | version | int | |
 
-**`student_profiles_identity`** (ข้อมูลระบุตัวตนขั้นต่ำ; เรซูเม่อยู่ที่ Lifecycle): `user_id PK`, `student_code` (unique ต่อ `university_id`), `major`, `year_level`, `advisor_id (FK users)`, `advisor_link_status AdvisorLinkStatus` (ตั้งเป็น `LINKED` ตอนอาจารย์สร้างนักศึกษา — ไม่มีขั้นที่นักศึกษาเลือกอาจารย์), `created_by_advisor_id (FK users)` (อาจารย์ที่สร้างบัญชี), `advisor_link_updated_at` — ถอด `pending_advisor_id` (เลิกใช้ ปรับ Requirement 2026-11-21)
+**`student_profiles_identity`** (ข้อมูลระบุตัวตนขั้นต่ำ; เรซูเม่อยู่ที่ Lifecycle): `user_id PK`, `university_id uuid NOT NULL (FK universities)` (สำเนา `users.university_id` ของนักศึกษา ตั้งตอนสร้างโปรไฟล์และต้องตรงกันเสมอ — มีไว้เพราะ unique ข้ามตารางไม่ได้), `student_code` — **`UNIQUE(university_id, student_code)`** (PM ตัดสิน 2026-11-22: กันรหัสซ้ำในสถาบันเดียวกันระดับ DB เป็นด่านสุดท้ายของคำขอพร้อมกัน; API ยังเช็กก่อนเหมือนเดิม และแปลง unique violation เป็น `409 STATE_CONFLICT` / `STUDENT_CODE_ALREADY_USED`; สถาบันต่างกันใช้รหัสเดียวกันได้; ลบบัญชีนักศึกษา = ลบแถวนี้ รหัสจึงกลับมาใช้ได้), `major`, `year_level`, `advisor_id (FK users)`, `advisor_link_status AdvisorLinkStatus` (ตั้งเป็น `LINKED` ตอนอาจารย์สร้างนักศึกษา — ไม่มีขั้นที่นักศึกษาเลือกอาจารย์), `created_by_advisor_id (FK users)` (อาจารย์ที่สร้างบัญชี), `advisor_link_updated_at` — ถอด `pending_advisor_id` (เลิกใช้ ปรับ Requirement 2026-11-21)
 
 **`advisor_profiles`**: `user_id PK`, `department`, `approved_by`, `approved_at`
 
@@ -208,7 +208,9 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 
 **ฟิลด์ที่ต้องครบก่อนส่งตรวจ (`actions/submit`, PM ตัดสิน 2026-11-15)** — ใช้เป็นเงื่อนไขของ `CHECK` ด้านบนและของ `400 MISSING_REQUIRED_JOB_FIELDS`: `category`, `job_title`, `description`, `responsibilities`, `qualifications`, `location`, `work_mode`, `hours_per_week`, `allowance_type` (ถ้าเป็น `AMOUNT` ต้องมี `allowance_amount_thb` > 0; `NONE` ไม่ต้องมีจำนวนเงิน), `internship_period_start`/`_end`, `target_majors` (≥ 1 สาขา), Tag ทักษะ 1–10 รายการ (`job_tags`), `quota` (≥ 1), `application_deadline` — ส่วน `allowance_text` และ `contact_notes` ไม่บังคับ (README 5.1.5 ไม่ได้ระบุ `description` และ `category` ไว้ แต่ Verification ใช้ `description` ตัดสิน และหน้าค้นหาแยกตาม `category` จึงบังคับ)
 
-**ฟิลด์ที่ต้องตรวจซ้ำเมื่อแก้หลัง `PUBLISHED` (PM ตัดสิน 2026-11-15; ปรับ 2026-11-21: ใช้เฉพาะบริษัทที่ติดธง `UNDER_REVIEW` — บริษัทปกติแก้แล้วคงสถานะ `PUBLISHED`):** หลักการ — ถ้าฟิลด์นั้นเป็นข้อมูลที่ Verification ใช้ตัดสิน (อยู่ใน payload ของ `JobSubmitted`) ต้องตรวจซ้ำ: `job_title`, `description`, `responsibilities`, `qualifications`, `allowance_*`, `location`, `contact_notes`, `work_mode`, `hours_per_week` ⇒ `PUBLISHED → VERIFYING` (กัน Post-Approval Bypass เช่นแก้ชั่วโมงเป็น 60 หลังอนุมัติ) — ฟิลด์ที่ **ไม่ตรวจซ้ำ** (ยังเป็น `PUBLISHED`) มีเฉพาะ `quota`, `application_deadline`, `target_majors`, `internship_period_*`, `category`, `featured`
+**ฟิลด์ที่ต้องตรวจซ้ำเมื่อแก้หลัง `PUBLISHED` (PM ตัดสิน 2026-11-15; ปรับ 2026-11-21: ใช้เฉพาะบริษัทที่ติดธง `UNDER_REVIEW` — บริษัทปกติแก้แล้วคงสถานะ `PUBLISHED`):** หลักการ — ถ้าฟิลด์นั้นเป็นข้อมูลที่ Verification ใช้ตัดสิน (อยู่ใน payload ของ `JobSubmitted`) ต้องตรวจซ้ำ: `job_title`, `description`, `responsibilities`, `qualifications`, `allowance_*`, `location`, `contact_notes`, `work_mode`, `hours_per_week` ⇒ `PUBLISHED → VERIFYING` (กัน Post-Approval Bypass เช่นแก้ชั่วโมงเป็น 60 หลังอนุมัติ) — ฟิลด์ที่ **ไม่ตรวจซ้ำ** (ยังเป็น `PUBLISHED`) มีเฉพาะ `quota`, `application_deadline`, `target_majors`, `internship_period_*`, `featured`
+
+**`category` ล็อกหลังส่งครั้งแรก (PM ตัดสิน 2026-11-22):** แก้ได้เฉพาะ `status = DRAFT`; สถานะอื่นส่งค่าเดิมได้ (ไม่เปลี่ยนอะไร ไม่ส่ง E03) ส่งค่าอื่นใน enum ⇒ `400 VALIDATION_FAILED` (`details[].issue` = `CATEGORY_LOCKED`) — เหตุผล: Lifecycle เก็บ `job_snapshots.category` ไว้จำกัดสิทธิ์ HR Member ตามสายงาน (README 5.6) และการแก้ฟิลด์ที่ไม่เปลี่ยนสถานะไม่มี E03 ไปอัปเดต ถ้าแก้ได้ snapshot จะค้างค่าเก่า (Member สายเดิมยังจัดการใบสมัครได้ สายใหม่ได้ 403) ถ้าจะเปลี่ยนสายงานให้ปิดประกาศแล้วสร้างใหม่
 
 **ค้นหาข้อความ (PM ตัดสิน 2026-11-15):** แยกเป็น migration ภายหลัง (ไม่ต้องอยู่ใน migration แรก) ใช้ **trigram (`pg_trgm`)** ไม่ใช้ `tsvector` เพราะภาษาไทยไม่มีช่องว่างคั่นคำ — GIN index บน `job_title` เป็นหลัก (เพิ่ม `description`/`location` ถ้าจำเป็นหลังวัดผล) ใช้กับ `?q=` ของ `/search/jobs`
 
@@ -295,7 +297,7 @@ Index: (`status`, `featured` DESC, `published_at` DESC), GIN `target_majors`
 
 **`company_snapshots`**: เหมือน job_db (ชื่อ/โลโก้/สถานะ/partner)
 
-**`job_snapshots`**: `job_id PK`, `company_id`, `status JobStatus`, `category JobCategory null` (เติมจาก Internal job ตอนสมัคร ใช้ตรวจสิทธิ์ HR Member ตามสายงาน — ว่างได้สำหรับ snapshot ที่ E03 สร้างก่อนมีใบสมัคร), `target_majors text[]`, `title`, `entity_version`
+**`job_snapshots`**: `job_id PK`, `company_id`, `status JobStatus`, `category JobCategory null` (เติมจาก Internal job ตอนสมัคร ใช้ตรวจสิทธิ์ HR Member ตามสายงาน — ค่าไม่เปลี่ยนหลังเติมเพราะ Job ล็อก `category` หลังส่งครั้งแรก (§4) — ว่างได้สำหรับ snapshot ที่ E03 สร้างก่อนมีใบสมัคร), `target_majors text[]`, `title`, `entity_version`
 
 **`applications`**
 | ฟิลด์ | ชนิด | หมายเหตุ |
@@ -380,7 +382,11 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 **`templates`**: `id`, `key` (เช่น `application.ADVISOR_APPROVED`), `channel`, `subject_th`, `body_th`, `active`
 **`preferences`** *(optional)*: `user_id`, `channel`, `enabled`
 
-+ `processed_events`, `status_history` ไม่จำเป็น
+**`recipient_states`**: `recipient_key` (PK, SHA-256 ของ UUID ผู้รับ), `suspended`, `deleted`, `suspension_version`, `advisor_link_version` — เก็บสิทธิ์การรับแจ้งเตือนและเวอร์ชันล่าสุดของ E07/E16 เพื่อไม่สร้างแจ้งเตือนซ้ำจาก Event เก่าหลังยกเลิกบัญชีหรือระงับบัญชี
+
+**`review_notices`**: `review_id` (PK) — กันแจ้ง HR ซ้ำสำหรับ E11 ที่เป็น `PUBLISHED` รวมถึง Event รุ่นเดิมที่ไม่มี `change`
+
++ `processed_events` สำหรับ deduplicate Event
 
 ---
 

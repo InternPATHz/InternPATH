@@ -67,7 +67,9 @@ export class GatewayMiddleware {
     const rate = this.rateLimiter.rule(req.method, path);
     let body: Buffer | undefined;
     if (rate) {
-      const retry = this.rateLimiter.checkIp(rate, clientIp);
+      const retry = rate.name === 'advisor-create-student' && user
+        ? this.rateLimiter.checkAdvisorCreateIp(clientIp) || this.rateLimiter.checkActor(rate, user.sub)
+        : this.rateLimiter.checkIp(rate, clientIp);
       if (retry) { res.setHeader('Retry-After', String(retry)); return this.error(req, res, 429, 'RATE_LIMITED'); }
       if (req.method === 'POST' && path.startsWith('/auth/')) {
         try { body = await this.rateLimiter.readAuthBody(req); }

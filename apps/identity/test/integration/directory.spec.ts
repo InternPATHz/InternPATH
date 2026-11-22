@@ -1,3 +1,4 @@
+import { rejects } from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
@@ -5,13 +6,17 @@ import path from 'node:path';
 import { INestApplication } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
-import { configureApp } from '@internpath/common';
-import type { ReviewPublishedPayload } from '@internpath/contracts';
+import { EventConsumer, configureApp, consumerQueueName, processDelivery } from '@internpath/common';
+import type { EventEnvelope, ReviewPublishedPayload } from '@internpath/contracts';
 import { expect } from 'chai';
 import { Client } from 'pg';
+import { createStubInstance } from 'sinon';
 import request from 'supertest';
+import type { Prisma } from '../../generated/client';
+import { ReviewPublishedConsumer } from '../../src/events/consumers/review-published.consumer';
 import { DirectoryModule } from '../../src/modules/directory/directory.module';
 import { DirectoryRatingService } from '../../src/modules/directory/directory-rating.service';
+import { DirectoryJobClient } from '../../src/modules/directory/directory-job.client';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
 
@@ -39,6 +44,7 @@ describe('Identity company directory (Postgres จริง)', function () {
   let alphaId: string;
   let betaId: string;
   let pendingId: string;
+  let categoryIds = new Set<string>();
   const get = (url: string) => request(app.getHttpServer()).get(url);
 
   before(async function () {
@@ -58,7 +64,10 @@ describe('Identity company directory (Postgres จริง)', function () {
     process.env.IDENTITY_DIRECT_URL = testUrl;
     process.env.S3_PUBLIC_BASE_URL = 'https://assets.example.test';
     const moduleRef = await Test.createTestingModule({ imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
-      PrismaModule, DirectoryModule] }).compile();
+      PrismaModule, DirectoryModule] })
+      .overrideProvider(DirectoryJobClient)
+      .useValue({ companyIds: async () => categoryIds })
+      .compile();
     app = moduleRef.createNestApplication(); configureApp(app); await app.init();
     db = app.get(PrismaService); ratings = app.get(DirectoryRatingService);
     alphaId = (await db.company.create({ data: { name: 'Alpha Studio', registrationNo: 'DIR-001',
@@ -93,6 +102,20 @@ describe('Identity company directory (Postgres จริง)', function () {
     await get('/v1/directory/companies?category=TECH').expect(400);
   });
 
+  it('filters published-job companies with other filters and exact pagination', async () => {
+    categoryIds = new Set([betaId, pendingId]);
+    const matched = await get('/v1/directory/companies?category=TECH_IT&page_size=1').expect(200);
+    expect(ids(matched.body)).to.deep.equal([betaId]);
+    expect(matched.body.meta).to.deep.equal({ page: 1, page_size: 1, total: 1 });
+    expect(ids((await get(`/v1/directory/companies?category=TECH_IT&ids=${alphaId},${betaId}`).expect(200)).body))
+      .to.deep.equal([betaId]);
+    const none = await get('/v1/directory/companies?category=TECH_IT&partner=true').expect(200);
+    expect(none.body.meta.total).to.equal(0);
+    categoryIds = new Set();
+    const empty = await get('/v1/directory/companies?category=TECH_IT').expect(200);
+    expect(empty.body.meta.total).to.equal(0);
+  });
+
   it('paginates with page/page_size (max 100)', async () => {
     const second = await get('/v1/directory/companies?page=2&page_size=1').expect(200);
     expect(ids(second.body)).to.deep.equal([betaId]);
@@ -124,7 +147,7 @@ describe('Identity company directory (Postgres จริง)', function () {
   });
 
   it('applies absolute review statistics only when entity_version increases', async () => {
-    const base: ReviewPublishedPayload = { review_id: randomUUID(), company_id: alphaId, rating: 5,
+    const base: ReviewPublishedPayload = { review_id: randomUUID(), company_id: alphaId, change: 'PUBLISHED', rating: 5,
       company_review_count: 2, company_rating_sum: 9, entity_version: 2, published_at: new Date().toISOString() };
     await db.$transaction((tx) => ratings.apply(base, tx));
     await db.$transaction((tx) => ratings.apply({ ...base, company_review_count: 1, company_rating_sum: 1,
@@ -138,5 +161,65 @@ describe('Identity company directory (Postgres จริง)', function () {
     expect(detail.body.rating_avg).to.equal(13 / 3);
     expect(detail.body.review_count).to.equal(3);
     expect((await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: alphaId } })).entityVersion).to.equal(3);
+  });
+
+  it('clears Directory statistics when the last review is removed and ignores stale totals', async () => {
+    const published = {
+      review_id: randomUUID(), company_id: betaId, change: 'PUBLISHED' as const, rating: 4, company_review_count: 1,
+      company_rating_sum: 4, entity_version: 1, published_at: new Date().toISOString(),
+    };
+    await db.$transaction((tx) => ratings.apply(published, tx));
+    expect((await get(`/v1/directory/companies/${betaId}`).expect(200)).body)
+      .to.include({ rating_avg: 4, review_count: 1 });
+
+    const removed = {
+      ...published, change: 'REMOVED' as const, company_review_count: 0,
+      company_rating_sum: 0, entity_version: 2,
+    };
+    await db.$transaction((tx) => ratings.apply(removed, tx));
+    await db.$transaction((tx) => ratings.apply(published, tx));
+    expect((await get(`/v1/directory/companies/${betaId}`).expect(200)).body)
+      .to.include({ rating_avg: 0, review_count: 0 });
+    expect(await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: betaId } }))
+      .to.include({ entityVersion: 2, ratingSum: 0, reviewCount: 0 });
+
+    const { change: _change, ...legacy } = published;
+    const event: EventEnvelope = {
+      event_id: randomUUID(), type: 'ReviewPublished', version: 1, producer: 'lifecycle',
+      correlation_id: randomUUID(), occurred_at: new Date().toISOString(),
+      payload: { ...legacy, company_review_count: 0, company_rating_sum: 0, entity_version: 3 },
+    };
+    expect(event.payload).not.to.have.property('change');
+    const consumer = createStubInstance(EventConsumer<Prisma.TransactionClient>);
+    consumer.subscribe.resolves();
+    await new ReviewPublishedConsumer(consumer, ratings).onModuleInit();
+    const result = await processDelivery({
+      raw: Buffer.from(JSON.stringify(event)),
+      queue: consumerQueueName('identity', event.type),
+      sub: consumer.subscribe.firstCall.args[0],
+      runInTransaction: (fn) => db.$transaction(fn),
+      retryCount: 0,
+      maxRetries: 3,
+    });
+    expect(result).to.deep.equal({ kind: 'ack' });
+    expect((await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: betaId } })).entityVersion)
+      .to.equal(3);
+  });
+
+  it('rejects impossible absolute totals without changing the Directory snapshot', async () => {
+    const original = {
+      review_id: randomUUID(), company_id: pendingId, change: 'PUBLISHED' as const, rating: 4, company_review_count: 1,
+      company_rating_sum: 4, entity_version: 1, published_at: new Date().toISOString(),
+    };
+    await db.$transaction((tx) => ratings.apply(original, tx));
+    const before = await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: pendingId } });
+    for (const [count, sum] of [[-1, 0], [0, 1], [1, 0], [1, 6], [1, 1.5]]) {
+      const payload: ReviewPublishedPayload = {
+        ...original, company_review_count: count, company_rating_sum: sum, entity_version: 2,
+      };
+      await rejects(db.$transaction((tx) => ratings.apply(payload, tx)), /Invalid ReviewPublished rating statistics/);
+    }
+    const after = await db.companyRatingStats.findUniqueOrThrow({ where: { companyId: pendingId } });
+    expect(after).to.deep.equal(before);
   });
 });

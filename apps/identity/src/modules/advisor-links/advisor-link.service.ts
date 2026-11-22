@@ -10,6 +10,12 @@ import { AdminAdvisorQueryDto, AdvisorStudentsQueryDto, CreateStudentDto, Update
 
 const normalizeEmail = (email: string): string => email.trim().toLowerCase();
 const isUniqueError = (error: unknown): boolean => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+const isSerializationError = (error: unknown): boolean => error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034';
+/** P2002 จาก unique (university_id, student_code) — `meta.target` เป็นรายชื่อคอลัมน์หรือชื่อ constraint แล้วแต่ engine */
+const isStudentCodeUniqueError = (error: unknown): boolean =>
+  isUniqueError(error) && /student_?code/i.test(JSON.stringify((error as Prisma.PrismaClientKnownRequestError).meta?.target ?? ''));
+const studentCodeTaken = () =>
+  new AppException('STATE_CONFLICT', 'รหัสนักศึกษานี้ถูกใช้แล้วในสถาบันเดียวกัน', 409, [{ field: 'student_code', issue: 'STUDENT_CODE_ALREADY_USED' }]);
 
 type Page<T> = { data: T[]; meta: { page: number; page_size: number; total: number } };
 
@@ -59,14 +65,22 @@ export class AdvisorLinkService {
     await this.outbox.add(tx, { type: 'AdvisorLinkChanged', aggregateId: args.studentId, correlationId: args.correlationId, payload });
   }
 
+  /** รหัสนักศึกษาซ้ำในสถาบันเดียวกัน — ดูจาก `university_id` ของโปรไฟล์ ให้ตรงกับ unique (university_id, student_code) */
+  private async studentCodeInUse(client: Prisma.TransactionClient, universityId: string, studentCode: string): Promise<boolean> {
+    const duplicate = await client.studentProfileIdentity.findFirst({
+      where: { studentCode, universityId, user: { status: { not: 'DELETED' } } }, select: { userId: true } });
+    return duplicate !== null;
+  }
+
   /**
    * อาจารย์เพิ่มนักศึกษา (ปรับ Requirement 2026-11-21): สร้างบัญชี `STUDENT` ที่ยังไม่มีรหัสผ่าน ผูกอาจารย์เป็น `LINKED` ทันที
    * (ส่ง AdvisorLinkChanged) และส่งอีเมลคำเชิญอายุ 7 วัน — นักศึกษาตั้งรหัสผ่านผ่าน `POST /auth/student-invitations/accept`
    */
   async createStudent(advisorId: string, body: CreateStudentDto, correlationId: string): Promise<CreateStudentResponse> {
     const advisor = await this.actor(advisorId, 'ADVISOR');
-    if (!advisor.universityId) throw new AppException('FORBIDDEN_ROLE', 'อาจารย์ยังไม่ผูกสถาบัน', 403);
-    const university = await this.db.university.findUniqueOrThrow({ where: { id: advisor.universityId } });
+    const universityId = advisor.universityId;
+    if (!universityId) throw new AppException('FORBIDDEN_ROLE', 'อาจารย์ยังไม่ผูกสถาบัน', 403);
+    const university = await this.db.university.findUniqueOrThrow({ where: { id: universityId } });
     const email = normalizeEmail(body.email);
     if (email.split('@')[1] !== university.emailDomain.toLowerCase()) {
       throw new AppException('VALIDATION_FAILED', 'อีเมลนักศึกษาต้องใช้โดเมนสถาบันเดียวกับอาจารย์', 400, [{ field: 'email', issue: 'EMAIL_DOMAIN_NOT_ALLOWED' }]);
@@ -80,14 +94,13 @@ export class AdvisorLinkService {
         if (await tx.user.findUnique({ where: { email } })) {
           throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
         }
+        // เช็กก่อนเพื่อตอบ 409 ที่ชัดเจน; คำขอพร้อมกันที่หลุดไปชน unique (university_id, student_code) ใน DB ⇒ แปลงเป็น 409 เดียวกันด้านล่าง
         const studentCode = body.student_code.trim();
-        const duplicate = await tx.studentProfileIdentity.findFirst({
-          where: { studentCode, user: { universityId: advisor.universityId, status: { not: 'DELETED' } } }, select: { userId: true } });
-        if (duplicate) throw new AppException('STATE_CONFLICT', 'รหัสนักศึกษานี้ถูกใช้แล้วในสถาบันเดียวกัน', 409, [{ field: 'student_code', issue: 'STUDENT_CODE_ALREADY_USED' }]);
+        if (await this.studentCodeInUse(tx, universityId, studentCode)) throw studentCodeTaken();
         const now = new Date();
         const user = await tx.user.create({ data: {
-          email, passwordHash: null, fullName: body.full_name.trim(), role: 'STUDENT', status: 'PENDING_EMAIL', universityId: advisor.universityId,
-          studentProfile: { create: { studentCode, major: body.major.trim(), yearLevel: body.year_level, advisorId,
+          email, passwordHash: null, fullName: body.full_name.trim(), role: 'STUDENT', status: 'PENDING_EMAIL', universityId,
+          studentProfile: { create: { universityId, studentCode, major: body.major.trim(), yearLevel: body.year_level, advisorId,
             advisorLinkStatus: 'LINKED', createdByAdvisorId: advisorId, advisorLinkUpdatedAt: now } },
         } });
         studentId = user.id;
@@ -97,9 +110,16 @@ export class AdvisorLinkService {
           actorId: advisorId, actorRole: 'ADVISOR', reason: 'STUDENT_CREATED_BY_ADVISOR', correlationId: cid, occurredAt: now } });
         await this.linkEvent(tx, { studentId: user.id, before: { advisorId: null, advisorLinkStatus: 'NONE' } as StudentProfileIdentity,
           toStatus: 'LINKED', newAdvisorId: advisorId, changedBy: 'ADVISOR', actorId: advisorId, correlationId: cid, now });
-      });
+      }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
     } catch (error) {
+      if (isStudentCodeUniqueError(error)) throw studentCodeTaken();
       if (isUniqueError(error)) throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
+      if (isSerializationError(error)) {
+        if (await this.db.user.findUnique({ where: { email } }))
+          throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
+        if (await this.studentCodeInUse(this.db, universityId, body.student_code.trim())) throw studentCodeTaken();
+        throw new AppException('STATE_CONFLICT', 'ข้อมูลถูกเปลี่ยนระหว่างบันทึก กรุณาลองใหม่', 409);
+      }
       throw error;
     }
     // บัญชีถูกสร้างแล้ว: ส่งอีเมลไม่สำเร็จไม่ทำให้คำขอล้ม — อาจารย์กดส่งคำเชิญใหม่ได้

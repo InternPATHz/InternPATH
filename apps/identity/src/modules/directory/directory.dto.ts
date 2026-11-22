@@ -1,6 +1,7 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
+import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, ValidateIf } from 'class-validator';
 import type { DirectoryCompaniesQuery } from '@internpath/contracts';
+import { JobCategory } from '../../../generated/client';
 
 const UUID = '[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}';
 export const DIRECTORY_IDS_MAX = 50;
@@ -14,9 +15,8 @@ export class DirectoryQueryDto implements DirectoryCompaniesQuery {
   q?: string;
 
   @ValidateIf((_body, value) => value !== undefined)
-  @IsString()
-  @MaxLength(100)
-  category?: string;
+  @IsEnum(JobCategory)
+  category?: JobCategory;
 
   @Transform(({ value }: { value: unknown }) => value === 'true' ? true : value === 'false' ? false : value)
   @ValidateIf((_body, value) => value !== undefined)

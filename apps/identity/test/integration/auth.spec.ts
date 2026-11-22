@@ -90,7 +90,7 @@ describe('Identity Auth API (Postgres จริง)', function () {
     const university = await db.university.upsert({ where: { emailDomain: 'test.ac.th' }, create: { emailDomain: 'test.ac.th', name: 'test.ac.th' }, update: {} });
     const advisor = await db.user.create({ data: { email: `adv-${randomBytes(3).toString('hex')}@test.ac.th`, passwordHash: 'x', fullName: 'Advisor', role: 'ADVISOR', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId: university.id } });
     const user = await db.user.create({ data: { email, passwordHash: null, fullName: 'Student Test', role: 'STUDENT', status: 'PENDING_EMAIL', universityId: university.id,
-      studentProfile: { create: { studentCode: `ST${randomBytes(3).toString('hex')}`, major: 'Computer Science', yearLevel: 3, advisorId: advisor.id, advisorLinkStatus: 'LINKED', createdByAdvisorId: advisor.id } } } });
+      studentProfile: { create: { universityId: university.id, studentCode: `ST${randomBytes(3).toString('hex')}`, major: 'Computer Science', yearLevel: 3, advisorId: advisor.id, advisorLinkStatus: 'LINKED', createdByAdvisorId: advisor.id } } } });
     const token = randomBytes(32).toString('base64url');
     await db.emailToken.create({ data: { userId: user.id, purpose: 'STUDENT_INVITATION', tokenHash: sha(token), expiresAt: over.expiresAt ?? new Date(Date.now() + 7 * 86_400_000) } });
     return { user, token };

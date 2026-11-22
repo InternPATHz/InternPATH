@@ -129,18 +129,37 @@ describe('คำตัดสินรายงานของ Admin: dismiss-rep
       expect((await t.prisma.adminAuditLog.findFirstOrThrow({ where: { targetId: item.id } })).action).to.equal('REPORT_UPHOLD');
     });
 
-    it('ไม่มี submission_id (ประกาศไม่เคยมีผลตรวจ) ⇒ 422 SUBMISSION_UNKNOWN และไม่เปลี่ยนอะไรเลย (rollback)', async () => {
+    // ปรับ Requirement 2026-11-21: บริษัทปกติเผยแพร่ทันทีโดยไม่ส่ง E01 ประกาศส่วนใหญ่จึงไม่มี submission
+    // Job ใช้แค่ queue_item_id ตัดสิน REMOVE/RESTORE (event-contract E02) ⇒ ต้องตัดสินได้ ไม่เช่นนั้นประกาศค้าง SUSPENDED
+    it('ประกาศที่ไม่เคยส่งตรวจ (ไม่มี submission_id) ⇒ dismiss ส่ง RESTORE ได้โดยไม่มี submission_id', async () => {
       const { jobId } = await job(false);
       await fileMany(jobId, 3);
       const item = await openItem(jobId);
-      const res = await act(item.id, 'dismiss-report');
-      expect(res.status).to.equal(422);
-      expect(res.body.error.code).to.equal('SUBMISSION_UNKNOWN');
-      expect((await t.prisma.queueItem.findUniqueOrThrow({ where: { id: item.id } })).status).to.equal('OPEN');
-      expect(await verified()).to.have.length(0);
-      expect((await t.prisma.jobReport.findMany({ where: { jobId } })).every((r) => r.status === 'OPEN')).to.equal(true);
-      expect((await t.prisma.jobReportCounter.findUniqueOrThrow({ where: { jobId } })).suspendedAt).to.be.instanceOf(Date);
-      expect(await t.prisma.adminAuditLog.count()).to.equal(0);
+      expect(item).to.include({ origin: 'REPORT_THRESHOLD', submissionId: null });
+
+      await act(item.id, 'dismiss-report').expect(204);
+
+      const out = await verified();
+      expect(out).to.have.length(1);
+      expect(out[0]).to.include({ job_id: jobId, decision: 'RESTORE', decided_by: 'ADMIN', queue_item_id: item.id });
+      expect(out[0]).to.not.have.property('submission_id');
+      expect(await t.prisma.queueItem.findUniqueOrThrow({ where: { id: item.id } })).to.include({ status: 'RESOLVED', resolution: 'REPORT_DISMISSED' });
+      expect((await t.prisma.jobReportCounter.findUniqueOrThrow({ where: { jobId } })).suspendedAt).to.equal(null);
+    });
+
+    it('ประกาศที่ไม่เคยส่งตรวจ (ไม่มี submission_id) ⇒ uphold ส่ง REMOVE ได้โดยไม่มี submission_id', async () => {
+      const { jobId } = await job(false);
+      await fileMany(jobId, 3);
+      const item = await openItem(jobId);
+
+      await act(item.id, 'uphold-report').expect(204);
+
+      const out = await verified();
+      expect(out).to.have.length(1);
+      expect(out[0]).to.include({ job_id: jobId, decision: 'REMOVE', decided_by: 'ADMIN', queue_item_id: item.id });
+      expect(out[0]).to.not.have.property('submission_id');
+      expect((await t.prisma.jobReport.findMany({ where: { jobId } })).every((r) => r.status === 'UPHELD' && r.counted)).to.equal(true);
+      expect((await t.prisma.adminAuditLog.findFirstOrThrow({ where: { targetId: item.id } })).action).to.equal('REPORT_UPHOLD');
     });
   });
 

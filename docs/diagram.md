@@ -685,6 +685,7 @@ erDiagram
     users ||--o| student_profiles_identity : "user_id"
     users ||--o| advisor_profiles : "user_id"
     users ||--o{ student_profiles_identity : "advisor_id"
+    universities ||--o{ student_profiles_identity : "university_id"
     companies ||--o{ company_members : "company_id"
     users ||--o| company_members : "user_id (unique)"
     companies ||--o{ company_invitations : "company_id"
@@ -714,7 +715,8 @@ erDiagram
     }
     student_profiles_identity {
         uuid user_id PK, FK
-        text student_code
+        uuid university_id FK, UK "unique ร่วมกับ student_code"
+        text student_code UK "unique ต่อ university_id"
         text major
         int year_level
         uuid advisor_id FK

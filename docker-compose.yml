@@ -98,6 +98,7 @@ services:
       PORT: "3001"
       IDENTITY_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/identity_db
       IDENTITY_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/identity_db
+      JOB_URL: http://job:3002
 
   job:
     <<: *service
@@ -142,6 +143,7 @@ services:
     environment:
       <<: *service-env
       PORT: "3005"
+      IDENTITY_URL: http://identity:3001
       NOTIFICATION_DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/notification_db
       NOTIFICATION_DIRECT_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/notification_db
 

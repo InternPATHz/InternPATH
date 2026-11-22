@@ -460,6 +460,19 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
       expect((await reload(pending.id)).advisorUserId).to.equal(advisor);
     });
 
+    it('UNLINKED ของนักศึกษาที่ไม่มีใบสมัครและยังไม่มีลิงก์ (เช่น อาจารย์ยกเลิกคำเชิญ) ⇒ สร้างลิงก์ NONE ไม่ throw • LINKED เก่ามาทีหลัง ⇒ ข้าม', async () => {
+      expect(await handle(e07(2, 'UNLINKED', { old_advisor_id: advisor, changed_by: 'ADVISOR' }))).to.equal('applied');
+      expect(await prisma.studentAdvisorLink.findUniqueOrThrow({ where: { studentUserId: student } })).to.include({
+        linkStatus: 'NONE',
+        advisorUserId: null,
+        entityVersion: 2,
+      });
+      expect(await prisma.application.count({ where: { studentUserId: student } })).to.equal(0);
+
+      expect(await handle(e07(1, 'LINKED', { new_advisor_id: advisor }))).to.equal('stale');
+      expect(await prisma.studentAdvisorLink.findUniqueOrThrow({ where: { studentUserId: student } })).to.include({ linkStatus: 'NONE' });
+    });
+
     it('LINKED ไม่มี new_advisor_id / link_status ผิด ⇒ InvalidMessageError', async () => {
       for (const env of [e07(1, 'LINKED'), e07(1, 'BROKEN', { new_advisor_id: advisor })]) {
         let error: unknown;

@@ -8,7 +8,7 @@ export class DirectoryRatingService {
     const count = payload.company_review_count;
     const sum = payload.company_rating_sum;
     const version = payload.entity_version;
-    if (!Number.isSafeInteger(count) || count < 1 || !Number.isSafeInteger(sum) || sum < count || sum > count * 5 ||
+    if (!Number.isSafeInteger(count) || count < 0 || !Number.isSafeInteger(sum) || sum < count || sum > count * 5 ||
       !Number.isSafeInteger(version) || version < 1) {
       throw new Error('Invalid ReviewPublished rating statistics');
     }

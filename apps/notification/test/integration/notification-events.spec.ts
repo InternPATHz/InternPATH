@@ -1,0 +1,381 @@
+import { execFileSync } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { resolve } from 'node:path';
+import { processDelivery, type EventConsumer } from '@internpath/common';
+import type {
+  ApplicationStatusChangedPayload,
+  EventEnvelope,
+  UserContact,
+} from '@internpath/contracts';
+import { expect } from 'chai';
+import { PrismaClient, type Prisma } from '../../generated/client';
+import { applicationChannels } from '../../src/events/consumers/application-recipients';
+import { NotificationEvents } from '../../src/events/consumers/notification-events';
+import type { IdentityClient } from '../../src/internal/identity-client';
+
+describe('Notification E08 recipient matrix', () => {
+  const channels = (
+    to_status: ApplicationStatusChangedPayload['to_status'],
+    from_status?: ApplicationStatusChangedPayload['from_status'],
+  ) => applicationChannels({ from_status, to_status } as ApplicationStatusChangedPayload);
+
+  it('implements the documented channel and prior-status rules', () => {
+    expect(channels('PENDING')).to.deep.equal({ hr: 'EMAIL' });
+    expect(channels('IN_PROGRESS')).to.deep.equal({ student: 'EMAIL', advisor: 'IN_APP' });
+    expect(channels('HR_REJECTED', 'PENDING')).to.deep.equal({ student: 'EMAIL' });
+    expect(channels('ADVISOR_REJECTED')).to.deep.equal({ student: 'EMAIL', hr: 'IN_APP' });
+    expect(channels('OFFER_RESCINDED', 'HR_ACCEPTED')).to.deep.equal({ student: 'EMAIL' });
+    expect(channels('OFFER_RESCINDED', 'ADVISOR_PENDING')).to.deep.equal({
+      student: 'EMAIL',
+      advisor: 'IN_APP',
+    });
+    expect(channels('WITHDRAWN', 'ADVISOR_APPROVED')).to.deep.equal({
+      hr: 'IN_APP',
+      advisor: 'IN_APP',
+    });
+    expect(channels('EXPIRED', 'ADVISOR_PENDING')).to.deep.equal({
+      student: 'IN_APP',
+      hr: 'IN_APP',
+    });
+    expect(channels('EXPIRED', 'ADVISOR_APPROVED')).to.deep.equal({
+      student: 'IN_APP',
+      hr: 'IN_APP',
+      advisor: 'IN_APP',
+    });
+  });
+});
+
+describe('Notification event consumption (PostgreSQL)', function () {
+  this.timeout(60_000);
+  const student = randomUUID();
+  const advisor = randomUUID();
+  const admin = randomUUID();
+  const hr = randomUUID();
+  const company = randomUUID();
+  let maint: PrismaClient | undefined;
+  let db: PrismaClient | undefined;
+  const dbName = `notification_it_${randomUUID().replace(/-/g, '')}`;
+  let created = false;
+  let service: NotificationEvents;
+  const contact = (id: string): UserContact => ({
+    user_id: id,
+    email: 'local@example.test',
+    full_name: 'Local',
+  });
+
+  before(async function () {
+    const connection = process.env.NOTIFICATION_IT_ADMIN_URL;
+    if (!connection) return this.skip();
+    const url = new URL(connection);
+    if (
+      !['postgresql:', 'postgres:'].includes(url.protocol) ||
+      !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname) ||
+      url.pathname !== '/postgres' ||
+      url.search ||
+      url.hash
+    ) {
+      throw new Error(
+        'NOTIFICATION_IT_ADMIN_URL must point to a local postgres maintenance database',
+      );
+    }
+    maint = new PrismaClient({ datasourceUrl: url.toString() });
+    try {
+      // The name contains only a fixed prefix and a locally generated hex UUID.
+      await maint.$executeRawUnsafe(`CREATE DATABASE "${dbName}"`);
+      created = true;
+      url.pathname = `/${dbName}`;
+      const datasourceUrl = url.toString();
+      execFileSync(
+        process.execPath,
+        [require.resolve('prisma/build/index.js'), 'migrate', 'deploy'],
+        {
+          cwd: resolve(__dirname, '../..'),
+          stdio: 'pipe',
+          timeout: 30000,
+          env: {
+            ...process.env,
+            NOTIFICATION_DATABASE_URL: datasourceUrl,
+            NOTIFICATION_DIRECT_URL: datasourceUrl,
+          },
+        },
+      );
+      db = new PrismaClient({ datasourceUrl });
+    } catch {
+      throw new Error('Could not initialize disposable Notification test database');
+    }
+    const identity: Pick<IdentityClient, 'admins' | 'members' | 'existingUsers' | 'contact'> = {
+      admins: async () => [{ user_id: admin }],
+      members: async () => [{ user_id: hr, member_role: 'OWNER' }],
+      existingUsers: async (ids) => new Set(ids),
+      contact: async (id) => contact(id),
+    };
+    service = new NotificationEvents(
+      {} as EventConsumer<Prisma.TransactionClient>,
+      identity as IdentityClient,
+    );
+  });
+
+  after(async () => {
+    try {
+      await db?.$disconnect();
+      if (created) await maint?.$executeRawUnsafe(`DROP DATABASE "${dbName}" WITH (FORCE)`);
+    } finally {
+      await maint?.$disconnect();
+    }
+  });
+
+  const envelope = (
+    type: string,
+    payload: object,
+    producer: EventEnvelope['producer'] = 'identity',
+  ): EventEnvelope => ({
+    type,
+    producer,
+    payload,
+    event_id: randomUUID(),
+    correlation_id: randomUUID(),
+    version: 1,
+    occurred_at: new Date().toISOString(),
+  });
+
+  function processEvent(event: EventEnvelope) {
+    return processDelivery({
+      raw: Buffer.from(JSON.stringify(event)),
+      retryCount: 0,
+      queue: `notification.${event.type}`,
+      sub: {
+        type: event.type,
+        producer: event.producer,
+        handler: (env, tx: Prisma.TransactionClient) => service.handle(env, tx),
+      },
+      runInTransaction: (handler) => db!.$transaction(handler),
+      maxRetries: 3,
+    });
+  }
+
+  async function deliver(event: EventEnvelope) {
+    expect((await processEvent(event)).kind).to.equal('ack');
+    return db!.notification.findMany({
+      where: { sourceEventId: event.event_id },
+      include: { deliveries: true },
+    });
+  }
+
+  it('deduplicates LINKED, uses in-app only, clears a cancelled inbox, and discards old link events', async () => {
+    const linked = envelope('AdvisorLinkChanged', {
+      student_user_id: student,
+      new_advisor_id: advisor,
+      link_status: 'LINKED',
+      changed_by: 'ADVISOR',
+      entity_version: 2,
+    });
+    const notified = await deliver(linked);
+    expect(notified.map((notice) => notice.userId)).to.deep.equal([student]);
+    expect(notified[0].deliveries).to.deep.equal([]);
+    expect(await deliver(linked)).to.have.length(1);
+    const cancelled = envelope('AdvisorLinkChanged', {
+      student_user_id: student,
+      old_advisor_id: advisor,
+      link_status: 'UNLINKED',
+      changed_by: 'ADVISOR',
+      entity_version: 3,
+    });
+    expect(await deliver(cancelled)).to.deep.equal([]);
+    expect(await deliver(linked)).to.deep.equal([]);
+    expect(await deliver({ ...linked, event_id: randomUUID() })).to.deep.equal([]);
+    expect(
+      await deliver(
+        envelope('AdvisorLinkChanged', {
+          student_user_id: student,
+          link_status: 'ADVISOR_LINK_PENDING',
+        }),
+      ),
+    ).to.deep.equal([]);
+  });
+
+  it('skips retired decisions, notifies the student for ADMIN_REMOVE, and adds Admin for an empty escalation', async () => {
+    const otherStudent = randomUUID();
+    expect(
+      await deliver(
+        envelope('JobStatusChanged', { company_id: company, to_status: 'AUTO_REJECTED' }, 'job'),
+      ),
+    ).to.deep.equal([]);
+    expect(
+      await deliver(
+        envelope(
+          'ReviewModerationResult',
+          { decision: 'HOLD', student_user_id: otherStudent },
+          'verification',
+        ),
+      ),
+    ).to.deep.equal([]);
+    const removed = await deliver(
+      envelope(
+        'ReviewModerationResult',
+        { review_id: randomUUID(), decision: 'ADMIN_REMOVE', student_user_id: otherStudent },
+        'verification',
+      ),
+    );
+    expect(removed.map((notification) => notification.userId)).to.deep.equal([otherStudent]);
+    const reminder = await deliver(
+      envelope(
+        'ReminderDue',
+        {
+          audience: [],
+          context: {},
+          due_date: '2026-11-21',
+          reminder_type: 'ADVISOR_APPROVE_ESCALATE_ADMIN_D7',
+        },
+        'lifecycle',
+      ),
+    );
+    expect(reminder.map((notification) => notification.userId)).to.deep.equal([admin]);
+    expect(reminder[0].deliveries[0]).to.include({ status: 'PENDING', toUserId: admin });
+    const rejected = await deliver(
+      envelope(
+        'JobStatusChanged',
+        {
+          company_id: company,
+          job_id: randomUUID(),
+          to_status: 'ADMIN_REJECTED',
+        },
+        'job',
+      ),
+    );
+    expect(rejected[0].deliveries[0]).to.include({ status: 'PENDING', toUserId: hr });
+  });
+
+  const reviewPublished = (reviewId = randomUUID()) => ({
+    review_id: reviewId,
+    company_id: company,
+    rating: 5,
+    company_review_count: 3,
+    company_rating_sum: 13,
+    entity_version: 1,
+    published_at: new Date().toISOString(),
+  });
+
+  it('notifies HR once for E11 PUBLISHED, including redelivery with the same or a new event ID', async () => {
+    const payload = { ...reviewPublished(), change: 'PUBLISHED' };
+    const published = envelope('ReviewPublished', payload, 'lifecycle');
+    const notice = await deliver(published);
+    expect(notice.map((row) => row.userId)).to.deep.equal([hr]);
+    expect(await deliver(published)).to.have.length(1);
+    expect(await deliver(envelope('ReviewPublished', payload, 'lifecycle'))).to.deep.equal([]);
+    expect(
+      await deliver(
+        envelope(
+          'ReviewPublished',
+          {
+            ...payload,
+            change: 'REMOVED',
+            company_review_count: 2,
+            company_rating_sum: 8,
+            entity_version: 2,
+          },
+          'lifecycle',
+        ),
+      ),
+    ).to.deep.equal([]);
+  });
+
+  it('skips E11 REMOVED even when it arrives before E10 or E11 PUBLISHED', async () => {
+    const payload = reviewPublished();
+    const removed = envelope(
+      'ReviewPublished',
+      {
+        ...payload,
+        change: 'REMOVED',
+        company_review_count: 2,
+        company_rating_sum: 8,
+        entity_version: 2,
+      },
+      'lifecycle',
+    );
+    expect(await deliver(removed)).to.deep.equal([]);
+    expect(await deliver(removed)).to.deep.equal([]);
+    expect(await db!.reviewNotice.findUnique({ where: { reviewId: payload.review_id } })).to.equal(
+      null,
+    );
+    const e10 = await deliver(
+      envelope(
+        'ReviewModerationResult',
+        {
+          review_id: payload.review_id,
+          decision: 'ADMIN_REMOVE',
+          student_user_id: randomUUID(),
+        },
+        'verification',
+      ),
+    );
+    expect(e10).to.have.length(1);
+    expect(
+      (
+        await deliver(envelope('ReviewPublished', { ...payload, change: 'PUBLISHED' }, 'lifecycle'))
+      ).map((row) => row.userId),
+    ).to.deep.equal([hr]);
+  });
+
+  it('treats legacy E11 without change as PUBLISHED', async () => {
+    const payload = reviewPublished();
+    await deliver(
+      envelope(
+        'ReviewModerationResult',
+        {
+          review_id: payload.review_id,
+          decision: 'ADMIN_REMOVE',
+          student_user_id: randomUUID(),
+        },
+        'verification',
+      ),
+    );
+    const legacy = envelope('ReviewPublished', payload, 'lifecycle');
+    expect((await deliver(legacy)).map((row) => row.userId)).to.deep.equal([hr]);
+    expect(await deliver(legacy)).to.have.length(1);
+  });
+
+  it('dead-letters E11 with an invalid change instead of notifying HR', async () => {
+    for (const change of [null, 'UNKNOWN']) {
+      const event = envelope('ReviewPublished', { ...reviewPublished(), change }, 'lifecycle');
+      expect(await processEvent(event)).to.include({
+        kind: 'dead-letter',
+        reason: 'invalid_message',
+      });
+      expect(await db!.notification.count({ where: { sourceEventId: event.event_id } })).to.equal(
+        0,
+      );
+    }
+  });
+
+  it('persists pending mail, excludes the actor and suspended recipients, and deletes delivery rows with the inbox', async () => {
+    const secondStudent = randomUUID();
+    const app = {
+      application_id: randomUUID(),
+      company_id: company,
+      student_user_id: secondStudent,
+      advisor_user_id: advisor,
+      actor_user_id: hr,
+      to_status: 'ADVISOR_APPROVED',
+    };
+    const send = envelope('ApplicationStatusChanged', app, 'lifecycle');
+    const queued = await deliver(send);
+    expect(queued.map((notification) => notification.userId)).to.deep.equal([secondStudent]);
+    expect(queued[0].deliveries[0]).to.include({
+      status: 'PENDING',
+      toUserId: secondStudent,
+      attempts: 0,
+    });
+    await deliver(
+      envelope('UserSuspended', { user_id: secondStudent, entity_version: 2, suspended: true }),
+    );
+    await deliver(
+      envelope('UserSuspended', { user_id: secondStudent, entity_version: 1, suspended: false }),
+    );
+    expect(await deliver(envelope('ApplicationStatusChanged', app, 'lifecycle'))).to.deep.equal([]);
+    await deliver(envelope('UserDeletionRequested', { user_id: secondStudent }));
+    expect(
+      await db!.deliveryLog.findUnique({ where: { id: queued[0].deliveries[0].id } }),
+    ).to.equal(null);
+    expect(await deliver(envelope('ApplicationStatusChanged', app, 'lifecycle'))).to.deep.equal([]);
+  });
+});
