@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { CircleCheck, CircleX, Clock5, Star } from 'lucide-react';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import type {
   ApplicationStatus, CreateReviewRequest, MyReviewItem, Paginated, ReviewStatus, StudentApplicationItem,
@@ -165,6 +165,7 @@ export function ReviewPage() {
 
 function ReviewForm({ app, onCancel, onDone }: { app: StudentApplicationItem; onCancel: () => void; onDone: () => Promise<void> }) {
   const { request } = useAuth();
+  const fieldId = useId();
   const [rating, setRating] = useState(0);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
@@ -194,24 +195,28 @@ function ReviewForm({ app, onCancel, onDone }: { app: StudentApplicationItem; on
     <form onSubmit={(event) => void submit(event)} noValidate className="mt-4 space-y-4 rounded-xl bg-surface-muted p-4 text-sm">
       <fieldset>
         <legend className="font-medium">คะแนน</legend>
-        <div className="mt-1 flex gap-1" role="radiogroup" aria-label="คะแนน 1 ถึง 5 ดาว">
+        <div className="mt-1 flex gap-1">
           {[1, 2, 3, 4, 5].map((value) => (
-            <button key={value} type="button" role="radio" aria-checked={rating === value} aria-label={`${value} ดาว`} onClick={() => setRating(value)}
-              className="rounded-lg p-1 hover:bg-surface">
-              <Star aria-hidden="true" className={`h-7 w-7 ${value <= rating ? 'fill-warning text-warning' : 'text-ink-muted'}`} strokeWidth={2} />
-            </button>
+            <label key={value} className="cursor-pointer">
+              <input type="radio" name={`${fieldId}-rating`} value={value} checked={rating === value} onChange={() => setRating(value)}
+                aria-label={`${value} ดาว`} className="peer sr-only" />
+              <span className="block rounded-lg p-1 hover:bg-surface peer-focus-visible:ring-2 peer-focus-visible:ring-primary">
+                <Star aria-hidden="true" className={`h-7 w-7 ${value <= rating ? 'fill-warning text-warning' : 'text-ink-muted'}`} strokeWidth={2} />
+              </span>
+            </label>
           ))}
         </div>
       </fieldset>
-      <label className="block font-medium">
-        หัวข้อ (ไม่บังคับ)
-        <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={TITLE_MAX} className={inputClass} />
-      </label>
-      <label className="block font-medium">
-        เนื้อหา
-        <textarea value={body} onChange={(event) => setBody(event.target.value)} rows={5} className={inputClass} />
-        <span className="mt-1 block text-xs font-normal text-ink-soft">{body.length}/{BODY_MAX} · ไม่ควรใส่ข้อมูลส่วนตัวของผู้อื่น เช่น เบอร์โทรหรือไลน์</span>
-      </label>
+      <div>
+        <label htmlFor={`${fieldId}-title`} className="block font-medium">หัวข้อ (ไม่บังคับ)</label>
+        <input id={`${fieldId}-title`} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={TITLE_MAX} className={inputClass} />
+      </div>
+      <div>
+        <label htmlFor={`${fieldId}-body`} className="block font-medium">เนื้อหา</label>
+        <textarea id={`${fieldId}-body`} value={body} onChange={(event) => setBody(event.target.value)} rows={5} maxLength={BODY_MAX}
+          aria-describedby={`${fieldId}-body-hint`} className={inputClass} />
+        <p id={`${fieldId}-body-hint`} className="mt-1 text-xs text-ink-soft">{body.length}/{BODY_MAX} · ไม่ควรใส่ข้อมูลส่วนตัวของผู้อื่น เช่น เบอร์โทรหรือไลน์</p>
+      </div>
       <label className="flex items-start gap-2">
         <input type="checkbox" checked={anonymous} onChange={(event) => setAnonymous(event.target.checked)} className="mt-1" />
         <span>
