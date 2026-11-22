@@ -26,7 +26,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     title: 'ใบสมัครและใบรับรอง', owner: 'Tester',
     items: [
-      { label: 'ใบสมัครที่รอดำเนินการ', href: null },
+      { label: 'ใบสมัครที่รอดำเนินการ', href: '/admin/applications' },
       { label: 'รายงานปัญหา', href: null },
       { label: 'ใบรับรอง', href: null },
     ],
