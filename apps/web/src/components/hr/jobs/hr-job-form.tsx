@@ -10,7 +10,7 @@ import { Notice } from '@/components/admin/filter-fields';
 import { EDITABLE_STATUSES, JobStatusBadge } from '@/components/hr/jobs/job-ui';
 import { ApiError } from '@/lib/api';
 import { HR_JOBS_MOCK, hrJobsApi, missingRequired } from '@/lib/hr-jobs';
-import { CATEGORIES } from '@/lib/mock-landing';
+import { CATEGORIES } from '@/lib/categories';
 
 const CLOSED_FIELDS = ['quota', 'application_deadline', 'target_majors', 'period']; // ประกาศ `CLOSED` แก้ได้เฉพาะเหล่านี้ (api-contract §5.1)
 
@@ -128,7 +128,9 @@ export function HrJobForm() {
   const set = (key: keyof FormState) => (event: { target: { value: string } }) => setForm((current) => ({ ...current, [key]: event.target.value }));
 
   const fields = toFields(form);
-  const diff = loaded ? changedFields(fields, toFields(fromJob(loaded))) : fields;
+  const previous = loaded ? toFields(fromJob(loaded)) : null;
+  const diff = previous ? changedFields(fields, previous) : fields;
+  if (previous?.contact_notes && !fields.contact_notes) diff.contact_notes = '';
   if (loaded?.tags.length && !fields.tag_ids) diff.tag_ids = [];
 
   function validate(forSubmit: boolean): string | null {
@@ -161,8 +163,9 @@ export function HrJobForm() {
     event?.preventDefault();
     const problem = validate(forSubmit);
     if (problem) { setMessage({ tone: 'error', text: problem }); return; }
-    setBusy(true);
     setMessage(null);
+    if (id && !forSubmit && Object.keys(diff).length === 0) return;
+    setBusy(true);
     try {
       const savedId = await save();
       if (forSubmit) {

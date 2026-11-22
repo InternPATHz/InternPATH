@@ -8,7 +8,7 @@ import { Notice } from '@/components/admin/filter-fields';
 import { Avatar } from '@/components/ui/avatar';
 import { ApiError } from '@/lib/api';
 import { asList } from '@/lib/list';
-import { CATEGORIES } from '@/lib/mock-landing';
+import { CATEGORIES } from '@/lib/categories';
 
 const CATEGORY_LABEL = Object.fromEntries(CATEGORIES.map((entry) => [entry.id, entry.label])) as Record<JobCategory, string>;
 const toggle = (list: JobCategory[], id: JobCategory) => (list.includes(id) ? list.filter((item) => item !== id) : [...list, id]);

@@ -116,6 +116,7 @@ export class HrJobsService {
   ): Promise<UpdateJobResponse> {
     return this.db.$transaction(async (tx) => {
       const job = await this.lockOwned(tx, user, id);
+      if (!editable.includes(job.status)) throw stateConflict();
       const { category, ...remaining } = body;
       let fields = body;
       if (job.status !== 'DRAFT' && category !== undefined) {
@@ -131,11 +132,10 @@ export class HrJobsService {
       }
 
       if (
-        !editable.includes(job.status) ||
-        (job.status === 'CLOSED' &&
-          Object.entries(fields).some(
-            ([field, value]) => value !== undefined && !closedFields.includes(field),
-          ))
+        job.status === 'CLOSED' &&
+        Object.entries(fields).some(
+          ([field, value]) => value !== undefined && !closedFields.includes(field),
+        )
       ) {
         throw stateConflict();
       }

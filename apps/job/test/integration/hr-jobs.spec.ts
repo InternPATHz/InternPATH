@@ -216,7 +216,7 @@ describe('HR Job API', function () {
     }
   });
 
-  it('locks category after DRAFT, permits the same value, and rejects legacy status on submit', async () => {
+  it('locks category after DRAFT, permits the same value, and rejects edits and submit in a legacy status', async () => {
     const created = await http().post(base).set(owner).send(document()).expect(201);
     const url = `${base}/${created.body.id}`;
     await http().patch(url).set(owner).send({ category: 'BUSINESS_MARKETING' }).expect(200);
@@ -250,14 +250,39 @@ describe('HR Job API', function () {
       companyId,
       category: 'BUSINESS_MARKETING',
     });
-    await badCategory(`${base}/${legacy.id}`);
-    await http()
-      .patch(`${base}/${legacy.id}`)
-      .set(owner)
-      .send({ category: 'BUSINESS_MARKETING' })
-      .expect(200);
+    for (const category of ['BUSINESS_MARKETING', 'TECH_IT']) {
+      const res = await http().patch(`${base}/${legacy.id}`).set(owner).send({ category }).expect(409);
+      expect(res.body.error.code).to.equal('STATE_CONFLICT');
+    }
     await http().post(`${base}/${legacy.id}/actions/submit`).set(owner).expect(409);
   });
+
+  for (const status of ['VERIFYING', 'PENDING_REVIEW', 'SUSPENDED', 'REMOVED'] as const) {
+    it(`rejects PATCH in ${status} before checking same or changed category`, async () => {
+      const job = await seedJob(db.prisma, status, { companyId });
+      for (const category of ['TECH_IT', 'BUSINESS_MARKETING']) {
+        const res = await http().patch(`${base}/${job.id}`).set(owner).send({ category }).expect(409);
+        expect(res.body.error.code).to.equal('STATE_CONFLICT');
+      }
+      expect(await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).to.include({
+        status, category: 'TECH_IT', entityVersion: job.entityVersion,
+      });
+      expect(await db.prisma.outboxEvent.count({ where: { aggregateId: job.id } })).to.equal(0);
+    });
+  }
+
+  for (const status of ['PUBLISHED', 'ADMIN_REJECTED', 'CLOSED'] as const) {
+    it(`locks category in editable ${status} and accepts the existing value without emitting an event`, async () => {
+      const job = await seedJob(db.prisma, status, { companyId });
+      const url = `${base}/${job.id}`;
+      const error = await http().patch(url).set(owner).send({ category: 'BUSINESS_MARKETING' }).expect(400);
+      expect(error.body.error.code).to.equal('VALIDATION_FAILED');
+      expect(error.body.error.details).to.deep.equal([{ field: 'category', issue: 'CATEGORY_LOCKED' }]);
+      const unchanged = await http().patch(url).set(owner).send({ category: 'TECH_IT' }).expect(200);
+      expect(unchanged.body).to.include({ status, category: 'TECH_IT', requires_reverification: false });
+      expect(await db.prisma.outboxEvent.count({ where: { aggregateId: job.id } })).to.equal(0);
+    });
+  }
 
   it('atomically queues a flagged submission, stores the admin reason, and queues only actual content edits', async () => {
     const alsoOwner = auth(otherCompanyId);
@@ -269,13 +294,6 @@ describe('HR Job API', function () {
     const url = `${base}/${id}`;
     const response = await http().post(`${url}/actions/submit`).set(alsoOwner).expect(200);
     expect(response.body.status).to.equal('VERIFYING');
-    await http().patch(url).set(alsoOwner).send({ category: 'TECH_IT' }).expect(200);
-    const locked = await http()
-      .patch(url)
-      .set(alsoOwner)
-      .send({ category: 'CORPORATE_SERVICES' })
-      .expect(400);
-    expect(locked.body.error.details[0].issue).to.equal('CATEGORY_LOCKED');
     const submission = await db.prisma.jobSubmission.findFirstOrThrow({ where: { jobId: id } });
     const events = await db.prisma.outboxEvent.findMany({
       where: { aggregateId: id },

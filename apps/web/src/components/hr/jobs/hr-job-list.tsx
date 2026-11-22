@@ -8,12 +8,16 @@ import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { JobStatusBadge, WORK_MODE_LABEL, formatDay, jobTitleOf } from '@/components/hr/jobs/job-ui';
 import { ApiError } from '@/lib/api';
-import { HR_JOBS_MOCK, hrJobsApi } from '@/lib/hr-jobs';
+import { HR_JOBS_MOCK, HR_JOBS_PAGE_SIZE, hrJobsApi } from '@/lib/hr-jobs';
 import { JOB_STATUS } from '@/lib/status-map';
 
 const QUICK: Array<[string, JobStatus | '']> = [
   ['ทั้งหมด', ''], ['ร่าง', 'DRAFT'], ['รอ Admin ตรวจ', 'PENDING_REVIEW'], ['เปิดรับสมัคร', 'PUBLISHED'], ['ถูกตีกลับ', 'ADMIN_REJECTED'], ['ปิดแล้ว', 'CLOSED'],
 ];
+
+type PageState = { key: string } & (
+  { result: Paginated<HrJobObject>; error?: never } | { error: string; result?: never }
+);
 
 export function HrJobList() {
   const router = useRouter();
@@ -22,24 +26,29 @@ export function HrJobList() {
   const { request } = useAuth();
   const api = useMemo(() => hrJobsApi(request), [request]);
   const statusParam = searchParams.get('status') ?? '';
-  const status = statusParam in JOB_STATUS ? (statusParam as JobStatus) : undefined;
-
-  const [result, setResult] = useState<Paginated<HrJobObject> | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const status = Object.hasOwn(JOB_STATUS, statusParam) ? (statusParam as JobStatus) : undefined;
+  const pageParam = Number(searchParams.get('page'));
+  const page = Number.isInteger(pageParam) && pageParam >= 1 && pageParam <= 2147483647 ? pageParam : 1;
+  const key = `${status ?? ''}:${page}`;
+  const [state, setState] = useState<PageState>();
+  const { result, error } = state?.key === key ? state : {};
+  const total = result?.meta.total ?? 0;
+  const pageCount = result ? Math.max(1, Math.ceil(total / result.meta.page_size)) : 1;
 
   useEffect(() => {
     let cancelled = false;
-    setResult(null);
-    setError(null);
-    api.list(status).then(
-      (data) => { if (!cancelled) setResult(data); },
-      (cause) => { if (!cancelled) setError(cause instanceof ApiError ? cause.message : 'โหลดรายการประกาศไม่สำเร็จ กรุณาลองใหม่'); },
+    api.list(status, page, HR_JOBS_PAGE_SIZE).then(
+      (data) => { if (!cancelled) setState({ key, result: data }); },
+      (cause) => { if (!cancelled) setState({ key, error: cause instanceof ApiError ? cause.message : 'โหลดรายการประกาศไม่สำเร็จ กรุณาลองใหม่' }); },
     );
     return () => { cancelled = true; };
-  }, [api, status]);
+  }, [api, status, page, key]);
 
-  function filter(value: string) {
-    router.replace(value ? `${pathname}?status=${value}` : pathname, { scroll: false });
+  function navigate(value: JobStatus | '', targetPage: number) {
+    const query = new URLSearchParams();
+    if (value) query.set('status', value);
+    if (targetPage > 1) query.set('page', String(targetPage));
+    router.replace(query.size ? `${pathname}?${query}` : pathname, { scroll: false });
   }
 
   return (
@@ -55,7 +64,7 @@ export function HrJobList() {
 
       <div role="group" aria-label="กรองตามสถานะ" className="mt-6 flex flex-wrap gap-2">
         {QUICK.map(([label, value]) => (
-          <button key={label} type="button" onClick={() => filter(value)} aria-pressed={(status ?? '') === value}
+          <button key={label} type="button" onClick={() => { if ((status ?? '') !== value) navigate(value, 1); }} aria-pressed={(status ?? '') === value}
             className={`rounded-full border px-4 py-1.5 text-sm font-medium ${(status ?? '') === value ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:bg-surface-muted'}`}>
             {label}
           </button>
@@ -65,11 +74,20 @@ export function HrJobList() {
       <section aria-busy={!result && !error} className="mt-6">
         {error && <Notice tone="error">{error}</Notice>}
         {!result && !error && <p className="text-sm text-ink-soft">กำลังโหลด…</p>}
+        {result && <p role="status" className="mb-3 text-sm text-ink-soft">ทั้งหมด {total} ประกาศ · หน้า {page} จาก {pageCount}</p>}
         {result && result.data.length === 0 && (
           <div className="rounded-xl border border-dashed border-border p-10 text-center">
-            <p className="font-semibold">{status ? 'ไม่มีประกาศในสถานะนี้' : 'ยังไม่มีประกาศ'}</p>
-            <Link href="/hr/jobs/form" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">สร้างประกาศแรก</Link>
+            <p className="font-semibold">{total > 0 ? 'ไม่มีประกาศในหน้านี้' : status ? 'ไม่มีประกาศในสถานะนี้' : 'ยังไม่มีประกาศ'}</p>
+            {total === 0 && <Link href="/hr/jobs/form" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">สร้างประกาศแรก</Link>}
           </div>
+        )}
+        {result && (pageCount > 1 || page > 1) && (
+          <nav aria-label="หน้ารายการประกาศ" className="mt-6 flex justify-between gap-3">
+            <button type="button" disabled={page === 1} onClick={() => navigate(status ?? '', Math.min(page - 1, pageCount))}
+              className="rounded-full border border-border px-4 py-2 text-sm font-medium hover:bg-surface-muted disabled:opacity-50">หน้าก่อนหน้า</button>
+            <button type="button" disabled={page >= pageCount} onClick={() => navigate(status ?? '', page + 1)}
+              className="rounded-full border border-border px-4 py-2 text-sm font-medium hover:bg-surface-muted disabled:opacity-50">หน้าถัดไป</button>
+          </nav>
         )}
         {result && result.data.length > 0 && (
           <ul className="space-y-3">
