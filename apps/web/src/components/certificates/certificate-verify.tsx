@@ -2,7 +2,7 @@
 
 import { BadgeCheck, CircleX, Search } from 'lucide-react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { PublicCertificateResponse } from '@internpath/contracts';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -24,6 +24,7 @@ type Lookup =
 export function CertificateVerify() {
   const params = useSearchParams();
   const router = useRouter();
+  const inputId = useId();
   const code = (params.get('code') ?? '').trim();
   const [input, setInput] = useState(code);
   const [lookup, setLookup] = useState<Lookup>({ state: 'idle' });
@@ -57,11 +58,11 @@ export function CertificateVerify() {
       <p className="mt-2 text-sm text-ink-soft">กรอกรหัสใบรับรอง (Certificate ID) ที่พิมพ์อยู่บนใบรับรอง หรือสแกน QR Code บนใบรับรอง</p>
 
       <form onSubmit={submit} className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <label className="flex-1">
-          <span className="sr-only">รหัสใบรับรอง</span>
-          <input value={input} onChange={(event) => setInput(event.target.value)} placeholder="รหัสใบรับรอง" autoComplete="off" spellCheck={false}
+        <div className="flex-1">
+          <label htmlFor={inputId} className="sr-only">รหัสใบรับรอง</label>
+          <input id={inputId} value={input} onChange={(event) => setInput(event.target.value)} placeholder="รหัสใบรับรอง" autoComplete="off" spellCheck={false}
             className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft" />
-        </label>
+        </div>
         <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover active:scale-[0.97]">
           <Search aria-hidden="true" className="h-4 w-4" />ตรวจสอบ
         </button>

@@ -1,7 +1,7 @@
 'use client';
 
 import { CircleCheck, CircleX } from 'lucide-react';
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { ApplicationStatus, HrEvaluateRequest } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
@@ -34,6 +34,7 @@ export function HrEvaluationForm({ applicationId, status, studentLabel, onChange
   onChanged: () => Promise<void> | void;
 }) {
   const { request } = useAuth();
+  const fieldId = useId();
   const [result, setResult] = useState<'PASS' | 'FAIL' | null>(null);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
@@ -71,8 +72,8 @@ export function HrEvaluationForm({ applicationId, status, studentLabel, onChange
   }
 
   const choice = (value: 'PASS' | 'FAIL', label: string, Icon: typeof CircleCheck, tone: string) => (
-    <label className={`flex flex-1 cursor-pointer items-center gap-2 rounded-xl border px-4 py-3 font-medium ${result === value ? `border-primary bg-primary-soft` : 'border-border bg-surface'}`}>
-      <input type="radio" name="evaluation-result" value={value} checked={result === value} onChange={() => setResult(value)} className="sr-only" />
+    <label className={`flex flex-1 cursor-pointer items-center gap-2 rounded-xl border px-4 py-3 font-medium has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary ${result === value ? `border-primary bg-primary-soft` : 'border-border bg-surface'}`}>
+      <input type="radio" name={`${fieldId}-result`} value={value} checked={result === value} onChange={() => setResult(value)} className="sr-only" />
       <Icon aria-hidden="true" className={`h-5 w-5 ${tone}`} strokeWidth={2.5} />
       {label}
     </label>
@@ -95,16 +96,21 @@ export function HrEvaluationForm({ applicationId, status, studentLabel, onChange
           {choice('FAIL', 'ไม่ผ่าน', CircleX, 'text-danger')}
         </div>
       </fieldset>
-      <label className="block font-medium">
-        เหตุผล{result === 'FAIL' ? '' : ' (ไม่บังคับ)'}
-        {result === 'FAIL' && <span aria-hidden="true" className="text-danger"> *</span>}
-        <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className={inputClass} />
-        <span className="mt-1 block text-xs font-normal text-ink-soft">{reason.length}/{REASON_MAX} · นักศึกษาและอาจารย์เห็นเหตุผลนี้</span>
-      </label>
-      <label className="block font-medium">
-        หมายเหตุเพิ่มเติม (ไม่บังคับ)
-        <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} className={inputClass} />
-      </label>
+      <div>
+        <label htmlFor={`${fieldId}-reason`} className="block font-medium">
+          เหตุผล{result === 'FAIL' ? '' : ' (ไม่บังคับ)'}
+          {result === 'FAIL' && <span aria-hidden="true" className="text-danger"> *</span>}
+        </label>
+        <textarea id={`${fieldId}-reason`} value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={REASON_MAX}
+          aria-required={result === 'FAIL'} aria-describedby={`${fieldId}-reason-hint`} className={inputClass} />
+        <p id={`${fieldId}-reason-hint`} className="mt-1 text-xs text-ink-soft">{reason.length}/{REASON_MAX} · นักศึกษาและอาจารย์เห็นเหตุผลนี้</p>
+      </div>
+      <div>
+        <label htmlFor={`${fieldId}-note`} className="block font-medium">หมายเหตุเพิ่มเติม (ไม่บังคับ)</label>
+        <textarea id={`${fieldId}-note`} value={note} onChange={(event) => setNote(event.target.value)} rows={2} maxLength={NOTE_MAX}
+          aria-describedby={`${fieldId}-note-hint`} className={inputClass} />
+        <p id={`${fieldId}-note-hint`} className="mt-1 text-xs text-ink-soft">{note.length}/{NOTE_MAX}</p>
+      </div>
       {message && <Notice tone={message.tone}>{message.text}</Notice>}
       <button type="submit" disabled={busy} className="rounded-full bg-primary px-5 py-2 font-semibold text-white hover:bg-primary-hover active:scale-[0.97] disabled:opacity-60">
         {busy ? 'กำลังบันทึก…' : 'บันทึกผลประเมิน'}
