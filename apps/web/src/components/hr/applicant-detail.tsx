@@ -8,6 +8,7 @@ import { CircleCheck, CircleX } from 'lucide-react';
 import type { HrApplicationDetail, HrStartResponse, ResumeUrlResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
+import { HrEvaluationForm } from '@/components/hr/hr-evaluation-form';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { ApplicationStatusBadge, formatDate } from '@/components/student/application-ui';
 import { ApiError } from '@/lib/api';
@@ -291,7 +292,7 @@ export function ApplicantDetail() {
               ส่งข้อเสนอไม่ได้ในขณะนี้: {app.accept_blocked_reason === 'ALREADY_CONFIRMED_ELSEWHERE' ? 'นักศึกษายืนยันฝึกงานกับที่อื่นแล้ว' : app.accept_blocked_reason === 'JOB_FROZEN' ? 'ประกาศถูกระงับชั่วคราว' : app.accept_blocked_reason}
             </p>
           )}
-          {can('evaluate') && <p className="mt-1 text-sm text-ink-soft">ถึงเวลาประเมินผลแล้ว — การประเมินอยู่ในหน้าประเมินผล</p>}
+          {can('evaluate') && <HrEvaluationForm applicationId={app.id} status={app.status} studentLabel={app.student_name} onChanged={load} />}
           {can('certificate') && <p className="mt-1 text-sm text-ink-soft">ประเมินผ่านและฝึกครบเกณฑ์แล้ว ออก E-Certificate ให้นักศึกษาได้</p>}
           <div className="mt-3 flex flex-wrap gap-3">
             {can('certificate') && (
