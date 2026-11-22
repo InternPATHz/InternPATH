@@ -163,7 +163,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 
 **Job Object (ย่อ):** `id, company{id,name,logo_url,badges[]}, category, job_title, description, responsibilities, qualifications, allowance{type,amount_thb,text}, location, work_mode, hours_per_week, period{start,end}, target_majors[], tags[{id,name,slug}], quota, quota_available, application_deadline, status, featured, published_at` — มุมมอง HR/Admin (`/hr/jobs/**`, `/admin/jobs`) เพิ่ม `contact_notes` และ `suspended_from_status` ไม่แสดงในหน้าสาธารณะ (`/jobs/{id}`, `/search/jobs`)
 
-**`JobDraftObject` (`status=DRAFT`):** รูปแบบเดียวกับ Job Object แต่ `category, job_title, description, responsibilities, qualifications, allowance, location, work_mode, hours_per_week, period.start/end, target_majors, quota, quota_available, application_deadline` เป็น `null` ได้ (HR สร้าง DRAFT ไม่ครบได้ — data-schema §4); Job Object ปกติ (ทุกสถานะที่ไม่ใช่ `DRAFT`) ฟิลด์เหล่านี้ครบเสมอ; `DRAFT` ปรากฏเฉพาะมุมมอง HR ไม่ปรากฏใน `/jobs/{id}`, `/search/jobs`, Internal; ชนิดใน `@internpath/contracts`: `JobDraftObject`, `HrJobObject` = `JobObject | JobDraftObject`
+**`JobDraftObject` (`status=DRAFT`):** รูปแบบเดียวกับ Job Object แต่ `category, job_title, description, responsibilities, qualifications, allowance, location, work_mode, hours_per_week, period.start/end, target_majors, quota, quota_available, application_deadline` เป็น `null` ได้ (HR สร้าง DRAFT ไม่ครบได้ — data-schema §4); Job Object ปกติ (ทุกสถานะที่ไม่ใช่ `DRAFT`) ฟิลด์เหล่านี้ครบเสมอ; `DRAFT` ปรากฏในมุมมอง HR และ `/admin/jobs` ไม่ปรากฏใน `/jobs/{id}`, `/search/jobs`, Internal; ชนิดใน `@internpath/contracts`: `JobDraftObject`, `HrJobObject` = `JobObject | JobDraftObject`
 
 ### 5.2 Job Search (สาธารณะ — ไม่ต้องล็อกอิน)
 | Method | Path | Role | คำอธิบาย |
@@ -178,7 +178,11 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 5.3 Admin (Job)
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/admin/jobs` | AD | ดูงานทุกสถานะ (สำหรับอ้างอิงจากคิว) |
+| GET | `/admin/jobs` | AD | `?status=&company_id=&q=&page=&page_size=` → `{ data, meta }` ตาม §1 ดูประกาศทุกสถานะ รวม `DRAFT` ที่ข้อมูลไม่ครบ และทุกบริษัทโดยไม่จำกัดสถานะการยืนยัน เรียง `created_at DESC, id ASC` และนับ `meta.total` ด้วยตัวกรองเดียวกับรายการ |
+
+`status` ใช้ค่า Job Status, `company_id` เป็น UUID v4 และ `q` ค้นข้อความบางส่วนใน `job_title` หรือ `description` โดยไม่สนตัวพิมพ์ ตัดช่องว่างหัวท้าย รับสูงสุด 200 ตัวอักษร และข้ามตัวกรองเมื่อค่าว่าง
+
+แต่ละรายการเป็น Job Object หรือ JobDraftObject พร้อม `created_at` และฟิลด์ของมุมมอง HR/Admin ได้แก่ `contact_notes`, `suspended_from_status` และ `admin_reason` เมื่อมีค่าและตรงเงื่อนไขสถานะ ฟิลด์ `report_queue_item_id` มีเฉพาะเมื่อ Job บันทึกรอบรายงานที่ยัง active จาก E04 เป็น ID ที่ Verification ออกให้สำหรับ `/admin/queue/{id}`
 
 *การเปลี่ยนสถานะโดย Admin ไม่เรียกที่นี่โดยตรง — ผ่าน Verification (§6) ซึ่งส่ง `JobVerified` มาที่ Job*
 
