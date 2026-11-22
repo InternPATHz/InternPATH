@@ -90,7 +90,8 @@ export class AuditService {
     const [rows, total] = await Promise.all([
       this.prisma.adminAuditLog.findMany({
         where,
-        orderBy: { occurredAt: 'desc' },
+        // id ตัดสินเมื่อเวลาเท่ากัน (บันทึกในมิลลิวินาทีเดียวกันได้) ให้ลำดับและการแบ่งหน้าคงที่ ไม่ซ้ำ/ไม่หายข้ามหน้า
+        orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
         skip: skipOf(q),
         take: q.page_size,
       }),
