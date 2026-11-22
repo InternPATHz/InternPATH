@@ -299,7 +299,7 @@ Tag = ป้ายทักษะ/เทคโนโลยีของประ�
 ### 7.4 อาจารย์
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/advisor/applications` | A | `?status=ADVISOR_PENDING` เฉพาะนักศึกษาในความดูแล + ธง `flagged_for_advisor`, `major_mismatch` • มี `academic_result` (`ACADEMIC_PASS`/`ACADEMIC_FAIL`/`REPEAT_REQUIRED`) เมื่ออาจารย์บันทึกผลแล้ว ยังไม่บันทึก ⇒ ไม่มีฟิลด์ (เหมือน `GET /me/applications`; PM ตัดสิน 2026-11-22) — ใช้รูปเดียวกันใน response ของ action ฝั่งอาจารย์ (`AdvisorApplicationItem`) |
+| GET | `/advisor/applications` | A | `?status=ADVISOR_PENDING&academic_recorded=true\|false` + Pagination มาตรฐาน — เฉพาะนักศึกษาในความดูแล; `academic_recorded=false` = ยังไม่บันทึก `academic_result` ("รอบันทึกผล"), `true` = บันทึกแล้ว, ไม่ส่ง = ทั้งหมด, ค่าอื่น ⇒ `400 VALIDATION_FAILED` (ตกลงตอน #108) • ธง `flagged_for_advisor`, `major_mismatch` • มี `academic_result` (`ACADEMIC_PASS`/`ACADEMIC_FAIL`/`REPEAT_REQUIRED`) เมื่ออาจารย์บันทึกผลแล้ว ยังไม่บันทึก ⇒ ไม่มีฟิลด์ (เหมือน `GET /me/applications`; PM ตัดสิน 2026-11-22) — ใช้รูปเดียวกันใน response ของ action ฝั่งอาจารย์ (`AdvisorApplicationItem`) |
 | POST | `/advisor/applications/{id}/actions/approve` | A | `ADVISOR_PENDING`→`ADVISOR_APPROVED` |
 | POST | `/advisor/applications/{id}/actions/reject` | A | `{reason}` บังคับ |
 | GET | `/advisor/disputes` | A | คิว `FAIL_DISPUTED` |
