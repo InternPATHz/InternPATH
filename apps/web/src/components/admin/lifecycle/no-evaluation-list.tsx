@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { AdminApplicationActionResponse, ApplicationStatus, NoEvaluationCandidate, Paginated } from '@internpath/contracts';
@@ -87,6 +87,16 @@ export function NoEvaluationList() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [queryString, reloadKey, request]);
+
+  // มาจากลิงก์ "ยุติการฝึกงาน" ของหน้ารายงานปัญหา (`?terminate=`) — เลื่อนไปที่ฟอร์มหลังรายการโหลดเสร็จ
+  // (`#application-actions` ใน URL เลื่อนก่อนรายการโหลด ตำแหน่งจึงคลาด) ทำครั้งเดียวต่อรหัส
+  const terminateId = searchParams.get('terminate');
+  const scrolledFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (loading || !terminateId || scrolledFor.current === terminateId) return;
+    scrolledFor.current = terminateId;
+    document.getElementById('application-actions')?.scrollIntoView({ block: 'start' });
+  }, [loading, terminateId]);
 
   const update = useCallback((patch: Partial<Filters>) => {
     const query = toQuery({ ...filters, page: 1, ...patch });

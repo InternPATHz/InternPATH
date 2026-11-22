@@ -27,8 +27,10 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     title: 'ใบสมัครและใบรับรอง', owner: 'Tester',
     items: [
       { label: 'ใบสมัครที่รอดำเนินการ', href: '/admin/applications' },
-      { label: 'รายงานปัญหา', href: null },
+      { label: 'รายงานปัญหา', href: '/admin/problem-reports' },
       { label: 'ใบรับรอง', href: '/admin/certificates' },
+      { label: 'สถิติบริษัท', href: '/admin/company-stats' },
+      { label: 'Audit log (Lifecycle)', href: '/admin/lifecycle-audit' },
     ],
   },
   {

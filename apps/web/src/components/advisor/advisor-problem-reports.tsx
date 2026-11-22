@@ -1,35 +1,19 @@
 'use client';
 
-import { CircleCheck, Clock5, ScanSearch } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { Paginated, ProblemReportCategory, ProblemReportItem, ProblemReportStatus, ResolveProblemReportRequest } from '@internpath/contracts';
+import type { Paginated, ProblemReportItem, ProblemReportStatus, ResolveProblemReportRequest } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { type Message, NOTE_MAX, PAGE_SIZE, Pager, failure, inputClass, primaryButton, secondaryButton } from '@/components/advisor/advisor-ui';
-import { StatusBadge, type StatusTone } from '@/components/ui/status-badge';
+import {
+  PROBLEM_CATEGORY_LABEL as CATEGORY_LABEL,
+  PROBLEM_FOLLOW_UP_LABEL as FOLLOW_UP_LABEL,
+  PROBLEM_STATUS_VIEW as STATUS_VIEW,
+  type ProblemFollowUp as FollowUp,
+} from '@/components/problem-reports/problem-report-meta';
+import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDateTime } from '@/components/student/application-ui';
-
-const CATEGORY_LABEL: Record<ProblemReportCategory, string> = {
-  WORKLOAD_OR_HOURS: 'ปริมาณงานหรือชั่วโมงทำงาน',
-  NO_ALLOWANCE_AS_PROMISED: 'ไม่ได้รับค่าตอบแทนตามที่ระบุ',
-  UNSAFE_OR_HARASSMENT: 'ความไม่ปลอดภัยหรือการคุกคาม',
-  DIFFERENT_FROM_JOB_POST: 'งานไม่ตรงกับประกาศ',
-  OTHER: 'อื่น ๆ',
-};
-
-const STATUS_VIEW: Record<ProblemReportStatus, { label: string; tone: StatusTone; icon: typeof Clock5 }> = {
-  OPEN: { label: 'รอรับเรื่อง', tone: 'warning', icon: Clock5 },
-  ACKNOWLEDGED: { label: 'รับเรื่องแล้ว', tone: 'info', icon: ScanSearch },
-  RESOLVED: { label: 'ปิดเรื่องแล้ว', tone: 'success', icon: CircleCheck },
-};
-
-type FollowUp = NonNullable<ResolveProblemReportRequest['follow_up_action']>;
-const FOLLOW_UP_LABEL: Record<FollowUp, string> = {
-  MONITOR_COMPANY: 'ติดตามบริษัท',
-  TERMINATE: 'ยุติการฝึก',
-  ESCALATE_COMPANY_REVIEW: 'ส่งต่อให้ตรวจบัญชีบริษัท',
-};
 
 /**
  * รายงานปัญหาระหว่างฝึกงานของนักศึกษาในความดูแล (README §5.2.2, UAT-39) — บริษัทมองไม่เห็นรายงาน
