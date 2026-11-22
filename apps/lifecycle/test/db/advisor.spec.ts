@@ -219,6 +219,30 @@ describe('Lifecycle 1.6 — ฝั่งอาจารย์ที่ปรึ�
       const down = await http().get('/v1/advisor/applications').set('Authorization', asAdvisor()).expect(200);
       expect(down.body.data.every((r: { student_name: string }) => r.student_name === '')).to.equal(true);
     });
+
+    it('academic_result: ยังไม่บันทึก ⇒ ไม่มีฟิลด์ • หลังบันทึก ⇒ มีค่าทั้งใน response ของ academic-result และรายการ (PM ตัดสิน 2026-11-22)', async () => {
+      const passed = await seed('EVALUATED_PASS');
+      const terminated = await seed('TERMINATED', { studentUserId: randomUUID(), terminatedBy: 'COMPANY' });
+      const byId = async () => {
+        const res = await http().get('/v1/advisor/applications').set('Authorization', asAdvisor()).expect(200);
+        return new Map(res.body.data.map((r: { id: string }) => [r.id, r] as const));
+      };
+
+      const before = await byId();
+      expect(before.get(passed.id)).to.not.have.property('academic_result');
+      expect(before.get(terminated.id)).to.not.have.property('academic_result');
+
+      const done = await act(passed.id, 'academic-result', { academic_result: 'ACADEMIC_PASS' }).expect(200);
+      expect(done.body).to.include({ id: passed.id, status: 'COMPLETED', academic_result: 'ACADEMIC_PASS' });
+      const kept = await act(terminated.id, 'academic-result', { academic_result: 'REPEAT_REQUIRED' }).expect(200);
+      expect(kept.body).to.include({ id: terminated.id, status: 'TERMINATED', academic_result: 'REPEAT_REQUIRED' });
+
+      const after = await byId();
+      expect(after.get(passed.id)).to.include({ status: 'COMPLETED', academic_result: 'ACADEMIC_PASS' });
+      expect(after.get(terminated.id)).to.include({ status: 'TERMINATED', academic_result: 'REPEAT_REQUIRED' });
+      const filtered = await http().get('/v1/advisor/applications?status=TERMINATED').set('Authorization', asAdvisor()).expect(200);
+      expect(filtered.body.data[0]).to.include({ id: terminated.id, academic_result: 'REPEAT_REQUIRED' });
+    });
   });
 
   // ------------------------------------------------------------------

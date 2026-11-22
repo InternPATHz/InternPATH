@@ -11,6 +11,7 @@ import {
   ApplicationSummary, type Message, NOTE_MAX, PAGE_SIZE, Pager, failure, inputClass, primaryButton, secondaryButton,
 } from '@/components/advisor/advisor-ui';
 import { formatDate } from '@/components/student/application-ui';
+import { StatusBadge, type StatusTone } from '@/components/ui/status-badge';
 
 /** สถานะที่อาจารย์บันทึกผลวิชาได้ (Lifecycle `allowedAcademicResults`) */
 const RECORDABLE: Array<[ApplicationStatus, string]> = [
@@ -18,7 +19,15 @@ const RECORDABLE: Array<[ApplicationStatus, string]> = [
   ['EVALUATED_FAIL', 'บริษัทประเมินไม่ผ่าน'],
   ['TERMINATED', 'ยุติกลางคัน'],
   ['NO_EVALUATION', 'บริษัทไม่ประเมิน'],
+  ['COMPLETED', 'บันทึกผลแล้ว (เสร็จสิ้น)'],
 ];
+
+/** `academic_result` มีเมื่อบันทึกแล้ว (PM ตัดสิน 2026-11-22) — TERMINATED / NO_EVALUATION ยังอยู่สถานะเดิมหลังบันทึก จึงต้องแยกด้วยฟิลด์นี้ */
+const ACADEMIC_TONE: Record<AcademicResult, StatusTone> = {
+  ACADEMIC_PASS: 'success',
+  ACADEMIC_FAIL: 'danger',
+  REPEAT_REQUIRED: 'warning',
+};
 
 const ACADEMIC_LABEL: Record<AcademicResult, string> = {
   ACADEMIC_PASS: 'ผ่านรายวิชา',
@@ -149,6 +158,9 @@ function AcademicResults() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const pending = list?.data.filter((app) => !app.academic_result) ?? [];
+  const recorded = list?.data.filter((app) => app.academic_result) ?? [];
+
   function open(app: AdvisorApplicationItem) {
     setEditing(app.id);
     setResult(allowedResults(app.status)[0]);
@@ -165,9 +177,15 @@ function AcademicResults() {
     setMessage(null);
     try {
       const body: AcademicResultRequest = { academic_result: result, ...(value ? { note: value } : {}) };
-      await request(`/advisor/applications/${encodeURIComponent(app.id)}/academic-result`, { method: 'POST', body });
+      const saved = await request<AdvisorApplicationItem>(`/advisor/applications/${encodeURIComponent(app.id)}/academic-result`, { method: 'POST', body });
       setEditing(null);
-      setMessage({ tone: 'success', text: `บันทึกผล "${ACADEMIC_LABEL[result]}" ของ ${app.student_name} แล้ว การฝึกงานนี้เสร็จสิ้น` });
+      const label = ACADEMIC_LABEL[saved.academic_result ?? result];
+      setMessage({
+        tone: 'success',
+        text: saved.status === 'COMPLETED'
+          ? `บันทึกผล "${label}" ของ ${app.student_name} แล้ว การฝึกงานนี้เสร็จสิ้น`
+          : `บันทึกผล "${label}" ของ ${app.student_name} แล้ว`,
+      });
     } catch (cause) {
       setMessage({ tone: 'error', text: failure(cause) });
     } finally {
@@ -179,14 +197,18 @@ function AcademicResults() {
   return (
     <section aria-labelledby="academic-title" className="mt-12">
       <h2 id="academic-title" className="text-xl font-semibold">บันทึกผลทางวิชาการ</h2>
-      <p className="mt-1 text-sm text-ink-soft">ถ้าบริษัทประเมินไม่ผ่าน บันทึกได้เฉพาะ "ไม่ผ่านรายวิชา" หรือ "ต้องฝึกซ้ำ"</p>
+      <p className="mt-1 text-sm text-ink-soft">ถ้าบริษัทประเมินไม่ผ่าน บันทึกได้เฉพาะ "ไม่ผ่านรายวิชา" หรือ "ต้องฝึกซ้ำ" • บันทึกได้ครั้งเดียว รายการที่บันทึกแล้วแยกไว้ด้านล่าง</p>
       <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl bg-surface-muted p-4">
         <FilterSelect label="ผลจากบริษัท" value={status} onChange={(value) => { setStatus(value as ApplicationStatus); setPage(1); setEditing(null); }} options={RECORDABLE} />
       </div>
       {message && <div className="mt-3"><Notice tone={message.tone}>{message.text}</Notice></div>}
-      {list && list.data.length === 0 && <p className="mt-3 rounded-xl bg-surface-muted p-6 text-center text-sm text-ink-soft">ไม่มีรายการที่รอบันทึกผล</p>}
+      {list && list.data.length === 0 && <p className="mt-3 rounded-xl bg-surface-muted p-6 text-center text-sm text-ink-soft">ไม่มีรายการในสถานะนี้</p>}
+      {pending.length > 0 && <h3 className="mt-6 text-base font-semibold">รอบันทึกผล ({pending.length})</h3>}
+      {list && list.data.length > 0 && pending.length === 0 && status !== 'COMPLETED' && (
+        <p className="mt-3 rounded-xl bg-surface-muted p-6 text-center text-sm text-ink-soft">บันทึกผลครบทุกรายการในหน้านี้แล้ว</p>
+      )}
       <ul className="mt-3 space-y-4">
-        {list?.data.map((app) => (
+        {pending.map((app) => (
           <li key={app.id} className="rounded-xl border border-border bg-surface p-5">
             <ApplicationSummary app={app} />
             {editing === app.id ? (
@@ -217,6 +239,22 @@ function AcademicResults() {
           </li>
         ))}
       </ul>
+      {recorded.length > 0 && (
+        <>
+          <h3 className="mt-8 text-base font-semibold">บันทึกผลแล้ว ({recorded.length})</h3>
+          <ul className="mt-3 space-y-4">
+            {recorded.map((app) => (
+              <li key={app.id} className="rounded-xl border border-border bg-surface-muted p-5">
+                <ApplicationSummary app={app} />
+                <p className="mt-4 flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-ink-soft">ผลทางวิชาการ</span>
+                  {app.academic_result && <StatusBadge tone={ACADEMIC_TONE[app.academic_result]}>{ACADEMIC_LABEL[app.academic_result]}</StatusBadge>}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
       {list && <Pager page={page} total={list.meta.total} onPage={setPage} />}
     </section>
   );

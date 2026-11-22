@@ -45,7 +45,7 @@ export function ApplicationSummary({ app }: { app: AdvisorApplicationItem }) {
           {app.frozen && <StatusBadge tone="neutral">ประกาศถูกระงับชั่วคราว</StatusBadge>}
         </div>
       </div>
-      <ApplicationStatusBadge status={app.status} />
+      <ApplicationStatusBadge status={app.status} academicResult={app.academic_result} />
     </div>
   );
 }
