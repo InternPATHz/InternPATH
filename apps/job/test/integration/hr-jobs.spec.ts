@@ -4,6 +4,7 @@ import { Global, Module, type INestApplication } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
 import { expect } from 'chai';
+import sinon from 'sinon';
 import request from 'supertest';
 import { HrJobsModule } from '../../src/modules/hr-jobs/hr-jobs.module';
 import { JobVerificationTimeoutService } from '../../src/status/job-verification-timeout.service';
@@ -255,6 +256,26 @@ describe('HR Job API', function () {
       expect(res.body.error.code).to.equal('STATE_CONFLICT');
     }
     await http().post(`${base}/${legacy.id}/actions/submit`).set(owner).expect(409);
+  });
+
+  it('allows reopen through the Bangkok deadline date and rejects it at the next midnight', async () => {
+    const deadline = new Date('2098-11-16');
+    const lastDay = await seedJob(db.prisma, 'CLOSED', { companyId, applicationDeadline: deadline });
+    const expired = await seedJob(db.prisma, 'CLOSED', { companyId, applicationDeadline: deadline });
+    const clock = sinon.useFakeTimers({ now: new Date('2098-11-16T16:59:59.999Z'), toFake: ['Date'] });
+    try {
+      const deadlineOwner = auth(companyId);
+      const reopened = await http().post(`${base}/${lastDay.id}/actions/reopen`).set(deadlineOwner).expect(200);
+      expect(reopened.body.status).to.equal('PUBLISHED');
+
+      clock.setSystemTime(new Date('2098-11-16T17:00:00.000Z'));
+      const rejected = await http().post(`${base}/${expired.id}/actions/reopen`).set(deadlineOwner).expect(409);
+      expect(rejected.body.error.code).to.equal('STATE_CONFLICT');
+      expect(await db.prisma.job.findUniqueOrThrow({ where: { id: expired.id } })).to.deep.equal(expired);
+      expect(await db.prisma.outboxEvent.count({ where: { aggregateId: expired.id } })).to.equal(0);
+    } finally {
+      clock.restore();
+    }
   });
 
   for (const status of ['VERIFYING', 'PENDING_REVIEW', 'SUSPENDED', 'REMOVED'] as const) {

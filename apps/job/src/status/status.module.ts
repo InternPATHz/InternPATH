@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { JobDeadlineClosureService } from './job-deadline-closure.service';
 import { JobReportRoundCleanupService } from './job-report-round-cleanup.service';
 import { JobReportRoundService } from './job-report-round.service';
 import { JobStatusTransitionService } from './job-status-transition.service';
@@ -10,6 +11,7 @@ import { JobVerificationService } from './job-verification.service';
     JobStatusTransitionService,
     JobVerificationService,
     JobVerificationTimeoutService,
+    JobDeadlineClosureService,
     JobReportRoundService,
     JobReportRoundCleanupService,
   ],
