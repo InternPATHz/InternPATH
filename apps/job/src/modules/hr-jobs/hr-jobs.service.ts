@@ -18,6 +18,7 @@ import {
   availableQuota,
   changeFields,
   jobFields,
+  jobPublicAssetBase,
   jobTags,
   presentJob,
   requireFields,
@@ -73,9 +74,10 @@ export class HrJobsService {
       ],
       { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
     );
+    const publicBase = jobPublicAssetBase(this.config);
     return {
       data: jobs.map((job) =>
-        presentJob(job, company, entitlement?.featuredEnabled ?? false, this.publicBase()),
+        presentJob(job, company, entitlement?.featuredEnabled ?? false, publicBase),
       ),
       meta: { page, page_size: pageSize, total },
     };
@@ -423,15 +425,11 @@ export class HrJobsService {
       tx.companySnapshot.findUnique({ where: { companyId } }),
       tx.companyEntitlement.findUnique({ where: { companyId } }),
     ]);
-    return presentJob(job, company, entitlement?.featuredEnabled ?? false, this.publicBase());
-  }
-
-  private publicBase(): string | undefined {
-    const endpoint = this.config.get<string>('S3_ENDPOINT');
-    const bucket = this.config.get<string>('S3_BUCKET_PUBLIC');
-    return (
-      this.config.get<string>('S3_PUBLIC_BASE_URL') ||
-      (endpoint && bucket ? `${endpoint.replace(/\/$/, '')}/${bucket}` : undefined)
+    return presentJob(
+      job,
+      company,
+      entitlement?.featuredEnabled ?? false,
+      jobPublicAssetBase(this.config),
     );
   }
 }

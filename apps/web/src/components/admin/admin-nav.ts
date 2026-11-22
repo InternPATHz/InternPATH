@@ -34,7 +34,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     title: 'ประกาศงาน', owner: 'JR',
     items: [
-      { label: 'ประกาศทุกสถานะ', href: null },
+      { label: 'ประกาศทุกสถานะ', href: '/admin/jobs' },
       { label: 'Tag ทักษะ', href: '/admin/tags' },
     ],
   },

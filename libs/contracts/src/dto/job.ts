@@ -1,5 +1,6 @@
 // ต้องตรงกับ docs/api-contract.md §5 (Job) และ §9 (Internal) — เฉพาะที่เอกสารระบุไว้
 import type { JobCategory, JobStatus, WorkMode } from '../enums';
+import type { PageQuery } from './common';
 
 /** Internal Job → Identity lookup for Directory category filtering (§9). */
 export interface DirectoryCompanyIdsResponse {
@@ -56,7 +57,7 @@ export interface JobObject {
 
 /**
  * ประกาศสถานะ `DRAFT` — HR สร้างได้แม้กรอกไม่ครบ (data-schema §4: ฟิลด์เนื้อหา/โครงสร้างเป็น nullable; ตรวจความครบตอน `actions/submit`)
- * ปรากฏเฉพาะมุมมอง HR (`POST /hr/jobs`, `GET /hr/jobs`, `GET /hr/jobs/{id}`, `PATCH /hr/jobs/{id}`) — ไม่ปรากฏในหน้าสาธารณะ/Search/Internal
+ * ปรากฏในมุมมอง HR และ Admin (`GET /admin/jobs`) เท่านั้น
  */
 export interface JobDraftObject {
   id: string;
@@ -101,6 +102,19 @@ export interface HrJobExtras {
  * เหตุผลที่ Admin ปฏิเสธ (`ADMIN_REJECTED`) แสดงจาก `GET /hr/jobs/{id}` ผ่านฟิลด์ `HrJobExtras.admin_reason` (ปรับ 2026-11-21: ตัดผลตรวจอัตโนมัติและอุทธรณ์)
  */
 export type HrJobDetail = HrJobObject & HrJobExtras;
+
+export interface AdminJobsQuery extends Pick<PageQuery, 'page' | 'page_size'> {
+  status?: JobStatus;
+  company_id?: string;
+  q?: string;
+}
+
+/** GET /admin/jobs (§5.3) */
+export type AdminJobItem = HrJobDetail & {
+  created_at: string;
+  /** Verification queue ID from the active E04 report round, when recorded by Job. */
+  report_queue_item_id?: string;
+};
 
 /** ฟิลด์ที่ HR แก้ได้ของประกาศ (api-contract §5.1) — ฟิลด์ที่ต้องครบก่อน `submit` ดู data-schema §4 */
 export interface JobWritableFields {

@@ -1,5 +1,6 @@
 import { AppException } from '@internpath/common';
 import type { HrJobDetail, HrJobObject, JobTag } from '@internpath/contracts';
+import type { ConfigService } from '@nestjs/config';
 import type { CompanySnapshot, Job, Prisma } from '../../../generated/client';
 import type { WriteJobDto } from './dto';
 
@@ -92,6 +93,15 @@ export function changeFields(job: Job, next: Job): string[] {
   return Object.entries(fields)
     .filter(([, keys]) => keys.some((key) => job[key] !== next[key]))
     .map(([field]) => field);
+}
+
+export function jobPublicAssetBase(config: ConfigService): string | undefined {
+  const endpoint = config.get<string>('S3_ENDPOINT');
+  const bucket = config.get<string>('S3_BUCKET_PUBLIC');
+  return (
+    config.get<string>('S3_PUBLIC_BASE_URL') ||
+    (endpoint && bucket ? `${endpoint.replace(/\/$/, '')}/${bucket}` : undefined)
+  );
 }
 
 export function presentJob(
