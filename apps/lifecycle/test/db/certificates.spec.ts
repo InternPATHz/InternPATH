@@ -501,6 +501,53 @@ describe('Lifecycle 1.7 — E-Certificate (HTTP + Postgres จริง)', funct
   });
 
   // ------------------------------------------------------------------
+  describe('Admin ค้นใบจากรหัส GET /admin/lifecycle/certificates?code= (PM อนุมัติ 2026-11-22)', () => {
+    const search = (query: Record<string, string>, token = asAdmin()) =>
+      http().get('/v1/admin/lifecycle/certificates').query(query).set('Authorization', token);
+
+    it('รหัสตรง ⇒ 1 ใบเป็น CertificateItem เท่ากับผลตอนออก + Pagination มาตรฐาน; ใช้ id ที่ได้เพิกถอนได้ทันที', async () => {
+      const { certificate } = await issued();
+      const res = await search({ code: certificate.certificate_code }).expect(200);
+      expect(res.body.meta).to.deep.equal({ page: 1, page_size: 20, total: 1 });
+      expect(res.body.data).to.deep.equal([certificate]);
+      expect(Object.keys(res.body.data[0]).sort()).to.deep.equal(
+        ['actual_days', 'certificate_code', 'company_name', 'id', 'issued_at', 'job_title', 'period', 'status'],
+      );
+
+      await revokeAdmin(res.body.data[0].id).expect(200);
+      expect((await search({ code: certificate.certificate_code }).expect(200)).body.data[0]).to.include({ id: certificate.id, status: 'REVOKED' });
+    });
+
+    it('ตัดช่องว่างหน้า-หลัง และไม่สนตัวพิมพ์ ⇒ พบใบเดิม', async () => {
+      const { certificate } = await issued();
+      const res = await search({ code: `  ${certificate.certificate_code.toLowerCase()}\t` }).expect(200);
+      expect(res.body.data.map((c: { id: string }) => c.id)).to.deep.equal([certificate.id]);
+    });
+
+    it('ไม่พบ / รูปแบบผิด / รหัสบางส่วน ⇒ 200 data ว่าง total 0 (ไม่ใช่ 404 และไม่ค้นแบบ prefix)', async () => {
+      const { certificate } = await issued();
+      for (const code of ['IP-2026-ZZZZZZZZ', 'not-a-code', certificate.certificate_code.slice(0, -1)]) {
+        const res = await search({ code }).expect(200);
+        expect(res.body).to.deep.equal({ data: [], meta: { page: 1, page_size: 20, total: 0 } });
+      }
+    });
+
+    it('ไม่ส่ง code / ช่องว่างล้วน / ยาวเกิน 100 ⇒ 400 VALIDATION_FAILED', async () => {
+      for (const query of [{}, { code: '   ' }, { code: 'X'.repeat(101) }] as Record<string, string>[]) {
+        expect((await search(query).expect(400)).body.error.code).to.equal('VALIDATION_FAILED');
+      }
+    });
+
+    it('เฉพาะ PLATFORM_ADMIN — HR (แม้เป็นบริษัทเจ้าของใบ)/นักศึกษา ⇒ 403 FORBIDDEN_ROLE; ไม่ล็อกอิน ⇒ 401', async () => {
+      const { certificate } = await issued();
+      const code = certificate.certificate_code;
+      expect((await search({ code }, asHr()).expect(403)).body.error.code).to.equal('FORBIDDEN_ROLE');
+      expect((await search({ code }, asStudent()).expect(403)).body.error.code).to.equal('FORBIDDEN_ROLE');
+      await http().get('/v1/admin/lifecycle/certificates').query({ code }).expect(401);
+    });
+  });
+
+  // ------------------------------------------------------------------
   describe('หน้าตรวจสอบสาธารณะ GET /public/certificates/{code} (UAT-23 ข้อ 1, 4)', () => {
     it('ไม่ต้องล็อกอิน ⇒ VALID + ข้อมูลจำกัดเท่านั้น + noindex; หลังเพิกถอน ⇒ REVOKED', async () => {
       const { certificate } = await issued();

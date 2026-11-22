@@ -343,6 +343,7 @@ Tag = ป้ายทักษะ/เทคโนโลยีของประ�
 | GET | `/admin/lifecycle/no-evaluation-candidates` | AD | ใบสมัครที่ HR ไม่ประเมินครบ 14 วัน (`IN_PROGRESS` / `TERMINATED` ฝึก ≥ 30 วัน / `REEVALUATION_REQUESTED`) |
 | POST | `/admin/lifecycle/applications/{id}/actions/confirm-no-evaluation` | AD | → `NO_EVALUATION` |
 | POST | `/admin/lifecycle/applications/{id}/actions/terminate` | AD | `{reason}` |
+| GET | `/admin/lifecycle/certificates` | AD | `?code=<certificate_code>` (บังคับ) + Pagination มาตรฐาน → `CertificateItem` (§7.5: `id`, `certificate_code`, `status`, ชื่อบริษัท/ตำแหน่ง, วันที่ออก) — เทียบรหัสแบบตรงตัวหลังตัดช่องว่าง ไม่สนตัวพิมพ์; ไม่พบ ⇒ `data: []` (ไม่ใช่ 404); ไม่ส่ง `code` ⇒ `400 VALIDATION_FAILED` • ใช้หา `id` ของใบเพื่อ `revoke` (PM อนุมัติ 2026-11-22) |
 | POST | `/admin/lifecycle/certificates/{id}/actions/revoke` | AD | `{reason}` |
 | POST | `/admin/lifecycle/students/{user_id}/reapply-unlock` | AD | `{reason}` → บันทึก Audit |
 | GET | `/admin/lifecycle/problem-reports` | AD | |
