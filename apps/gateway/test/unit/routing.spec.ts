@@ -8,7 +8,7 @@ describe('Gateway routing contract §3', () => {
       ['/advisor-links/students', 'identity'], ['/advisor-links/students/1/invitation', 'identity'], ['/companies/me/documents', 'identity'],
       ['/directory/companies', 'identity'], ['/admin/companies/1', 'identity'], ['/admin/advisors', 'identity'],
       ['/admin/students/1/advisor', 'identity'], ['/admin/users/1', 'identity'], ['/admin/audit-logs', 'identity'],
-      ['/hr/jobs/1', 'job'], ['/jobs/1', 'job'], ['/search/jobs', 'job'], ['/admin/jobs/1', 'job'],
+      ['/hr/jobs/1', 'job'], ['/jobs/1', 'job'], ['/search/jobs', 'job'], ['/admin/jobs', 'job'], ['/admin/jobs/1', 'job'],
       ['/tags', 'job'], ['/admin/tags', 'job'], ['/admin/tags/1', 'job'],
       ['/admin/queue', 'verification'],
       ['/admin/flags/companies', 'verification'], ['/jobs/1/reports', 'verification'],
@@ -22,7 +22,7 @@ describe('Gateway routing contract §3', () => {
     ] as const;
     for (const [path, service] of cases) expect(resolveService(path), path).to.equal(service);
     for (const path of ['/internal/v1/denylist', '/internal', '/unknown', '/advisors', '/advisors/1', '/jobs-extra',
-      '/admin/blacklist', '/admin/risk-rules', '/tags-extra'])
+      '/admin/blacklist', '/admin/risk-rules', '/tags-extra', '/admin/jobs-extra'])
       expect(resolveService(path), path).to.equal(undefined);
   });
 
@@ -46,7 +46,7 @@ describe('Gateway routing contract §3', () => {
     }
     for (const path of ['/jobs/abc/reports', '/jobs/abc/extra', '/jobs', '/search/jobs/x', '/search',
       '/directory/companies/abc/members', '/directory', '/companies/abc/reviews/1', '/companies/me',
-      '/hr/jobs/abc', '/admin/jobs/abc', '/jobs-extra/abc', '/admin/tags', '/tags/abc'])
+      '/hr/jobs/abc', '/admin/jobs', '/admin/jobs/abc', '/jobs-extra/abc', '/admin/tags', '/tags/abc'])
       expect(isPublicRoute('GET', path), path).to.equal(false);
     expect(isPublicRoute('POST', '/jobs/abc/reports')).to.equal(false);
   });
