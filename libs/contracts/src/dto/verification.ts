@@ -7,6 +7,8 @@ export interface AdminQueueQuery {
   priority?: 'NORMAL' | 'FAST_TRACK';
   overdue?: boolean;
   status?: QueueItemStatus;
+  /** UUID ของเป้าหมาย (เช่น job_id) — เฉพาะรายการของเป้าหมายนั้นทุกชนิดคิว */
+  target_id?: string;
   page?: number;
   page_size?: number;
 }

@@ -108,10 +108,39 @@ describe('Admin queue API (Postgres จริง)', function () {
       expect(p2.data).to.have.length(1);
     });
 
+    it('target_id กรองเฉพาะรายการของประกาศนั้น (ทุกชนิดคิว) ใช้ร่วมกับ status ได้ และ meta.total นับตามตัวกรอง', async () => {
+      const companyId = randomUUID();
+      const jobId = randomUUID();
+      const mk = (over: Partial<Parameters<QueueService['createItem']>[1]>) =>
+        t.prisma.$transaction((tx) =>
+          queue.createItem(tx, {
+            type: 'JOB_REVIEW', jobId, companyId, submissionId: randomUUID(), fastTrack: false, origin: 'FLAGGED_COMPANY', ...over,
+          }),
+        );
+      // รอบเก่าที่ปิดแล้ว ⇒ เปิดรอบใหม่ของประกาศเดียวกัน (JOB_REVIEW) + รายการรายงาน (JOB_REPORT)
+      const old = await mk({});
+      await t.prisma.queueItem.update({ where: { id: old.id }, data: { status: 'RESOLVED', resolvedAt: new Date() } });
+      const review = await mk({});
+      const report = await t.prisma.$transaction((tx) =>
+        queue.createReportItem(tx, { jobId, companyId, submissionId: null, origin: 'REPORT_THRESHOLD' }),
+      );
+      await mk({ jobId: randomUUID() }); // ประกาศอื่น — ต้องไม่ติดมา
+
+      const list = (qs: string) => http().get(`/v1/admin/queue${qs}`).set(admin).expect(200).then((r) => r.body);
+      const open = await list(`?target_id=${jobId}`);
+      expect(open.meta.total).to.equal(2);
+      expect(open.data.map((x: any) => x.id).sort()).to.deep.equal([review.id, report.id].sort());
+      expect(open.data.every((x: any) => x.target_id === jobId)).to.equal(true);
+      expect((await list(`?target_id=${jobId}&status=RESOLVED`)).data.map((x: any) => x.id)).to.deep.equal([old.id]);
+      expect((await list(`?target_id=${jobId}&type=JOB_REPORT`)).data.map((x: any) => x.id)).to.deep.equal([report.id]);
+      expect((await list(`?target_id=${randomUUID()}`)).meta.total).to.equal(0);
+    });
+
     it('ตัวกรองที่ไม่ถูกต้อง → 400', async () => {
       await http().get('/v1/admin/queue?type=NOPE').set(admin).expect(400);
       await http().get('/v1/admin/queue?priority=URGENT').set(admin).expect(400);
       await http().get('/v1/admin/queue?page_size=101').set(admin).expect(400);
+      await http().get('/v1/admin/queue?target_id=not-a-uuid').set(admin).expect(400);
     });
   });
 

@@ -69,6 +69,7 @@ export class QueueQueryService {
     const and: Prisma.QueueItemWhereInput[] = [];
     if (q.type) and.push({ type: q.type });
     if (q.priority) and.push({ priority: q.priority });
+    if (q.target_id) and.push({ targetId: q.target_id.toLowerCase() });
 
     // ไม่ส่ง status ⇒ เฉพาะงานที่ยังไม่ปิด (OPEN/IN_REVIEW) — ดูที่ปิดแล้วด้วย status=RESOLVED
     and.push(q.status ? { status: q.status } : { status: { not: 'RESOLVED' } });
