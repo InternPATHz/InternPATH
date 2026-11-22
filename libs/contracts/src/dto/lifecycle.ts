@@ -130,6 +130,14 @@ export interface ReapplyUnlockRequest {
   reason: string;
 }
 
+/**
+ * GET /admin/lifecycle/certificates — ค้นใบรับรองจากรหัสบนใบ (`IP-…`) เพื่อเอา `id` ไปเพิกถอน (PM อนุมัติ 2026-11-22)
+ * เทียบตรงตัวหลังตัดช่องว่าง ไม่สนตัวพิมพ์ • ผล = `Paginated<CertificateItem>`; ไม่พบ ⇒ `data: []` (ไม่ใช่ 404)
+ */
+export interface AdminCertificatesQuery {
+  code: string;
+}
+
 // ---- 8 Notification ----
 export interface NotificationsQuery {
   unread?: boolean;

@@ -214,6 +214,20 @@ export class CertificatesService {
     return this.revoke(cert, user.sub, 'COMPANY_HR', reason, correlationId, now);
   }
 
+  /**
+   * `GET /admin/lifecycle/certificates?code=` — Admin ค้นจากรหัสบนใบเพื่อเอา `id` ไปเพิกถอน (PM อนุมัติ 2026-11-22)
+   * `code` ถูกตัดช่องว่าง/ทำเป็นตัวพิมพ์ใหญ่ที่ DTO แล้ว ⇒ เทียบตรงตัว (unique ⇒ ได้ 0–1 ใบ) • รวมใบ `REVOKED`
+   * ไม่พบหรือรูปแบบผิด ⇒ `data: []` (ไม่ใช่ 404) • ห่อ Pagination มาตรฐานเพื่อให้รูปเหมือนรายการอื่นของ Admin
+   */
+  async searchByCode(code: string, page = 1, pageSize = 20): Promise<Paginated<CertificateItem>> {
+    const cert = isCertificateCode(code) ? await this.db.certificate.findUnique({ where: { certificateCode: code } }) : null;
+    const rows = cert ? [cert] : [];
+    return {
+      data: rows.slice((page - 1) * pageSize, page * pageSize).map(toCertificateItem),
+      meta: { page, page_size: pageSize, total: rows.length },
+    };
+  }
+
   /** `POST /admin/lifecycle/certificates/{id}/actions/revoke` — ทุกใบ + `admin_audit_log` (README §5.10) */
   async revokeByAdmin(user: JwtClaims, certificateId: string, reason: string | undefined, correlationId?: string, now = new Date()) {
     const cert = await this.db.certificate.findUnique({ where: { id: certificateId } });

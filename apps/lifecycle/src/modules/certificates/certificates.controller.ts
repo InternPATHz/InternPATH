@@ -7,7 +7,7 @@ import type {
   PublicCertificateResponse,
 } from '@internpath/contracts';
 import { PageQueryDto } from '../resumes/resumes.dto';
-import { RevokeCertificateDto } from './certificates.dto';
+import { AdminCertificatesQueryDto, RevokeCertificateDto } from './certificates.dto';
 import { CertificatesService } from './certificates.service';
 import { PublicCertificateRateLimitGuard } from './public-rate-limit.guard';
 
@@ -66,12 +66,17 @@ export class MyCertificatesController {
   }
 }
 
-/** api-contract §7.7 — Admin เพิกถอนใบใดก็ได้ + `admin_audit_log` */
+/** api-contract §7.7 — Admin ค้นใบจากรหัสบนใบ แล้วเพิกถอนใบใดก็ได้ + `admin_audit_log` */
 @Controller('admin/lifecycle/certificates')
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles('PLATFORM_ADMIN')
 export class AdminCertificatesController {
   constructor(private readonly service: CertificatesService) {}
+
+  @Get()
+  search(@Query() query: AdminCertificatesQueryDto): Promise<Paginated<CertificateItem>> {
+    return this.service.searchByCode(query.code, query.page, query.page_size);
+  }
 
   @Post(':id/actions/revoke')
   @HttpCode(200)
