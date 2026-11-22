@@ -159,7 +159,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/hr/jobs/{id}/actions/reopen` | H | `CLOSED`→`PUBLISHED` (ต้องยังไม่เลย deadline และโควตาเหลือ) |
 | PUT | `/hr/jobs/{id}/featured` | H | `{enabled}` — ต้องมี `featured_enabled` และงานเป็น `PUBLISHED` |
 
-**ล็อกสายงาน:** แก้ `category` ได้เฉพาะสถานะ `DRAFT` สถานะอื่นส่งค่าเดิมได้ หากส่งค่าต่างจากเดิมตอบ `400 VALIDATION_FAILED` (`details[].issue=CATEGORY_LOCKED`) หากต้องการเปลี่ยนสายงานให้ปิดประกาศแล้วสร้างใหม่ เพื่อให้ Lifecycle ใช้สายงานเดิมกับใบสมัครของประกาศเดิมได้อย่างถูกต้อง
+**ล็อกสายงาน** สำหรับ `PATCH /hr/jobs/{id}` หลังยืนยันตัวตน ตรวจสิทธิ์ และตรวจความถูกต้องของคำขอแล้ว สถานะ `DRAFT` อนุญาตให้เปลี่ยน `category` ได้ตามสิทธิ์ของผู้ใช้ ส่วน `PUBLISHED`, `ADMIN_REJECTED` และ `CLOSED` รับ `category` ค่าเดิมได้ แต่ถ้าส่งค่าต่างจากเดิมจะตอบ `400 VALIDATION_FAILED` (`details[].issue = CATEGORY_LOCKED`) ในสามสถานะนี้ หาก PATCH ส่งเพียง `category` ค่าเดิม ระบบจะไม่ส่ง E03 และไม่เพิ่ม `version` ของประกาศ สำหรับ `VERIFYING`, `PENDING_REVIEW`, `SUSPENDED` และ `REMOVED` ระบบตอบ `409 STATE_CONFLICT` ทั้งเมื่อส่ง `category` ค่าเดิมหรือค่าอื่น หากต้องการเปลี่ยนสายงานหลังพ้นสถานะ `DRAFT` ให้ปิดประกาศแล้วสร้างใหม่ เพื่อให้ Lifecycle ใช้สายงานเดิมกับใบสมัครของประกาศเดิมได้อย่างถูกต้อง
 
 **Job Object (ย่อ):** `id, company{id,name,logo_url,badges[]}, category, job_title, description, responsibilities, qualifications, allowance{type,amount_thb,text}, location, work_mode, hours_per_week, period{start,end}, target_majors[], tags[{id,name,slug}], quota, quota_available, application_deadline, status, featured, published_at` — มุมมอง HR/Admin (`/hr/jobs/**`, `/admin/jobs`) เพิ่ม `contact_notes` และ `suspended_from_status` ไม่แสดงในหน้าสาธารณะ (`/jobs/{id}`, `/search/jobs`)
 
