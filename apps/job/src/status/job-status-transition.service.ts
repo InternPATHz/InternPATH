@@ -6,14 +6,17 @@ import type {
   JobStatusChangedPayload,
 } from '@internpath/contracts';
 import { Injectable, Logger } from '@nestjs/common';
-import type { Job } from '../../generated/client';
+import type { Job, Prisma } from '../../generated/client';
 import type { Tx } from '../prisma/types';
 
 interface Transition {
   to: JobStatus;
   correlationId: string;
   historyReason: string;
-  actorRole: Extract<ActorRole, 'SYSTEM' | 'PLATFORM_ADMIN'>;
+  actorRole: Extract<ActorRole, 'SYSTEM' | 'PLATFORM_ADMIN' | 'COMPANY_HR'>;
+  actorId?: string;
+  submissionId?: string;
+  changes?: Prisma.JobUpdateManyMutationInput;
   reasonCode?: string;
   applicationEffect?: ApplicationEffect;
   suspendedFromStatus?: JobStatus | null;
@@ -21,7 +24,7 @@ interface Transition {
   adminReason?: string | null;
 }
 
-/** Called only with the EventConsumer transaction: never opens or commits its own transaction. */
+/** Records the update, history and outbox event in the caller’s transaction. */
 @Injectable()
 export class JobStatusTransitionService {
   private readonly log = new Logger(JobStatusTransitionService.name);
@@ -49,6 +52,7 @@ export class JobStatusTransitionService {
         entityVersion: before.entityVersion,
       },
       data: {
+        ...transition.changes,
         status: transition.to,
         version: { increment: via ? 2 : 1 },
         entityVersion: { increment: via ? 2 : 1 },
@@ -105,8 +109,7 @@ export class JobStatusTransitionService {
         entityId: before.id,
         fromStatus: before.status,
         toStatus: transition.to,
-        // E02 identifies the deciding role, but does not carry the actor's user ID.
-        actorId: null,
+        actorId: transition.actorId ?? null,
         actorRole: transition.actorRole,
         reason: transition.historyReason,
         correlationId,
@@ -120,6 +123,7 @@ export class JobStatusTransitionService {
       to_status: transition.to,
       entity_version: before.entityVersion + 1,
       changed_at: now.toISOString(),
+      ...(transition.submissionId ? { submission_id: transition.submissionId } : {}),
       ...(transition.reasonCode === undefined ? {} : { reason_code: transition.reasonCode }),
       ...(transition.applicationEffect === undefined
         ? {}

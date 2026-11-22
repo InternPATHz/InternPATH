@@ -11,7 +11,7 @@ import {
 } from '@/components/hr/jobs/job-ui';
 import { ApiError } from '@/lib/api';
 import { HR_JOBS_MOCK, hrJobsApi, missingRequired } from '@/lib/hr-jobs';
-import { CATEGORIES } from '@/lib/mock-landing';
+import { CATEGORIES } from '@/lib/categories';
 
 const failure = (cause: unknown) => (cause instanceof ApiError || cause instanceof Error ? cause.message : 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่');
 
@@ -83,6 +83,10 @@ export function HrJobDetail() {
 
   const { status } = job;
   const category = CATEGORIES.find((entry) => entry.id === job.category)?.label;
+  const allowance = job.allowance;
+  const allowanceLabel = allowance?.type === 'AMOUNT'
+    ? [`${allowance.amount_thb ?? '-'} บาท`, allowance.text].filter(Boolean).join(' · ')
+    : allowance ? (allowance.text || 'ไม่มีเบี้ยเลี้ยง') : '-';
   const canSubmit = SUBMITTABLE_STATUSES.includes(status);
   const missing = canSubmit ? missingRequired(job as unknown as Record<string, unknown>) : [];
   const showApplicants = status === 'PUBLISHED' || status === 'CLOSED';
@@ -137,7 +141,7 @@ export function HrJobDetail() {
       )}
 
       <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-3">
-        <Fact label="เบี้ยเลี้ยง">{job.allowance ? (job.allowance.text || (job.allowance.type === 'AMOUNT' ? `${job.allowance.amount_thb ?? '-'} บาท` : 'ไม่มีเบี้ยเลี้ยง')) : '-'}</Fact>
+        <Fact label="เบี้ยเลี้ยง">{allowanceLabel}</Fact>
         <Fact label="ชั่วโมงต่อสัปดาห์">{job.hours_per_week ?? '-'}</Fact>
         <Fact label="จำนวนที่รับ">{job.quota !== null ? `${job.quota} ตำแหน่ง${job.quota_available !== null ? ` (เหลือ ${job.quota_available})` : ''}` : '-'}</Fact>
         <Fact label="ช่วงฝึกงาน">{job.period.start && job.period.end ? `${formatDay(job.period.start)} – ${formatDay(job.period.end)}` : '-'}</Fact>
