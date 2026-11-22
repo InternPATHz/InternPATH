@@ -11,21 +11,28 @@ import { ItemBadges, STATUS_LABEL, TYPE_LABEL, formatDateTime } from './queue-ui
 
 const PAGE_SIZE = 20;
 
-/** ตัวกรองเก็บใน URL เพื่อแชร์ลิงก์/รีเฟรชแล้วคงค่าเดิม; `status` ไม่ระบุ = เฉพาะที่ยังไม่ปิด (ตรงกับ API) */
-type Filters = { type: string; status: string; overdue: string; page: number };
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * ตัวกรองเก็บใน URL เพื่อแชร์ลิงก์/รีเฟรชแล้วคงค่าเดิม; `status` ไม่ระบุ = เฉพาะที่ยังไม่ปิด (ตรงกับ API)
+ * `target_id` = ดูคิวทุกชนิดของเป้าหมายเดียว (เช่นลิงก์จากหน้า Admin Jobs) — ค่าที่ไม่ใช่ UUID ไม่ส่งต่อ (API ตอบ 400)
+ */
+type Filters = { type: string; status: string; overdue: string; target_id: string; page: number };
 
 function readFilters(params: URLSearchParams): Filters {
   const page = Number(params.get('page'));
+  const target = params.get('target_id') ?? '';
   return {
     type: params.get('type') ?? '',
     status: params.get('status') ?? '', overdue: params.get('overdue') ?? '',
+    target_id: UUID.test(target) ? target.toLowerCase() : '',
     page: Number.isInteger(page) && page > 0 ? page : 1,
   };
 }
 
 function toQuery(filters: Filters): string {
   const query = new URLSearchParams();
-  for (const key of ['type', 'status', 'overdue'] as const) if (filters[key]) query.set(key, filters[key]);
+  for (const key of ['type', 'status', 'overdue', 'target_id'] as const) if (filters[key]) query.set(key, filters[key]);
   if (filters.page > 1) query.set('page', String(filters.page));
   return query.toString();
 }
@@ -84,6 +91,16 @@ export function QueueList() {
           เฉพาะเกินกำหนด
         </label>
       </div>
+
+      {filters.target_id && (
+        <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-primary-soft px-4 py-3 text-sm">
+          <span>
+            แสดงเฉพาะคิวของรายการ <span className="font-mono text-xs">{filters.target_id}</span>
+            {!filters.status && ' (ที่ยังไม่ปิด — เลือกสถานะ "ปิดแล้ว" เพื่อดูประวัติ)'}
+          </span>
+          <button type="button" onClick={() => update({ target_id: '' })} className="font-medium text-primary hover:underline">ดูคิวทั้งหมด</button>
+        </div>
+      )}
 
       {error && <div className="mt-4"><Notice tone="error">{error}</Notice></div>}
 

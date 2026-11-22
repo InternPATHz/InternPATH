@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsIn, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { PageQuery } from '../common/pagination';
 import { NoNul } from '../common/no-nul';
 
@@ -26,6 +26,11 @@ export class QueueQuery extends PageQuery {
   @Transform(toBool)
   @IsBoolean()
   overdue?: boolean;
+
+  /** เฉพาะรายการของเป้าหมายนี้ (เช่น job_id) — ใช้จากหน้า Admin Jobs เพื่อดูคิวทุกชนิดของประกาศหนึ่ง */
+  @IsOptional()
+  @IsUUID()
+  target_id?: string;
 }
 
 export class RejectDto {
