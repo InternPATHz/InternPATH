@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { isUUID } from 'class-validator';
 import { Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { applicationDeadlinePassed, bangkokDate } from '../../status/application-deadline';
 import type { SearchJobsQueryDto } from './search-jobs-query.dto';
 
 type PublicJobRow = Omit<
@@ -62,7 +63,8 @@ export class PublicJobsService {
     const page = query.page ?? 1;
     const pageSize = query.page_size ?? 20;
     const offset = BigInt(page - 1) * BigInt(pageSize);
-    const filters = [Prisma.sql`j.status = 'PUBLISHED'`];
+    const today = bangkokDate(new Date());
+    const filters = [Prisma.sql`j.status = 'PUBLISHED' AND j.application_deadline >= ${today}::date`];
     if (query.category) filters.push(Prisma.sql`j.category = ${query.category}::job_category`);
     if (query.work_mode) filters.push(Prisma.sql`j.work_mode = ${query.work_mode}::work_mode`);
     if (query.company_id) filters.push(Prisma.sql`j.company_id = ${query.company_id}::uuid`);
@@ -117,13 +119,20 @@ export class PublicJobsService {
   }
 
   async detail(id: string): Promise<JobObject> {
+    const now = new Date();
     if (isUUID(id, '4')) {
       const [row] = await this.db.$queryRaw<PublicJobRow[]>`
         SELECT ${PUBLIC_COLUMNS}
         ${WITH_VERIFIED_COMPANY} ${WITH_ENTITLEMENT}
         WHERE j.id = ${id}::uuid AND j.status IN ('PUBLISHED', 'CLOSED')
       `;
-      if (row) return this.toJobObject(row, (await this.tagsFor([row.id])).get(row.id) ?? []);
+      if (row) {
+        const job = this.toJobObject(row, (await this.tagsFor([row.id])).get(row.id) ?? []);
+        if (job.status === 'PUBLISHED' && applicationDeadlinePassed(row.application_deadline, now)) {
+          return { ...job, status: 'CLOSED', featured: false };
+        }
+        return job;
+      }
     }
     throw new AppException('NOT_FOUND', 'ไม่พบประกาศงาน', 404);
   }

@@ -7,6 +7,7 @@ import { InvalidMessageError, isUuid } from '@internpath/common';
 import { Injectable, Logger } from '@nestjs/common';
 import { isUUID } from 'class-validator';
 import type { Tx } from '../prisma/types';
+import { applicationDeadlinePassed } from './application-deadline';
 import { JobStatusTransitionService } from './job-status-transition.service';
 
 const EVENT_TIMESTAMP =
@@ -29,21 +30,6 @@ function eventTimestamp(value: unknown): Date | undefined {
 
 function actorRole(decidedBy: JobVerifiedPayload['decided_by']) {
   return decidedBy === 'ADMIN' ? 'PLATFORM_ADMIN' : 'SYSTEM';
-}
-
-const BANGKOK_DATE = new Intl.DateTimeFormat('en', {
-  timeZone: 'Asia/Bangkok',
-  year: 'numeric',
-  month: '2-digit',
-  day: '2-digit',
-});
-
-function deadlinePassed(deadline: Date, now: Date): boolean {
-  const parts = BANGKOK_DATE.formatToParts(now);
-  const [year, month, day] = ['year', 'month', 'day'].map(
-    (type) => parts.find((part) => part.type === type)!.value,
-  );
-  return deadline.toISOString().slice(0, 10) < `${year}-${month}-${day}`;
 }
 
 @Injectable()
@@ -243,7 +229,7 @@ export class JobReportRoundService {
       if ((from !== 'PUBLISHED' && from !== 'CLOSED') || deadline === null) {
         throw new Error('Suspended Job is missing its previous status or application deadline');
       }
-      to = from === 'CLOSED' || deadlinePassed(deadline, now) ? 'CLOSED' : 'PUBLISHED';
+      to = from === 'CLOSED' || applicationDeadlinePassed(deadline, now) ? 'CLOSED' : 'PUBLISHED';
     }
     const changed = await this.transitions.change(
       tx,

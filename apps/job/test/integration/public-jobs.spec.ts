@@ -699,4 +699,44 @@ describe('Public Job Search and Detail (real PostgreSQL)', function () {
     expect((await detail(job.id).expect(200)).body).to.deep.equal(restored);
     expect((await list({ q: 'Workflow Intern' })).data).to.deep.equal([restored]);
   });
+
+  it('filters expired jobs and totals at Bangkok midnight while keeping noindex detail accessible without writing', async () => {
+    const companyId = randomUUID();
+    await setCompanyStatus(companyId, 1, 'VERIFIED');
+    await db.prisma.companyEntitlement.create({
+      data: { companyId, featuredEnabled: true, fastTrackEnabled: false, entityVersion: 1 },
+    });
+    const due = await seedJob(db.prisma, 'PUBLISHED', {
+      companyId, applicationDeadline: new Date('2098-11-16'), featured: true,
+    });
+    const future = await seedJob(db.prisma, 'PUBLISHED', {
+      companyId, applicationDeadline: new Date('2098-11-17'),
+    });
+    const filters = { company_id: companyId, category: due.category!, sort: 'deadline', page_size: 1 };
+    const clock = sinon.useFakeTimers({ now: new Date('2098-11-16T16:59:59.999Z'), toFake: ['Date'] });
+    try {
+      const before = await list(filters);
+      expect(before.meta.total).to.equal(2);
+      expect(before.data.map(({ id }) => id)).to.deep.equal([due.id]);
+      expect((await detail(due.id).expect(200)).body).to.include({ status: 'PUBLISHED', featured: true });
+
+      clock.setSystemTime(new Date('2098-11-16T17:00:00.000Z'));
+      const first = await list(filters);
+      const second = await list({ ...filters, page: 2 });
+      expect(first.meta).to.deep.equal({ page: 1, page_size: 1, total: 1 });
+      expect(first.data.map(({ id }) => id)).to.deep.equal([future.id]);
+      expect(second).to.deep.equal({ data: [], meta: { page: 2, page_size: 1, total: 1 } });
+      const closed = await detail(due.id).expect(200).expect('X-Robots-Tag', 'noindex');
+      expect(closed.body).to.include({ id: due.id, status: 'CLOSED', featured: false });
+      expect(await db.prisma.job.findUniqueOrThrow({ where: { id: due.id } })).to.deep.equal(due);
+      expect(await db.prisma.statusHistory.count({ where: { entityId: due.id } })).to.equal(0);
+      expect(await db.prisma.outboxEvent.count({ where: { aggregateId: due.id } })).to.equal(0);
+
+      await db.prisma.companySnapshot.update({ where: { companyId }, data: { status: 'SUSPENDED' } });
+      await detail(due.id).expect(404);
+      expect((await list(filters)).meta.total).to.equal(0);
+    } finally {
+      clock.restore();
+    }
+  });
 });

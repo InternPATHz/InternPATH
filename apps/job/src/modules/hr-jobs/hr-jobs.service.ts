@@ -11,6 +11,7 @@ import { isUUID } from 'class-validator';
 import { Prisma, type Job, type JobCategory, type Tag } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import type { Tx } from '../../prisma/types';
+import { applicationDeadlinePassed } from '../../status/application-deadline';
 import { JobStatusTransitionService } from '../../status/job-status-transition.service';
 import type { HrJobsQueryDto, WriteJobDto } from './dto';
 import {
@@ -225,15 +226,9 @@ export class HrJobsService {
       const now = new Date();
       if (!closed) {
         await this.requireVerified(tx, job.companyId);
-        const today = new Intl.DateTimeFormat('en-CA', {
-          timeZone: 'Asia/Bangkok',
-          year: 'numeric',
-          month: '2-digit',
-          day: '2-digit',
-        }).format(now);
         if (
           !job.applicationDeadline ||
-          job.applicationDeadline.toISOString().slice(0, 10) < today ||
+          applicationDeadlinePassed(job.applicationDeadline, now) ||
           (availableQuota(job) ?? 0) <= 0
         )
           throw stateConflict();
