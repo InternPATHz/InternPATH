@@ -10,7 +10,7 @@ import {
   EDITABLE_STATUSES, JobStatusBadge, SUBMITTABLE_STATUSES, WORK_MODE_LABEL, formatDay, jobTitleOf,
 } from '@/components/hr/jobs/job-ui';
 import { ApiError } from '@/lib/api';
-import { HR_JOBS_MOCK, hrJobsApi, missingRequired } from '@/lib/hr-jobs';
+import { hrJobsApi, missingRequired } from '@/lib/hr-jobs';
 import { CATEGORIES } from '@/lib/categories';
 
 const failure = (cause: unknown) => (cause instanceof ApiError || cause instanceof Error ? cause.message : 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่');
@@ -98,7 +98,6 @@ export function HrJobDetail() {
         <div>
           <h1 className="text-3xl font-semibold">{jobTitleOf(job)}</h1>
           <p className="mt-1 text-sm text-ink-soft">{[category, job.work_mode ? WORK_MODE_LABEL[job.work_mode] : null, job.location].filter(Boolean).join(' · ')}</p>
-          {HR_JOBS_MOCK && <p className="mt-1 text-xs text-warning-text">ข้อมูลในหน้านี้เป็นข้อมูลจำลอง</p>}
         </div>
         <JobStatusBadge status={status} />
       </header>

@@ -3,10 +3,10 @@
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { CircleCheck, CircleX, Clock5 } from 'lucide-react';
 import type { DirectoryCompanyDetail, Paginated, PublicReviewItem } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
+import { OUTCOME, reviewerLabel } from '@/components/companies/review-display';
 import { ReportPanel } from '@/components/reports/report-panel';
 import { Avatar } from '@/components/ui/avatar';
 import { RatingSummary, Stars } from '@/components/ui/rating';
@@ -17,19 +17,6 @@ const PAGE_SIZE = 10;
 
 const dateFormat = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' });
 
-// ป้ายผลการฝึกที่แสดงคู่รีวิวเสมอ (README 5.5 — กัน Review Silencing: รีวิวของผู้ที่ไม่ผ่านต้องไม่ถูกซ่อนหรือดูเหมือนผ่าน)
-const OUTCOME = {
-  PASS: { label: 'ผ่านการฝึกงาน', tone: 'success', icon: CircleCheck },
-  FAIL: { label: 'ไม่ผ่านการประเมิน', tone: 'danger', icon: CircleX },
-  TERMINATED: { label: 'ยุติการฝึกก่อนกำหนด', tone: 'neutral', icon: Clock5 },
-  NO_EVALUATION: { label: 'บริษัทไม่ได้ประเมิน', tone: 'neutral', icon: Clock5 },
-} as const;
-
-function reviewerLabel(review: PublicReviewItem): string {
-  if (review.reviewer_name) return review.reviewer_name;
-  const parts = [review.display_major, review.display_year !== undefined ? `ชั้นปี ${review.display_year}` : undefined].filter(Boolean);
-  return parts.length > 0 ? `ผู้ฝึกงานไม่ระบุชื่อ · ${parts.join(' ')}` : 'ผู้ฝึกงานไม่ระบุชื่อ';
-}
 
 export function CompanyDetail() {
   const id = useSearchParams().get('id') ?? '';

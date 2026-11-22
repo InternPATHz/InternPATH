@@ -9,7 +9,7 @@ import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { EDITABLE_STATUSES, JobStatusBadge } from '@/components/hr/jobs/job-ui';
 import { ApiError } from '@/lib/api';
-import { HR_JOBS_MOCK, hrJobsApi, missingRequired } from '@/lib/hr-jobs';
+import { hrJobsApi, missingRequired } from '@/lib/hr-jobs';
 import { CATEGORIES } from '@/lib/categories';
 
 const CLOSED_FIELDS = ['quota', 'application_deadline', 'target_majors', 'period']; // ประกาศ `CLOSED` แก้ได้เฉพาะเหล่านี้ (api-contract §5.1)
@@ -202,7 +202,6 @@ export function HrJobForm() {
         <h1 className="text-3xl font-semibold">{id ? 'แก้ไขประกาศ' : 'สร้างประกาศใหม่'}</h1>
         {loaded && <JobStatusBadge status={status} />}
       </div>
-      {HR_JOBS_MOCK && <p className="mt-1 text-xs text-warning-text">ข้อมูลในหน้านี้เป็นข้อมูลจำลอง</p>}
       <p className="mt-2 text-sm text-ink-soft">บันทึกร่างได้แม้กรอกยังไม่ครบ ข้อมูลบังคับจะตรวจตอนเผยแพร่ ผู้สมัครติดต่อบริษัทผ่านแพลตฟอร์มเท่านั้น ห้ามใส่ช่องทางติดต่อส่วนตัวในประกาศ</p>
 
       {!editable && <div className="mt-4"><Notice tone="error">ประกาศในสถานะนี้แก้ไขไม่ได้</Notice></div>}

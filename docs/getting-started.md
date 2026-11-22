@@ -99,4 +99,3 @@ for s in identity job verification lifecycle notification; do pnpm --filter @int
 - Prisma Client ของแต่ละ Service generate ไป `apps/<service>/generated/client` (ไม่ commit) — รัน `pnpm --filter "./apps/*" --if-present prisma:generate` หลัง `pnpm install` และทุกครั้งที่ `schema.prisma` เปลี่ยน
 - เพิ่ง `git pull` แล้วเจอ error เรื่อง Prisma/คิว/โมดูลหาย → ดูขั้นตอนใน [developer-guide.md](developer-guide.md) §9 (สิ่งที่ต้องทำตามหลัง merge รายครั้ง)
 - หลัง `pnpm infra:up` ให้รัน `pnpm infra:topology` หนึ่งครั้ง เพื่อสร้างคิวผู้รับ Event ของทุก Service ล่วงหน้า (ไม่เช่นนั้น Event ที่ Service หนึ่งส่งก่อนที่ผู้รับจะเคยเปิดจะหาย)
-- หน้า HR Jobs ของเว็บเรียก HR Jobs API จริงโดยค่าเริ่มต้น — ตั้ง `NEXT_PUBLIC_HR_JOBS_MOCK=true` ใน environment ของ Next.js ก่อน `dev`/`build` เมื่ออยากใช้ข้อมูลจำลองแทน (ตัวอย่างใน `.env.example`)

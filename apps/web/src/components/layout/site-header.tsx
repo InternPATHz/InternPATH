@@ -9,15 +9,15 @@ import { PUBLIC_NAV, ROLE_NAV } from './site-nav';
 import type { NavItem } from './site-nav';
 
 function NavLink({ item }: { item: NavItem }) {
-  if (item.ready) return <Link href={item.href} className="whitespace-nowrap text-ink/80 hover:text-ink">{item.label}</Link>;
-  return <span aria-disabled="true" title="เร็ว ๆ นี้" className="cursor-default whitespace-nowrap text-neutral">{item.label}</span>;
+  return <Link href={item.href} className="whitespace-nowrap text-ink/80 hover:text-ink">{item.label}</Link>;
 }
 
 /** เมนูด้านบนของทุกหน้าฝั่งผู้ใช้: เมนูสาธารณะ + เมนูตามบทบาทเมื่อล็อกอินแล้ว */
 export function SiteHeader() {
   const router = useRouter();
   const { ready, user, logout } = useAuth();
-  const items: NavItem[] = [...PUBLIC_NAV, ...(user ? ROLE_NAV[user.role] : [])];
+  // แสดงเฉพาะหน้าที่พร้อมแล้ว (`ready: false` ไม่แสดงในเมนู)
+  const items: NavItem[] = [...PUBLIC_NAV, ...(user ? ROLE_NAV[user.role] : [])].filter((item) => item.ready);
 
   async function signOut() {
     try { await logout(); } catch { /* session ในเครื่องถูกล้างเสมอ แม้เซิร์ฟเวอร์ออฟไลน์ */ }

@@ -8,7 +8,7 @@ import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { JobStatusBadge, WORK_MODE_LABEL, formatDay, jobTitleOf } from '@/components/hr/jobs/job-ui';
 import { ApiError } from '@/lib/api';
-import { HR_JOBS_MOCK, HR_JOBS_PAGE_SIZE, hrJobsApi } from '@/lib/hr-jobs';
+import { HR_JOBS_PAGE_SIZE, hrJobsApi } from '@/lib/hr-jobs';
 import { JOB_STATUS } from '@/lib/status-map';
 
 const QUICK: Array<[string, JobStatus | '']> = [
@@ -57,7 +57,6 @@ export function HrJobList() {
         <div>
           <h1 className="text-3xl font-semibold">ประกาศของฉัน</h1>
           <p className="mt-2 text-sm text-ink-soft">สร้าง แก้ไข เผยแพร่ และปิดประกาศรับนักศึกษาฝึกงานของบริษัท</p>
-          {HR_JOBS_MOCK && <p className="mt-1 text-xs text-warning-text">ข้อมูลในหน้านี้เป็นข้อมูลจำลอง</p>}
         </div>
         <Link href="/hr/jobs/form" className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover">สร้างประกาศใหม่</Link>
       </div>
