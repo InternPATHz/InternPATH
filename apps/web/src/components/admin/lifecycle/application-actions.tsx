@@ -1,5 +1,6 @@
 'use client';
 
+import { useSearchParams } from 'next/navigation';
 import type { AdminApplicationActionResponse, ReapplyUnlockResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { IdActionForm } from '@/components/admin/lifecycle/id-action-form';
@@ -25,9 +26,11 @@ function unlockFailure(cause: unknown): Error {
  * Action ของ Admin กับใบสมัคร/นักศึกษา (README §5.2.2, §5.10; UAT-38/40) — รับรหัสโดยตรงเพราะ API ไม่มีรายการให้เลือก
  * - `POST /admin/lifecycle/applications/{id}/actions/terminate` `{reason}` — เฉพาะ `IN_PROGRESS`
  * - `POST /admin/lifecycle/students/{user_id}/reapply-unlock` `{reason}` — ให้สิทธิ์สมัครได้อีก 1 ใบ
+ * `?terminate=<application_id>` (ลิงก์จากหน้ารายงานปัญหา) ⇒ เติมรหัสในฟอร์มยุติไว้ให้ — Admin ยังต้องใส่เหตุผลและยืนยันเอง
  */
 export function ApplicationActions({ onChanged }: { onChanged?: () => void }) {
   const { request } = useAuth();
+  const terminateId = useSearchParams().get('terminate') ?? '';
 
   async function terminate(id: string, reason: string): Promise<string> {
     try {
@@ -49,7 +52,7 @@ export function ApplicationActions({ onChanged }: { onChanged?: () => void }) {
   }
 
   return (
-    <section aria-labelledby="application-actions-title" className="mt-10">
+    <section id="application-actions" aria-labelledby="application-actions-title" className="mt-10 scroll-mt-6">
       <h2 id="application-actions-title" className="text-xl font-semibold">ดำเนินการด้วยรหัส</h2>
       <p className="mt-1 text-sm text-ink-soft">ใช้เมื่อพบปัญหาร้ายแรง เช่น บริษัทหลอกลวง ทุกการกระทำบันทึก Audit log และย้อนกลับไม่ได้</p>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
@@ -60,6 +63,8 @@ export function ApplicationActions({ onChanged }: { onChanged?: () => void }) {
           reasonLabel="เหตุผลที่ยุติ"
           submitLabel="ยุติการฝึกงาน"
           confirmText={(id) => `ยุติการฝึกงานของใบสมัคร ${id}? ย้อนกลับไม่ได้`}
+          initialId={terminateId}
+          key={terminateId}
           onSubmit={terminate}
         />
         <IdActionForm

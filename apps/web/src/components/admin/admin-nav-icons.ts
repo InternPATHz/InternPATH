@@ -2,6 +2,7 @@ import {
   Award,
   Briefcase,
   Building2,
+  ChartColumn,
   FileText,
   Flag,
   GraduationCap,
@@ -28,6 +29,8 @@ export const ADMIN_NAV_ICONS: Record<string, LucideIcon> = {
   'ใบสมัครที่รอดำเนินการ': FileText,
   'รายงานปัญหา': TriangleAlert,
   'ใบรับรอง': Award,
+  'สถิติบริษัท': ChartColumn,
+  'Audit log (Lifecycle)': ScrollText,
   'ประกาศทุกสถานะ': Briefcase,
   'Tag ทักษะ': Tags,
 };
