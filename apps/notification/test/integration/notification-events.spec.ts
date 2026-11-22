@@ -187,7 +187,7 @@ describe('Notification event consumption (PostgreSQL)', function () {
       await deliver(
         envelope('AdvisorLinkChanged', {
           student_user_id: student,
-          link_status: 'ADVISOR_LINK_PENDING',
+          link_status: 'NONE',
         }),
       ),
     ).to.deep.equal([]);

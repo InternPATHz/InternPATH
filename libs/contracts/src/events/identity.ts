@@ -15,7 +15,8 @@ export interface AdvisorLinkChangedPayload {
   student_user_id: string;
   old_advisor_id?: string;
   new_advisor_id?: string;
-  link_status: Exclude<AdvisorLinkStatus, 'NONE'> | 'UNLINKED';
+  /** `ADVISOR_LINK_PENDING` เลิกใช้ (2026-11-21) — Identity ไม่ส่งแล้ว (PM ตัดสิน 2026-11-22 ให้ตรงกับ event-contract E07) */
+  link_status: Extract<AdvisorLinkStatus, 'LINKED'> | 'UNLINKED';
   changed_by: 'STUDENT' | 'ADVISOR' | 'ADMIN';
   entity_version: number;
   changed_at: string;

@@ -440,15 +440,25 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
       });
     });
 
-    it('ADVISOR_LINK_PENDING ⇒ ใบสมัครค้างอยู่กับอาจารย์เดิม • UNLINKED ⇒ ลิงก์ว่าง • Event เก่า ⇒ ข้าม', async () => {
+    it('ADVISOR_LINK_PENDING (เลิกใช้) / ค่าอื่น ⇒ InvalidMessageError (dead-letter) ไม่แตะลิงก์/ใบสมัคร (PM ตัดสิน 2026-11-22)', async () => {
       const pending = await seedFor('ADVISOR_PENDING');
       await handle(e07(1, 'LINKED', { new_advisor_id: advisor }));
-      await handle(e07(2, 'ADVISOR_LINK_PENDING', { old_advisor_id: advisor, new_advisor_id: randomUUID() }));
+      for (const status of ['ADVISOR_LINK_PENDING', 'NONE', 'linked', undefined]) {
+        let error: unknown;
+        await handle(e07(2, status as string, { old_advisor_id: advisor, new_advisor_id: randomUUID() })).catch((e: unknown) => (error = e));
+        expect(error, String(status)).to.be.instanceOf(InvalidMessageError);
+      }
       expect(await prisma.studentAdvisorLink.findUniqueOrThrow({ where: { studentUserId: student } })).to.include({
-        linkStatus: 'ADVISOR_LINK_PENDING',
+        linkStatus: 'LINKED',
         advisorUserId: advisor,
+        entityVersion: 1,
       });
       expect((await reload(pending.id)).advisorUserId).to.equal(advisor);
+    });
+
+    it('UNLINKED ⇒ ลิงก์ว่าง ใบสมัครเดิมไม่เปลี่ยน • Event เก่า ⇒ ข้าม', async () => {
+      const pending = await seedFor('ADVISOR_PENDING');
+      await handle(e07(2, 'LINKED', { new_advisor_id: advisor }));
 
       expect(await handle(e07(2, 'LINKED', { new_advisor_id: randomUUID() }))).to.equal('stale');
       await handle(e07(3, 'UNLINKED', { old_advisor_id: advisor }));

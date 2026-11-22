@@ -5,7 +5,8 @@ import { invalid, optionalUuid, requireOneOf, requireTimestamp, requireUuid, req
 
 const TYPE = 'AdvisorLinkChanged';
 type LinkStatus = AdvisorLinkChangedPayload['link_status'];
-const LINK_STATUSES: readonly LinkStatus[] = ['ADVISOR_LINK_PENDING', 'LINKED', 'UNLINKED'];
+/** `ADVISOR_LINK_PENDING` เลิกใช้ (PM ตัดสิน 2026-11-22) — ค่าอื่นนอกจากนี้ = payload ผิดรูป ⇒ log + DLQ ไม่ retry */
+const LINK_STATUSES: readonly LinkStatus[] = ['LINKED', 'UNLINKED'];
 const CHANGED_BY: readonly AdvisorLinkChangedPayload['changed_by'][] = ['STUDENT', 'ADVISOR', 'ADMIN'];
 
 /**
@@ -31,7 +32,6 @@ export type AdvisorLinkOutcome = 'applied' | 'stale';
  * - เทียบ `student_advisor_links.entity_version` (เก่า/เท่ากัน ⇒ ข้าม)
  * - `LINKED` ⇒ ลิงก์ = อาจารย์ใหม่ และ **ย้าย `advisor_user_id` ของใบที่ยังไม่สิ้นสุด** (+ รายงานปัญหาที่ยังไม่ปิดของใบนั้น)
  *   — คิวอาจารย์/ความเป็นเจ้าของ (1.6) ใช้ `applications.advisor_user_id` จึงย้ายตามทันที
- * - `ADVISOR_LINK_PENDING` ⇒ บันทึกสถานะรอยืนยัน **ใบสมัครค้างอยู่กับอาจารย์เดิม** จนกว่าอาจารย์ใหม่ยืนยัน (§8.4)
  * - `UNLINKED` ⇒ ล้างอาจารย์ของลิงก์ (`NONE`) — ใบสมัครเดิมไม่เปลี่ยน
  */
 @Injectable()
@@ -45,7 +45,7 @@ export class AdvisorLinkChangedHandler {
     requireOneOf(TYPE, 'changed_by', p.changed_by, CHANGED_BY);
     const version = requireVersion(TYPE, p.entity_version);
     requireTimestamp(TYPE, 'changed_at', p.changed_at);
-    const oldAdvisor = optionalUuid(TYPE, 'old_advisor_id', p.old_advisor_id);
+    optionalUuid(TYPE, 'old_advisor_id', p.old_advisor_id); // ตรวจรูปแบบอย่างเดียว — ไม่ใช้ค่า
     const newAdvisor = optionalUuid(TYPE, 'new_advisor_id', p.new_advisor_id);
     if (linkStatus === 'LINKED' && !newAdvisor) invalid(TYPE, 'new_advisor_id');
 
@@ -86,12 +86,6 @@ export class AdvisorLinkChangedHandler {
           data: { advisorUserId: newAdvisor },
         });
       }
-    } else if (linkStatus === 'ADVISOR_LINK_PENDING') {
-      await tx.studentAdvisorLink.update({
-        where: { studentUserId },
-        // อาจารย์ปัจจุบันยังเป็นคนเดิม (ไม่มีลิงก์มาก่อน ⇒ old_advisor_id ถ้ามี)
-        data: { linkStatus: 'ADVISOR_LINK_PENDING', advisorUserId: current.advisor_user_id ?? oldAdvisor ?? null, entityVersion: version },
-      });
     } else {
       await tx.studentAdvisorLink.update({
         where: { studentUserId },
