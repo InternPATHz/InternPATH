@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AdminTag, CreateTagRequest, Paginated, UpdateTagRequest } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
@@ -22,6 +22,7 @@ function failure(cause: unknown): string {
 /** จัดการ Tag ทักษะกลาง (api-contract §5.4) — HR เลือกจากรายการนี้ตอนสร้างประกาศ */
 export function TagsAdmin() {
   const { request } = useAuth();
+  const fieldId = useId();
   const [result, setResult] = useState<Paginated<AdminTag> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -97,24 +98,25 @@ export function TagsAdmin() {
       <form onSubmit={(event) => void create(event)} className="mt-5 rounded-xl border border-border bg-surface p-4">
         <h2 className="text-sm font-semibold">เพิ่ม Tag</h2>
         <div className="mt-3 flex flex-wrap items-end gap-3">
-          <label className="min-w-[16rem] flex-1 text-sm">
-            <span className="mb-1 block text-xs font-medium text-ink-soft">ชื่อ Tag</span>
-            <input value={newName} onChange={(event) => setNewName(event.target.value)} maxLength={NAME_MAX} placeholder="เช่น NextJs"
+          <div className="min-w-[16rem] flex-1 text-sm">
+            <label htmlFor={`${fieldId}-new`} className="mb-1 block text-xs font-medium text-ink-soft">ชื่อ Tag</label>
+            <input id={`${fieldId}-new`} aria-required="true" aria-invalid={newError ? true : undefined}
+              aria-describedby={newError ? `${fieldId}-new-error` : undefined} value={newName} onChange={(event) => setNewName(event.target.value)} maxLength={NAME_MAX} placeholder="เช่น NextJs"
               className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" />
-          </label>
+          </div>
           <button type="submit" disabled={busy} className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-50">เพิ่ม</button>
         </div>
-        {newError && <div className="mt-3"><Notice tone="error">{newError}</Notice></div>}
+        {newError && <div id={`${fieldId}-new-error`} className="mt-3"><Notice tone="error">{newError}</Notice></div>}
       </form>
 
       <div className="mt-5 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
         <FilterSelect label="สถานะ" value={activeFilter} onChange={(value) => { setActiveFilter(value); setPage(1); }}
           options={[['', 'ทั้งหมด'], ['true', 'ใช้งานอยู่'], ['false', 'ปิดใช้งาน']]} />
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-ink-soft">ค้นชื่อ</span>
-          <input value={q} onChange={(event) => { setQ(event.target.value); setPage(1); }}
+        <div className="text-sm">
+          <label htmlFor={`${fieldId}-q`} className="mb-1 block text-xs font-medium text-ink-soft">ค้นชื่อ</label>
+          <input id={`${fieldId}-q`} type="search" value={q} onChange={(event) => { setQ(event.target.value); setPage(1); }}
             className="rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" />
-        </label>
+        </div>
       </div>
 
       {notice && <div className="mt-4"><Notice tone="success">{notice}</Notice></div>}
