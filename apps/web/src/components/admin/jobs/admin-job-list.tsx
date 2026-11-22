@@ -255,6 +255,15 @@ function JobRow({ job }: { job: AdminJobItem }) {
         </div>
       </td>
       <td className="px-4 py-3">
+        <div className="mb-1">
+          <Link
+            href={`/admin/queue?target_id=${encodeURIComponent(job.id)}`}
+            prefetch={false}
+            className="font-medium text-primary hover:underline"
+          >
+            ดูคิวของประกาศนี้
+          </Link>
+        </div>
         {job.report_queue_item_id && (
           <Link
             href={`/admin/queue/item?id=${encodeURIComponent(job.report_queue_item_id)}`}
@@ -288,7 +297,6 @@ function JobRow({ job }: { job: AdminJobItem }) {
             </dl>
           </details>
         )}
-        {!job.report_queue_item_id && !hasDetails && <span className="text-ink-soft">—</span>}
       </td>
     </tr>
   );
