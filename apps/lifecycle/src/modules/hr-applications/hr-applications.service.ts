@@ -9,7 +9,6 @@ import type {
 } from '@internpath/contracts';
 import { Injectable, Logger } from '@nestjs/common';
 import type { Application } from '../../../generated/client';
-import { mapWithConcurrency } from '../../common/async/concurrency';
 import { CategoryScopeService } from '../../common/auth/category-scope.service';
 import { assertCompanyOwnership } from '../../common/auth/ownership';
 import { S3StorageService } from '../../common/storage/s3-storage.service';
@@ -27,8 +26,8 @@ import { loadSnapshotNames, toHrDetail, toHrItem } from '../applications/applica
 import { checkCertificateIssuable, effectiveMinActualDays } from '../certificates/certificate-rules';
 import type { HrAcceptDto, HrApplicationsQueryDto, HrEvaluateDto, HrStartDto, HrTerminateDto } from './hr-applications.dto';
 
-/** จำนวนการตรวจ Consent ที่ยิง Identity พร้อมกันต่อหน้ารายการ HR (page_size ≤ 100) */
-const CONSENT_CHECK_CONCURRENCY = 10;
+/** จำนวนนักศึกษาสูงสุดต่อคำขอ `consents/check-batch` (api-contract §9) — หน้ารายการ HR มี page_size ≤ 100 จึงปกติเรียกครั้งเดียว */
+const CONSENT_BATCH_SIZE = 100;
 
 /** action ของ HR ที่รับแค่เหตุผล — `reject` (ไม่บังคับ), `rescind-offer` (บังคับใน Guard) */
 export type HrReasonAction = 'reject' | 'rescind-offer';
@@ -86,7 +85,7 @@ export class HrApplicationsService {
     // ไม่มี Consent / Identity ล่ม ⇒ ส่งรายการต่อโดยไม่มี `student_name` (PM ขอ 2026-11-18)
     const [names, studentNames] = await Promise.all([
       loadSnapshotNames(this.db, rows),
-      this.consentedNames(companyId, rows.map((r) => r.studentUserId)),
+      this.consentedNames(companyId, rows.map((r) => r.studentUserId), correlationId),
     ]);
     return {
       data: rows.map((row) => toHrItem(row, names, studentNames.get(row.studentUserId))),
@@ -274,21 +273,28 @@ export class HrApplicationsService {
   }
 
   /**
-   * ชื่อของนักศึกษาที่มี Consent กับบริษัทนี้ — ตรวจไม่สำเร็จ ⇒ ถือว่าไม่มี Consent
-   * ตรวจทีละคนแต่พร้อมกันไม่เกิน `CONSENT_CHECK_CONCURRENCY` (PM รีวิว #71 — กันยิง Identity ทีเดียวทั้งหน้า
-   * จนกว่า SA จะมี `consents/check-batch`)
+   * ชื่อของนักศึกษาที่มี Consent กับบริษัทนี้ — ตรวจด้วย `consents/check-batch` ครั้งเดียวต่อหน้า (แบ่งชุดละ 100 ถ้าเกิน)
+   * แทนการตรวจทีละคน (PM รีวิว #82) • ตรวจไม่สำเร็จ (Identity ล่ม/ตอบผิด) ⇒ ถือว่าไม่มี Consent ทั้งหน้า (fail-closed เฉพาะชื่อ)
+   * รับเฉพาะ id ที่ถามไป — id แปลกปลอมในผลลัพธ์ไม่ทำให้เห็นชื่อคนอื่น
    */
-  private async consentedNames(companyId: string, studentUserIds: readonly string[]): Promise<Map<string, string>> {
+  private async consentedNames(
+    companyId: string,
+    studentUserIds: readonly string[],
+    correlationId?: string,
+  ): Promise<Map<string, string>> {
     const unique = [...new Set(studentUserIds)];
-    const consented = (
-      await mapWithConcurrency(unique, CONSENT_CHECK_CONCURRENCY, async (id) => {
-        try {
-          return (await this.identity.checkConsent(id, companyId)).has_consent ? id : null;
-        } catch {
-          return null;
-        }
-      })
-    ).filter((id): id is string => id !== null);
+    if (!unique.length) return new Map();
+    const requested = new Set(unique);
+    const consented: string[] = [];
+    try {
+      for (let i = 0; i < unique.length; i += CONSENT_BATCH_SIZE) {
+        const rows = await this.identity.checkConsentBatch(companyId, unique.slice(i, i + CONSENT_BATCH_SIZE), correlationId);
+        for (const row of rows) if (requested.has(row.student_user_id)) consented.push(row.student_user_id);
+      }
+    } catch {
+      this.logger.warn('ตรวจ Consent แบบ Batch ไม่สำเร็จ — ไม่แสดงชื่อนักศึกษาในรายการ');
+      return new Map();
+    }
     return consented.length ? this.studentNames.names(consented) : new Map();
   }
 

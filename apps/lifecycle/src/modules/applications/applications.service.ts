@@ -270,7 +270,7 @@ function consentIdOf(consent: ConsentCheckResponse): string | null {
 }
 
 /**
- * เติม `job_snapshots.title` และ `category` จาก Job (api-contract §10 — E03 ไม่มีชื่อ/สายงานของประกาศ)
+ * เติม `job_snapshots.title` และ `category` จาก Job (api-contract §9 แถว Internal job — E03 ไม่มีชื่อ/สายงานของประกาศ)
  * - เติมเฉพาะฟิลด์ที่ยังว่าง — ไม่เขียนทับค่าเดิม
  * - ยังไม่มี snapshot ⇒ สร้างแถว `entity_version = 0` (placeholder แบบเดียวกับ Consumer E03) ให้ E03 ถัดไปเขียนทับสถานะได้เสมอ
  * - Job ไม่ส่ง `job_title` (ว่าง/ไม่มี) ⇒ ไม่เติมชื่อ; ไม่ส่ง `category` ⇒ ไม่เติมสายงาน

@@ -2,6 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException, signServiceToken } from '@internpath/common';
 import type {
+  ConsentCheckBatchRequest,
+  ConsentCheckBatchResponse,
   ConsentCheckRequest,
   ConsentCheckResponse,
   InternalCompanyMembersResponse,
@@ -70,6 +72,25 @@ export class IdentityInternalClient {
     const url = `${this.baseUrl}/internal/v1/consents/check`;
     const body: ConsentCheckRequest = { student_user_id: studentUserId, company_id: companyId };
     return fetchInternal<ConsentCheckResponse>(url, {
+      method: 'POST',
+      body,
+      serviceToken: this.getServiceToken(),
+      correlationId,
+    });
+  }
+
+  /**
+   * `POST /internal/v1/consents/check-batch` (#84 — SA) — บริษัทเดียว นักศึกษา 1–100 คนต่อครั้ง
+   * คืนเฉพาะคนที่มี Consent (ไม่อยู่ในผล = ไม่มี Consent) — ผู้เรียกแบ่งชุดเอง
+   */
+  async checkConsentBatch(
+    companyId: string,
+    studentUserIds: readonly string[],
+    correlationId?: string,
+  ): Promise<ConsentCheckBatchResponse> {
+    const url = `${this.baseUrl}/internal/v1/consents/check-batch`;
+    const body: ConsentCheckBatchRequest = { company_id: companyId, student_user_ids: [...studentUserIds] };
+    return fetchInternal<ConsentCheckBatchResponse>(url, {
       method: 'POST',
       body,
       serviceToken: this.getServiceToken(),
