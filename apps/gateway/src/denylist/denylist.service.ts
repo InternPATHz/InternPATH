@@ -3,11 +3,18 @@ import { ConfigService } from '@nestjs/config';
 import { signServiceToken } from '@internpath/common';
 import type { UserSuspendedPayload } from '@internpath/contracts';
 
+/** รอบดึง denylist ปกติ หลังจากดึงสำเร็จครั้งแรกแล้ว */
+export const DENYLIST_REFRESH_INTERVAL_MS = 30_000;
+/** รอบลองใหม่ระหว่างที่ยังดึง denylist ครั้งแรกไม่สำเร็จ (เช่น เปิด Gateway ก่อน Identity) */
+export const DENYLIST_INITIAL_RETRY_MS = 3_000;
+
 @Injectable()
 export class DenylistService implements OnModuleDestroy {
   private readonly logger = new Logger(DenylistService.name);
   private users = new Set<string>();
   private refreshedAt = 0;
+  private started = false;
+  private stopped = false;
   private timer?: NodeJS.Timeout;
   private pending?: Promise<void>;
   private eventGeneration = 0;
@@ -16,14 +23,24 @@ export class DenylistService implements OnModuleDestroy {
   constructor(private readonly config: ConfigService) {}
 
   start(): void {
-    if (this.timer) return;
+    if (this.started) return;
     try { this.denylistConfig(); }
     catch (error) {
       this.logger.error(error instanceof Error ? error.message : String(error));
       throw error;
     }
-    void this.refresh().catch((error) => this.logRefreshFailure(error));
-    this.timer = setInterval(() => void this.refresh().catch((error) => this.logRefreshFailure(error)), 30_000);
+    this.started = true;
+    void this.refreshAndSchedule();
+  }
+
+  // ยังไม่เคยดึงสำเร็จ → ลองใหม่ทุก DENYLIST_INITIAL_RETRY_MS; สำเร็จแล้ว → กลับไปรอบปกติ
+  // ระหว่างนี้ isFresh() ยังเป็น false จึง fail-closed (503) เหมือนเดิม
+  private async refreshAndSchedule(): Promise<void> {
+    try { await this.refresh(); }
+    catch (error) { this.logRefreshFailure(error); }
+    if (this.stopped) return;
+    const delay = this.refreshedAt > 0 ? DENYLIST_REFRESH_INTERVAL_MS : DENYLIST_INITIAL_RETRY_MS;
+    this.timer = setTimeout(() => void this.refreshAndSchedule(), delay);
     this.timer.unref();
   }
 
@@ -31,7 +48,10 @@ export class DenylistService implements OnModuleDestroy {
     this.logger.error('Denylist refresh failed', error instanceof Error ? error.stack : String(error));
   }
 
-  onModuleDestroy(): void { if (this.timer) clearInterval(this.timer); }
+  onModuleDestroy(): void {
+    this.stopped = true;
+    if (this.timer) clearTimeout(this.timer);
+  }
 
   isFresh(): boolean { return this.refreshedAt > 0 && Date.now() - this.refreshedAt < 60_000; }
   has(userId: string): boolean { return this.users.has(userId); }
