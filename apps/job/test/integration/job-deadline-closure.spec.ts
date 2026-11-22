@@ -1,4 +1,5 @@
-import { BrokerConnection } from '@internpath/common';
+import { randomUUID } from 'node:crypto';
+import { BrokerConnection, type JwtClaims } from '@internpath/common';
 import {
   EVENTS_EXCHANGE,
   routingKey,
@@ -9,6 +10,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { expect } from 'chai';
 import { JobModule } from '../../src/job.module';
+import { HrJobsService } from '../../src/modules/hr-jobs/hr-jobs.service';
 import { JobDeadlineClosureService } from '../../src/status/job-deadline-closure.service';
 import { createBrokerSandboxOrSkip, type BrokerSandbox } from '../support/broker';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
@@ -110,7 +112,8 @@ describe('Automatic Job deadline closure (PostgreSQL and RabbitMQ)', function ()
       company_id: job.companyId,
       from_status: 'PUBLISHED',
       to_status: 'CLOSED',
-      entity_version: closed.entityVersion,
+      reason_code: 'DEADLINE_EXPIRED',
+      entity_version: job.entityVersion + 1,
       changed_at: FIRST_EXPIRED_INSTANT.toISOString(),
       application_effect: 'NONE',
     };
@@ -140,6 +143,32 @@ describe('Automatic Job deadline closure (PostgreSQL and RabbitMQ)', function ()
     expect(await jobById(job.id)).to.deep.equal(closed);
     expect(await historyFor(job.id)).to.have.length(1);
     expect(await outboxFor(job.id)).to.have.length(1);
+  });
+
+  it('omits the deadline reason code when HR closes a job manually', async () => {
+    const job = await seedJob(db.prisma, 'PUBLISHED', { applicationDeadline: DEADLINE });
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const owner: JwtClaims = {
+      sub: job.createdBy,
+      role: 'COMPANY_HR',
+      company_id: job.companyId,
+      company_role: 'OWNER',
+      jti: randomUUID(),
+      iat: issuedAt,
+      exp: issuedAt + 3600,
+    };
+    const closed = await moduleRef.get(HrJobsService).setClosed(owner, job.id, true, randomUUID());
+    expect(closed.status).to.equal('CLOSED');
+
+    const histories = await historyFor(job.id);
+    expect(histories).to.have.length(1);
+    expect(histories[0]).to.include({ actorRole: 'COMPANY_HR', reason: 'CLOSE' });
+    const outbox = await outboxFor(job.id);
+    expect(outbox).to.have.length(1);
+    expect(outbox[0].type).to.equal('JobStatusChanged');
+    expect(outbox[0].payload)
+      .to.include({ from_status: 'PUBLISHED', to_status: 'CLOSED', application_effect: 'NONE' })
+      .and.not.have.property('reason_code');
   });
 
   it('leaves current and future deadlines and all other job statuses unchanged', async () => {
@@ -189,7 +218,13 @@ describe('Automatic Job deadline closure (PostgreSQL and RabbitMQ)', function ()
         entityVersion: job.entityVersion + 1,
       });
       expect(await historyFor(job.id)).to.have.length(1);
-      expect(await outboxFor(job.id)).to.have.length(1);
+      const outbox = await outboxFor(job.id);
+      expect(outbox).to.have.length(1);
+      await eventually(
+        () => Promise.resolve(events.some((event) => event.event_id === outbox[0].id)),
+        20_000,
+      );
+      expect(events.filter((event) => event.payload.job_id === job.id)).to.have.length(1);
     }
   });
 });

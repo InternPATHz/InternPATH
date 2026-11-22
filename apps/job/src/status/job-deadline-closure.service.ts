@@ -53,6 +53,7 @@ export class JobDeadlineClosureService implements OnApplicationBootstrap, OnModu
             to: 'CLOSED',
             correlationId: randomUUID(),
             historyReason: 'DEADLINE_EXPIRED',
+            reasonCode: 'DEADLINE_EXPIRED',
             actorRole: 'SYSTEM',
             applicationEffect: 'NONE',
             changes: { closedAt: now },

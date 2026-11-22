@@ -180,7 +180,7 @@ Job ใช้ `UPDATE ... WHERE status = <สถานะที่คาดไ�
   company_id: string
   from_status: JobStatus
   to_status: JobStatus
-  reason_code?: string             // เช่น VERIFY_TIMEOUT (Fail-safe), REPORT_THRESHOLD, ADMIN_DISMISSED
+  reason_code?: string             // เช่น VERIFY_TIMEOUT (Fail-safe), REPORT_THRESHOLD, ADMIN_DISMISSED, DEADLINE_EXPIRED (Job ปิดอัตโนมัติเมื่อหมดเขตรับสมัคร)
   reason?: string
   submission_id?: string           // ต้องส่งเมื่อ reason_code = VERIFY_TIMEOUT: การส่งตรวจ (E01) ที่หมดเวลา — Verification ใช้ใส่ใน JobVerified ที่ Admin ตัดสินรายการ Fail-safe ซึ่งอาจยังไม่เคยมีผลตรวจ
   entity_version: number
