@@ -224,6 +224,7 @@ function JobRow({ job }: { job: AdminJobItem }) {
   const status = statusView(JOB_STATUS, job.status);
   const category = CATEGORIES.find((item) => item.id === job.category)?.label;
   const hasDetails = job.contact_notes || job.admin_reason || job.suspended_from_status;
+  const queueJobName = job.job_title?.trim() || `ยังไม่ระบุชื่อตำแหน่ง รหัส ${job.id}`;
 
   return (
     <tr className="border-t border-border align-top">
@@ -259,6 +260,7 @@ function JobRow({ job }: { job: AdminJobItem }) {
           <Link
             href={`/admin/queue?target_id=${encodeURIComponent(job.id)}`}
             prefetch={false}
+            aria-label={`ดูคิวของประกาศนี้ (${queueJobName})`}
             className="font-medium text-primary hover:underline"
           >
             ดูคิวของประกาศนี้
