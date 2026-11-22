@@ -78,7 +78,8 @@ export class QueueQueryService {
     const [rows, total] = await Promise.all([
       this.prisma.queueItem.findMany({
         where,
-        orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }], // FAST_TRACK ก่อน (ประกาศ enum หลัง NORMAL) แล้วใกล้ครบกำหนดก่อน
+        // FAST_TRACK ก่อน (ประกาศ enum หลัง NORMAL) แล้วใกล้ครบกำหนดก่อน • id ตัดสินเมื่อ dueAt เท่ากัน ให้การแบ่งหน้าคงที่
+        orderBy: [{ priority: 'desc' }, { dueAt: 'asc' }, { id: 'asc' }],
         skip: skipOf(q),
         take: q.page_size,
       }),

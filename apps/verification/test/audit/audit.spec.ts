@@ -34,6 +34,8 @@ describe('audit (Postgres จริง)', function () {
     const cut = new Date();
     await new Promise((r) => setTimeout(r, 15));
     await record({ adminId: adminB, action: 'QUEUE_APPROVE', targetType: 'queue_item', targetId: randomUUID(), before: { s: 1 }, after: { s: 2 }, reason: 'ok' });
+    // เว้นเวลาให้ occurred_at ต่างกัน — สองแถวในมิลลิวินาทีเดียวกันเรียงด้วย id (สุ่ม) เทสต์ที่คาดลำดับเวลาจะล้มเป็นบางครั้งบน CI
+    await new Promise((r) => setTimeout(r, 15));
     await record({ adminId: adminB, action: 'QUEUE_REJECT', targetType: 'queue_item', targetId: randomUUID(), reason: 'bad' });
 
     const all = await audit.list({ page: 1, page_size: 20 });
@@ -51,6 +53,25 @@ describe('audit (Postgres จริง)', function () {
     const p2 = await audit.list({ page: 2, page_size: 2 });
     expect(p2.meta).to.deep.equal({ page: 2, page_size: 2, total: 3 });
     expect(p2.data).to.have.length(1);
+  });
+
+  it('แถวที่ occurred_at เท่ากันแบ่งหน้าได้คงที่: ทุกหน้ารวมกันครบ ไม่ซ้ำ และเรียกซ้ำได้ลำดับเดิม', async () => {
+    const admin = randomUUID();
+    const at = new Date('2026-01-01T00:00:00.000Z');
+    await t.prisma.adminAuditLog.createMany({
+      data: Array.from({ length: 7 }, () => ({
+        adminId: admin, action: 'TIE', targetType: 'tie', targetId: randomUUID(), correlationId: randomUUID(), occurredAt: at,
+      })),
+    });
+    const pageIds = async () => {
+      const ids: string[] = [];
+      for (let page = 1; page <= 4; page++) ids.push(...(await audit.list({ page, page_size: 2, actor: admin })).data.map((r) => r.id));
+      return ids;
+    };
+    const first = await pageIds();
+    expect(first).to.have.length(7);
+    expect(new Set(first).size).to.equal(7);
+    expect(await pageIds()).to.deep.equal(first);
   });
 
   it('correlationId ที่ไม่ใช่ UUID ไม่ทำให้ record ล้ม', async () => {

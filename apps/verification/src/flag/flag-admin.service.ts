@@ -112,7 +112,8 @@ export class FlagAdminService {
     }
     const where: Prisma.CompanyFlagWhereInput = { AND: and };
     const [rows, total] = await Promise.all([
-      this.prisma.companyFlag.findMany({ where, orderBy: { setAt: 'desc' }, skip: skipOf(q), take: q.page_size }),
+      // companyId ตัดสินเมื่อ setAt เท่ากัน ให้การแบ่งหน้าคงที่
+      this.prisma.companyFlag.findMany({ where, orderBy: [{ setAt: 'desc' }, { companyId: 'asc' }], skip: skipOf(q), take: q.page_size }),
       this.prisma.companyFlag.count({ where }),
     ]);
     const names = new Map(

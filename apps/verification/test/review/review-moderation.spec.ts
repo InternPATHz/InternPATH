@@ -57,9 +57,11 @@ describe('ReviewModerationService (Postgres จริง)', function () {
       expect(r).to.include({ decision: 'PUBLISH', decided_by: 'SYSTEM' });
       expect(r.reasons).to.deep.equal([]);
     }
+    // E10 ต้องไม่มีเนื้อรีวิว: ไม่มีฟิลด์เนื้อหา และไม่มีข้อความจากรีวิวหลุดในค่าใด ๆ
+    // (เทียบทั้งเบอร์ ไม่ใช่ '081' สั้น ๆ — UUID/เวลาในมิลลิวินาทีของ payload สุ่มมี '081' ได้ ทำให้เทสต์ล้มเป็นบางครั้งราว 4%)
+    for (const r of out) expect(r).to.not.have.any.keys('content', 'title', 'body');
     const json = JSON.stringify(out);
-    expect(json).to.not.include('081');
-    expect(json).to.not.include('พี่เลี้ยง');
+    for (const leaked of ['081-234-5678', 'พี่เลี้ยง', 'โอนเงิน', 'ดีมาก']) expect(json).to.not.include(leaked);
     const rows = await t.prisma.reviewModeration.findMany();
     expect(rows.every((r) => r.status === 'PASSED' && r.decision === 'PUBLISH')).to.equal(true);
   });
