@@ -28,7 +28,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { label: 'ใบสมัครที่รอดำเนินการ', href: '/admin/applications' },
       { label: 'รายงานปัญหา', href: null },
-      { label: 'ใบรับรอง', href: null },
+      { label: 'ใบรับรอง', href: '/admin/certificates' },
     ],
   },
   {

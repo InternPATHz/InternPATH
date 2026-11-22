@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { AdminApplicationActionResponse, ApplicationStatus, NoEvaluationCandidate, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
+import { ApplicationActions } from '@/components/admin/lifecycle/application-actions';
 import { LIFECYCLE_REASON_MAX, ReasonField } from '@/components/admin/lifecycle/reason-field';
 import { ApplicationStatusBadge, formatDate } from '@/components/student/application-ui';
 import { ApiError } from '@/lib/api';
@@ -215,6 +216,8 @@ export function NoEvaluationList() {
           </span>
         </div>
       )}
+
+      <ApplicationActions onChanged={() => setReloadKey((key) => key + 1)} />
     </div>
   );
 }
