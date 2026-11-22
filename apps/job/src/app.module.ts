@@ -17,7 +17,6 @@ const infra = process.env.DISABLE_INFRA === 'true' ? [] : [JobModule];
       requireBroker: true,
     }),
     ...infra,
-    // TODO: ต่อ modules/* ตาม docs/architecture.md §2
   ],
 })
 export class AppModule {}
