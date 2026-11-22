@@ -224,12 +224,14 @@ function JobRow({ job }: { job: AdminJobItem }) {
   const status = statusView(JOB_STATUS, job.status);
   const category = CATEGORIES.find((item) => item.id === job.category)?.label;
   const hasDetails = job.contact_notes || job.admin_reason || job.suspended_from_status;
-  const queueJobName = job.job_title?.trim() || `ยังไม่ระบุชื่อตำแหน่ง รหัส ${job.id}`;
+  const jobTitle = job.job_title?.trim();
+  const visibleJobTitle = jobTitle || 'ยังไม่ระบุชื่อตำแหน่ง';
+  const queueJobName = jobTitle || `${visibleJobTitle} รหัส ${job.id}`;
 
   return (
     <tr className="border-t border-border align-top">
       <td className="px-4 py-3">
-        <p className="break-words font-semibold text-ink">{job.job_title ?? 'ยังไม่ระบุชื่อตำแหน่ง'}</p>
+        <p className="break-words font-semibold text-ink">{visibleJobTitle}</p>
         {category && <p className="mt-1 text-xs text-ink-soft">{category}</p>}
         <p className="mt-1 break-all text-xs text-ink-soft">{job.id}</p>
       </td>
@@ -269,6 +271,7 @@ function JobRow({ job }: { job: AdminJobItem }) {
         {job.report_queue_item_id && (
           <Link
             href={`/admin/queue/item?id=${encodeURIComponent(job.report_queue_item_id)}`}
+            aria-label={`เปิดคิวรายงาน (${queueJobName})`}
             className="font-medium text-primary hover:underline"
           >
             เปิดคิวรายงาน
