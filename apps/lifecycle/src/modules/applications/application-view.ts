@@ -108,6 +108,7 @@ export function toAdvisorItem(app: Application, names: SnapshotNames, studentNam
     student_user_id: app.studentUserId,
     student_name: studentName,
     flagged_for_advisor: app.flaggedForAdvisor,
+    ...optional('academic_result', app.academicResult ?? undefined),
   };
 }
 
