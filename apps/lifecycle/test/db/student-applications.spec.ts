@@ -251,7 +251,7 @@ describe('Lifecycle 1.4 — ใบสมัครฝั่งนักศึก�
       identity.setStudent(student, { email_verified: false, advisor_link_status: 'LINKED', advisor_id: advisorId });
       expect((await apply(posting.job_id).expect(401)).body.error.code).to.equal('EMAIL_NOT_VERIFIED');
 
-      identity.setStudent(student, { email_verified: true, advisor_link_status: 'ADVISOR_LINK_PENDING', advisor_id: advisorId });
+      identity.setStudent(student, { email_verified: true, advisor_link_status: 'NONE', advisor_id: undefined });
       expect((await apply(posting.job_id).expect(403)).body.error.code).to.equal('ADVISOR_NOT_LINKED');
     });
 

@@ -586,14 +586,15 @@ describe('Lifecycle 1.6 — ฝั่งอาจารย์ที่ปรึ�
       });
     });
 
-    it('ผูกกันแล้วแต่ยังไม่มีใบสมัคร ⇒ 200 รายการว่าง • ผูกค้าง (ADVISOR_LINK_PENDING) ⇒ 403', async () => {
+    it('ผูกกันแล้วแต่ยังไม่มีใบสมัคร ⇒ 200 รายการว่าง • ยกเลิกผูกแล้ว (NONE) ⇒ 403', async () => {
       await prisma.studentAdvisorLink.create({ data: { studentUserId: student, advisorUserId: advisor, linkStatus: 'LINKED' } });
       const res = await http().get(`/v1/advisor/students/${student}/overview`).set('Authorization', asAdvisor()).expect(200);
       expect(res.body.applications).to.deep.equal([]);
 
-      const waiting = randomUUID();
-      await prisma.studentAdvisorLink.create({ data: { studentUserId: waiting, advisorUserId: advisor, linkStatus: 'ADVISOR_LINK_PENDING' } });
-      await http().get(`/v1/advisor/students/${waiting}/overview`).set('Authorization', asAdvisor()).expect(403);
+      // E07 UNLINKED ล้างอาจารย์ของลิงก์เป็น NONE (ADVISOR_LINK_PENDING เลิกใช้ — PM ตัดสิน 2026-11-22)
+      const unlinked = randomUUID();
+      await prisma.studentAdvisorLink.create({ data: { studentUserId: unlinked, advisorUserId: null, linkStatus: 'NONE' } });
+      await http().get(`/v1/advisor/students/${unlinked}/overview`).set('Authorization', asAdvisor()).expect(403);
     });
   });
 });

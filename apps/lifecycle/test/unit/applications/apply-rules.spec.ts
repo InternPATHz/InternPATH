@@ -94,7 +94,7 @@ describe('1.4 apply-rules (Unit)', () => {
     it('อีเมลก่อน แล้วจึงอาจารย์ (ต้อง LINKED และมี advisor_id)', () => {
       expect(studentBlockedReason(student())).to.equal(null);
       expect(studentBlockedReason(student({ email_verified: false, advisor_link_status: 'NONE' }))).to.equal('EMAIL_NOT_VERIFIED');
-      expect(studentBlockedReason(student({ advisor_link_status: 'ADVISOR_LINK_PENDING' }))).to.equal('ADVISOR_NOT_LINKED');
+      expect(studentBlockedReason(student({ advisor_link_status: 'NONE' }))).to.equal('ADVISOR_NOT_LINKED');
       expect(studentBlockedReason(student({ advisor_id: undefined }))).to.equal('ADVISOR_NOT_LINKED');
     });
 
