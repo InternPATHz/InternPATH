@@ -141,7 +141,8 @@ export function AuditLog() {
       {formError && <Notice tone="error">{formError}</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      {/* `relative` ให้ `sr-only` (absolute) ในหัวตารางอยู่ในกล่องเลื่อน — ไม่งั้นหน้าทั้งหน้ากว้างเกินจอมือถือ */}
+      <div className="relative overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full min-w-[820px] text-left text-sm">
           <thead className="border-b border-border bg-surface-muted text-xs text-ink-soft">
             <tr>
