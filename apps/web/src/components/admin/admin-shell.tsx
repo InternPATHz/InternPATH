@@ -29,33 +29,30 @@ function AdminFrame({ children }: { children: ReactNode }) {
 
   if (!user) return null; // RequireAuth ตรวจแล้ว: ถึงตรงนี้ต้องมี user (กันชนิดเป็น null)
 
+  // แสดงเฉพาะรายการที่มีหน้าแล้ว และซ่อนกลุ่มที่ยังไม่มีหน้าเลย (ไม่แสดงเมนูที่กดไม่ได้)
+  const groups = ADMIN_NAV
+    .map((group) => ({ ...group, items: group.items.filter((item): item is { label: string; href: string } => item.href !== null) }))
+    .filter((group) => group.items.length > 0);
+
   const nav = (
     <nav aria-label="เมนู Admin" className="space-y-6">
-      {ADMIN_NAV.map((group) => (
+      {groups.map((group) => (
         <div key={group.title}>
           <p className="px-3 text-xs font-semibold text-ink-soft">{group.title}</p>
           <ul className="mt-2 space-y-0.5">
             {group.items.map((item) => {
-              const active = item.href !== null && pathname.startsWith(item.href);
+              const active = pathname.startsWith(item.href);
               const Icon = ADMIN_NAV_ICONS[item.label];
-              const icon = Icon && <Icon aria-hidden="true" className={`h-4 w-4 shrink-0 ${active ? 'text-primary' : 'text-neutral'}`} strokeWidth={1.5} />;
               return (
                 <li key={item.label}>
-                  {item.href ? (
-                    <Link
-                      href={item.href}
-                      aria-current={active ? 'page' : undefined}
-                      className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${active ? 'bg-black/[0.06] font-semibold text-ink' : 'text-ink/80 hover:bg-black/[0.04] hover:text-ink'}`}
-                    >
-                      {icon}
-                      {item.label}
-                    </Link>
-                  ) : (
-                    <span className="flex items-center justify-between gap-2.5 rounded-lg px-3 py-2 text-sm text-neutral">
-                      <span className="flex items-center gap-2.5">{icon}{item.label}</span>
-                      <span className="text-xs">เร็ว ๆ นี้</span>
-                    </span>
-                  )}
+                  <Link
+                    href={item.href}
+                    aria-current={active ? 'page' : undefined}
+                    className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${active ? 'bg-black/[0.06] font-semibold text-ink' : 'text-ink/80 hover:bg-black/[0.04] hover:text-ink'}`}
+                  >
+                    {Icon && <Icon aria-hidden="true" className={`h-4 w-4 shrink-0 ${active ? 'text-primary' : 'text-neutral'}`} strokeWidth={1.5} />}
+                    {item.label}
+                  </Link>
                 </li>
               );
             })}

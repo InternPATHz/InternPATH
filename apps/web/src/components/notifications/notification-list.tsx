@@ -7,7 +7,7 @@ import type { NotificationItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { ApiError } from '@/lib/api';
-import { NOTIFICATIONS_MOCK, notificationsApi } from '@/lib/notifications';
+import { notificationsApi } from '@/lib/notifications';
 
 const PAGE_SIZE = 20;
 const dateTimeFormat = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' });
@@ -56,7 +56,6 @@ export function NotificationList() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-semibold">การแจ้งเตือน</h1>
-          {NOTIFICATIONS_MOCK && <p className="mt-1 text-xs text-warning-text">ข้อมูลในหน้านี้เป็นข้อมูลจำลอง</p>}
         </div>
         <button type="button" disabled={busy || !hasUnread} onClick={() => void readAll()} className="rounded-full border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-50">
           ทำเครื่องหมายว่าอ่านทั้งหมด

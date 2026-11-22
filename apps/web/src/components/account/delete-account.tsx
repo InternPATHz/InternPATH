@@ -15,7 +15,7 @@ function describe(cause: unknown): string {
     return 'ลบบัญชีไม่ได้ในขณะนี้ เพราะมีใบสมัครที่ยังดำเนินอยู่ (รออาจารย์อนุมัติ กำลังฝึกงาน หรืออยู่ระหว่างโต้แย้ง/ประเมินซ้ำ) หรือคุณเป็นเจ้าของบัญชีบริษัท (Owner) ที่ยังไม่ได้โอนสิทธิ์ กรุณาจัดการให้เรียบร้อยก่อน';
   }
   if (cause.code === 'UPSTREAM_UNAVAILABLE') return 'ตรวจสถานะใบสมัครไม่ได้ในขณะนี้ ระบบจึงยังไม่ลบบัญชีเพื่อความปลอดภัย กรุณาลองใหม่ภายหลัง';
-  if (cause.status === 404) return 'ฟังก์ชันลบบัญชียังไม่เปิดใช้งานในระบบนี้ กรุณาติดต่อผู้ดูแลระบบ';
+  if (cause.status === 404) return 'ไม่พบบัญชีนี้ในระบบ กรุณาเข้าสู่ระบบใหม่อีกครั้ง';
   return cause.message;
 }
 
@@ -84,11 +84,12 @@ export function DeleteAccount() {
       </section>
 
       <form onSubmit={(event) => void submit(event)} noValidate className="mt-6 space-y-4">
-        <label className="block text-sm font-medium">
-          พิมพ์ "{CONFIRM_WORD}" เพื่อยืนยัน
-          <input value={text} onChange={(event) => setText(event.target.value)} autoComplete="off"
+        <div>
+          <label htmlFor="delete-confirm" className="block text-sm font-medium">พิมพ์ &quot;{CONFIRM_WORD}&quot; เพื่อยืนยัน</label>
+          <input id="delete-confirm" value={text} onChange={(event) => setText(event.target.value)} autoComplete="off"
+            aria-invalid={error ? true : undefined}
             className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-base font-normal outline-none focus:border-danger-text focus:ring-2 focus:ring-danger-soft" />
-        </label>
+        </div>
         {error && <Notice tone="error">{error}</Notice>}
         <div className="flex flex-wrap gap-3">
           <button type="submit" disabled={busy || text.trim() !== CONFIRM_WORD} className="rounded-full bg-danger-text px-6 py-2.5 font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50">

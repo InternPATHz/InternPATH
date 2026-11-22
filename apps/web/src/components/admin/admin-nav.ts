@@ -1,6 +1,6 @@
 /**
  * เมนู Admin จัดกลุ่มตาม Service เจ้าของ (README §11) — เจ้าของแต่ละ Service เสียบหน้าของตนโดยเพิ่มรายการที่นี่
- * `href` เป็น null = ยังไม่มีหน้า (แสดงเป็น "เร็ว ๆ นี้")
+ * `href` เป็น null = ยังไม่มีหน้า (ไม่แสดงในเมนู — เจ้าของใส่ path เมื่อหน้าพร้อม)
  */
 export type AdminNavItem = { label: string; href: string | null };
 export type AdminNavGroup = { title: string; owner: string; items: AdminNavItem[] };
