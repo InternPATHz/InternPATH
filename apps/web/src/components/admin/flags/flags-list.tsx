@@ -94,7 +94,7 @@ export function FlagsList() {
       setNotice(response.changed ? (active ? 'ตั้งธง UNDER_REVIEW แล้ว' : 'เคลียร์ธง UNDER_REVIEW แล้ว') : 'บริษัทนี้อยู่ในสถานะนี้อยู่แล้ว ไม่มีการเปลี่ยนแปลง');
       setReloadKey((key) => key + 1);
     } catch (cause) {
-      throw new Error(failure(cause));
+      throw new Error(failure(cause), { cause });
     }
   }
 

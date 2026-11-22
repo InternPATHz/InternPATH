@@ -40,7 +40,7 @@ export function Avatar({ name, src, size = 'md', className = '' }: {
   const base = `inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full ${SIZE[size]} ${className}`;
   if (src && !failed) {
     return (
-      // eslint-disable-next-line @next/next/no-img-element -- Signed URL ภายนอก ไม่ผ่าน next/image
+      // ใช้ <img> ตรง ๆ (ไม่ใช้ next/image) เพราะเป็น Signed URL ภายนอกที่หมดอายุได้
       <img src={src} alt={name ? `รูปโปรไฟล์ของ ${name}` : 'รูปโปรไฟล์'} onError={() => setFailed(true)} className={`${base} object-cover`} />
     );
   }
