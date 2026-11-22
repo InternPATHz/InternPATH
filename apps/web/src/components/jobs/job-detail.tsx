@@ -11,6 +11,7 @@ import { ReportPanel } from '@/components/reports/report-panel';
 import { getJob } from '@/lib/job-search';
 import type { JobDetailResult } from '@/lib/job-search';
 import { StatusBadge } from '@/components/ui/status-badge';
+import { allowanceLabel } from '@/lib/allowance';
 import { CATEGORIES } from '@/lib/categories';
 import { JOB_STATUS, statusView } from '@/lib/status-map';
 
@@ -115,7 +116,7 @@ export function JobDetail() {
       <div className="mt-6 grid gap-8 md:grid-cols-[1fr_16rem]">
         <div>
           <dl className="grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-3">
-            <Fact label="ค่าตอบแทน">{job.allowance.text}</Fact>
+            <Fact label="ค่าตอบแทน">{allowanceLabel(job.allowance)}</Fact>
             <Fact label="รูปแบบการทำงาน">{workModeLabel[job.work_mode]}</Fact>
             <Fact label="สถานที่">{job.location}</Fact>
             <Fact label="ชั่วโมงต่อสัปดาห์">{job.hours_per_week} ชั่วโมง</Fact>

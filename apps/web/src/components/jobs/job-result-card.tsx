@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import type { SearchJobItem, WorkMode } from '@internpath/contracts';
+import { allowanceLabel } from '@/lib/allowance';
 import { CATEGORIES } from '@/lib/categories';
 import type { CompanyRating } from '@/lib/job-search';
 
@@ -42,7 +43,7 @@ export function JobResultCard({ job, rating }: { job: SearchJobItem; rating?: Co
         {job.company.badges.map((badge) => <Badge key={badge} tone="success">{badge}</Badge>)}
       </div>
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-2 text-sm text-ink-soft">
-        <div><dt className="text-xs">ค่าตอบแทน</dt><dd className="text-ink">{job.allowance.text}</dd></div>
+        <div><dt className="text-xs">ค่าตอบแทน</dt><dd className="text-ink">{allowanceLabel(job.allowance)}</dd></div>
         <div><dt className="text-xs">รูปแบบการทำงาน</dt><dd className="text-ink">{workModeLabel[job.work_mode]} · {job.location}</dd></div>
         <div>
           <dt className="text-xs">คะแนนรีวิว</dt>
