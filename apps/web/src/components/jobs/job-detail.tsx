@@ -127,6 +127,22 @@ export function JobDetail() {
           <TextSection title="หน้าที่ความรับผิดชอบ" text={job.responsibilities} />
           <TextSection title="คุณสมบัติผู้สมัคร" text={job.qualifications} />
 
+          {job.tags.length > 0 && (
+            <section className="mt-8">
+              <h2 className="text-lg font-semibold">ทักษะที่เกี่ยวข้อง</h2>
+              <ul className="mt-2 flex flex-wrap gap-2">
+                {job.tags.map((tag) => (
+                  <li key={tag.id}>
+                    <Link href={`/jobs?tags=${encodeURIComponent(tag.slug)}`} aria-label={`ค้นหางานที่ใช้ทักษะ ${tag.name}`}
+                      className="inline-block rounded-full border border-border px-3 py-1 text-sm hover:border-primary hover:text-primary">
+                      {tag.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <section className="mt-8">
             <h2 className="text-lg font-semibold">สาขาที่เปิดรับ</h2>
             <ul className="mt-2 flex flex-wrap gap-2">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import type {
   AdvisorStudentItem, AdvisorTrainingStudentItem, CreateStudentRequest, CreateStudentResponse, Paginated,
@@ -38,7 +38,18 @@ const inputClass = 'mt-1 w-full rounded-lg border border-border bg-surface px-3 
  * - รายชื่อพร้อมตัวกรองชั้นปี/กำลังฝึกงาน/ฝึกงานเสร็จแล้ว → Lifecycle `GET /advisor/students`
  * - บัญชีที่ยังไม่ตั้งรหัสผ่าน → Identity `GET /advisor-links/students?activation=PENDING` (ส่งคำเชิญซ้ำ/ยกเลิก)
  */
+/** label อยู่ข้างช่อง (ไม่ครอบ) เพื่อให้ชื่อช่องที่เครื่องอ่านหน้าจออ่านไม่พ่วงค่าที่พิมพ์อยู่ */
+function Field({ id, label, className = '', children }: { id: string; label: string; className?: string; children: React.ReactNode }) {
+  return (
+    <div className={className}>
+      <label htmlFor={id} className="text-sm font-medium">{label}</label>
+      {children}
+    </div>
+  );
+}
+
 export function AdvisorStudents() {
+  const fieldId = useId();
   const { request } = useAuth();
   const [form, setForm] = useState(EMPTY_FORM);
   const [formBusy, setFormBusy] = useState(false);
@@ -130,23 +141,24 @@ export function AdvisorStudents() {
       <section aria-labelledby="add-title" className="mt-6 rounded-xl border border-border bg-surface p-5">
         <h2 id="add-title" className="text-lg font-semibold">เพิ่มนักศึกษา</h2>
         <form onSubmit={(event) => void create(event)} className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="text-sm font-medium sm:col-span-2">อีเมลสถาบัน (.ac.th ของสถาบันเดียวกับอาจารย์)
-            <input type="email" required value={form.email} onChange={set('email')} className={inputClass} autoComplete="off" />
-          </label>
-          <label className="text-sm font-medium">ชื่อ-นามสกุล
-            <input required value={form.full_name} onChange={set('full_name')} maxLength={200} className={inputClass} />
-          </label>
-          <label className="text-sm font-medium">รหัสนักศึกษา
-            <input required value={form.student_code} onChange={set('student_code')} maxLength={50} className={inputClass} />
-          </label>
-          <label className="text-sm font-medium">สาขาวิชา
-            <input required value={form.major} onChange={set('major')} maxLength={200} className={inputClass} />
-          </label>
-          <label className="text-sm font-medium">ชั้นปี
-            <input type="number" required min={1} max={10} value={form.year_level} onChange={set('year_level')} className={inputClass} />
-          </label>
+          <Field id={`${fieldId}-email`} label="อีเมลสถาบัน (.ac.th ของสถาบันเดียวกับอาจารย์)" className="sm:col-span-2">
+            <input id={`${fieldId}-email`} type="email" inputMode="email" required value={form.email} onChange={set('email')} className={inputClass}
+              autoComplete="off" aria-describedby={formMessage ? `${fieldId}-message` : undefined} />
+          </Field>
+          <Field id={`${fieldId}-name`} label="ชื่อ-นามสกุล">
+            <input id={`${fieldId}-name`} required value={form.full_name} onChange={set('full_name')} maxLength={200} className={inputClass} autoComplete="off" />
+          </Field>
+          <Field id={`${fieldId}-code`} label="รหัสนักศึกษา">
+            <input id={`${fieldId}-code`} required value={form.student_code} onChange={set('student_code')} maxLength={50} className={inputClass} autoComplete="off" />
+          </Field>
+          <Field id={`${fieldId}-major`} label="สาขาวิชา">
+            <input id={`${fieldId}-major`} required value={form.major} onChange={set('major')} maxLength={200} className={inputClass} />
+          </Field>
+          <Field id={`${fieldId}-year`} label="ชั้นปี">
+            <input id={`${fieldId}-year`} type="number" inputMode="numeric" required min={1} max={10} value={form.year_level} onChange={set('year_level')} className={inputClass} />
+          </Field>
           <div className="sm:col-span-2">
-            {formMessage && <div className="mb-3"><Notice tone={formMessage.tone}>{formMessage.text}</Notice></div>}
+            {formMessage && <div id={`${fieldId}-message`} className="mb-3"><Notice tone={formMessage.tone}>{formMessage.text}</Notice></div>}
             <button type="submit" disabled={formBusy} className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
               {formBusy ? 'กำลังเพิ่ม…' : 'เพิ่มนักศึกษาและส่งคำเชิญ'}
             </button>
@@ -180,11 +192,11 @@ export function AdvisorStudents() {
       <section aria-labelledby="list-title" className="mt-8">
         <h2 id="list-title" className="text-lg font-semibold">รายชื่อนักศึกษา</h2>
         <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
-          <label className="text-sm">
-            <span className="mb-1 block text-xs font-medium text-ink-soft">ค้นหา (ชื่อ รหัส สาขา)</span>
-            <input value={q} onChange={(event) => { setQ(event.target.value); setPage(1); }}
+          <div className="text-sm">
+            <label htmlFor={`${fieldId}-q`} className="mb-1 block text-xs font-medium text-ink-soft">ค้นหา (ชื่อ รหัส สาขา)</label>
+            <input id={`${fieldId}-q`} type="search" value={q} onChange={(event) => { setQ(event.target.value); setPage(1); }}
               className="rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" />
-          </label>
+          </div>
           <FilterSelect label="ชั้นปี" value={yearLevel} onChange={(value) => { setYearLevel(value); setPage(1); }} options={YEAR_OPTIONS} />
           <FilterSelect label="สถานะการฝึกงาน" value={training} onChange={(value) => { setTraining(value); setPage(1); }}
             options={[['', 'ทั้งหมด'], ['IN_TRAINING', 'กำลังฝึกงาน'], ['COMPLETED', 'ฝึกงานเสร็จแล้ว']]} />
