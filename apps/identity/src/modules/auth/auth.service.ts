@@ -175,9 +175,9 @@ export class AuthService {
   }
 
   private assertUsable(user: User): void {
-    if (user.status === 'PENDING_EMAIL' || !user.emailVerifiedAt) throw new AppException('EMAIL_NOT_VERIFIED', 'กรุณายืนยันอีเมลก่อน', 403);
+    if (user.status === 'PENDING_EMAIL' || !user.emailVerifiedAt) throw new AppException('EMAIL_NOT_VERIFIED', 'กรุณายืนยันอีเมลก่อน', 401);
     if (user.status === 'PENDING_APPROVAL') throw new AppException('ACCOUNT_PENDING_APPROVAL', 'บัญชีกำลังรออนุมัติ', 403);
-    if (user.status === 'SUSPENDED' || user.status === 'DELETED') throw new AppException('ACCOUNT_SUSPENDED', 'บัญชีนี้ไม่สามารถใช้งานได้', 403);
+    if (user.status === 'SUSPENDED' || user.status === 'DELETED') throw new AppException('ACCOUNT_SUSPENDED', 'บัญชีนี้ไม่สามารถใช้งานได้', 401);
   }
 
   private authUser(user: User): AuthUser {

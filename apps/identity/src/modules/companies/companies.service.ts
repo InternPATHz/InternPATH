@@ -16,7 +16,7 @@ export class CompaniesService {
   private async actor(userId: string, role: User['role']): Promise<User> {
     const user = await this.db.user.findUnique({ where: { id: userId } });
     if (!user || user.role !== role) throw new AppException('FORBIDDEN_ROLE', 'ไม่มีสิทธิ์ดำเนินการ', 403);
-    if (user.status !== 'ACTIVE' || !user.emailVerifiedAt) throw new AppException('ACCOUNT_SUSPENDED', 'บัญชีนี้ยังใช้งานไม่ได้', 403);
+    if (user.status !== 'ACTIVE' || !user.emailVerifiedAt) throw new AppException('ACCOUNT_SUSPENDED', 'บัญชีนี้ยังใช้งานไม่ได้', 401);
     return user;
   }
 

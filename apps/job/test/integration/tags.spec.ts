@@ -95,8 +95,8 @@ describe('Tags API (HTTP และ PostgreSQL จริง)', function () {
     const created = await http().post('/v1/admin/tags').set(admin()).send({ name: '  Spring Boot ' }).expect(201);
     expect(created.body).to.include({ name: 'Spring Boot', slug: 'spring-boot', active: true, job_count: 0 });
     const dup = await http().post('/v1/admin/tags').set(admin()).send({ name: 'spring boot' }).expect(409);
-    expect(dup.body.error.code).to.equal('CONFLICT');
-    expect(dup.body.error.details[0].issue).to.equal('TAG_ALREADY_EXISTS');
+    expect(dup.body.error.code).to.equal('STATE_CONFLICT');
+    expect(dup.body.error.details[0].issue).to.equal('TAG_EXISTS');
     const thai = await http().post('/v1/admin/tags').set(admin()).send({ name: 'ภาษาไทย' }).expect(400);
     expect(thai.body.error.details[0].issue).to.equal('TAG_NAME_INVALID');
     await http().post('/v1/admin/tags').set(admin()).send({ name: '   ' }).expect(400);
@@ -130,6 +130,6 @@ describe('Tags API (HTTP และ PostgreSQL จริง)', function () {
     await http().patch('/v1/admin/tags/not-a-uuid').set(admin()).send({ active: true }).expect(400);
     const react = await db.prisma.tag.findUniqueOrThrow({ where: { slug: 'react' } });
     const clash = await http().patch(`/v1/admin/tags/${react.id}`).set(admin()).send({ name: 'Python' }).expect(409);
-    expect(clash.body.error.details[0].issue).to.equal('TAG_ALREADY_EXISTS');
+    expect(clash.body.error.details[0].issue).to.equal('TAG_EXISTS');
   });
 });

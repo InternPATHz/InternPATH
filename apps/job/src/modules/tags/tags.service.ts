@@ -96,7 +96,7 @@ export class TagsService {
 
   private mapConflict(cause: unknown): unknown {
     if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {
-      return new AppException('CONFLICT', 'มี Tag ชื่อนี้อยู่แล้ว', 409, [{ field: 'name', issue: 'TAG_ALREADY_EXISTS' }]);
+      return new AppException('STATE_CONFLICT', 'มี Tag ชื่อนี้อยู่แล้ว', 409, [{ field: 'name', issue: 'TAG_EXISTS' }]);
     }
     return cause;
   }

@@ -159,7 +159,8 @@ export function NoEvaluationList() {
       {actionError && <div className="mt-4"><Notice tone="error">{actionError}</Notice></div>}
       {error && <div className="mt-4"><Notice tone="error">{error}</Notice></div>}
 
-      <div className="mt-4 overflow-x-auto rounded-xl border border-border bg-surface">
+      {/* relative: ให้ sr-only (position:absolute) ในหัวตารางอยู่ในกล่องที่เลื่อนได้ ไม่ดันหน้ากว้างเกินจอมือถือ */}
+      <div className="relative mt-4 overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full min-w-[820px] text-left text-sm">
           <thead className="border-b border-border bg-surface-muted text-xs text-ink-soft">
             <tr>

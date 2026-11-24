@@ -12,7 +12,7 @@ export class AdminService {
   private async admin(id: string): Promise<void> {
     const user = await this.db.user.findUnique({ where: { id } });
     if (!user || user.role !== 'PLATFORM_ADMIN') throw new AppException('FORBIDDEN_ROLE', 'เฉพาะ Admin เท่านั้น', 403);
-    if (user.status !== 'ACTIVE' || !user.emailVerifiedAt) throw new AppException('ACCOUNT_SUSPENDED', 'บัญชี Admin ยังใช้งานไม่ได้', 403);
+    if (user.status !== 'ACTIVE' || !user.emailVerifiedAt) throw new AppException('ACCOUNT_SUSPENDED', 'บัญชี Admin ยังใช้งานไม่ได้', 401);
   }
 
   private async company(tx: Prisma.TransactionClient, id: string): Promise<Company> {

@@ -188,7 +188,8 @@ describe('Identity advisor-created students (Postgres จริง)', function (
     for (const bad of [{ year_level: 0 }, { year_level: 11 }, { year_level: 'x' }, { major: '' }, { full_name: ' ' }, { email: 'not-an-email' }]) {
       await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent(bad)).expect(400);
     }
-    await http().post('/v1/advisor-links/students').set(advisorAuth(advisorC)).send(newStudent()).expect(403); // ยังไม่อนุมัติ
+    const pending = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorC)).send(newStudent()).expect(401); // ยังไม่อนุมัติ (api-contract §2: ACCOUNT_SUSPENDED = 401)
+    expect(pending.body.error.code).to.equal('ACCOUNT_SUSPENDED');
     await http().post('/v1/advisor-links/students').set('Authorization', bearer(studentId, 'STUDENT')).send(newStudent()).expect(403);
     await http().post('/v1/advisor-links/students').send(newStudent()).expect(401);
     expect(await db.user.count({ where: { email: { startsWith: 'x@' } } })).to.equal(0);
