@@ -5,10 +5,11 @@ import Link from 'next/link';
 export const metadata: Metadata = { title: 'นโยบายความเป็นส่วนตัว' };
 
 /**
- * ฉบับร่างสำหรับระบบ InternPath — เนื้อหาอ้างอิงกติกาใน README §5.9–§5.11 (เก็บไฟล์, Audit, PDPA และการลบบัญชี)
- * ก่อนเปิดใช้งานจริงต้องให้ผู้รับผิดชอบด้านกฎหมาย/ข้อมูลส่วนบุคคลของสถาบันตรวจ และระบุช่องทางติดต่อที่ข้อ 9
+ * นโยบายความเป็นส่วนตัวของ InternPath — เนื้อหาอ้างอิงกติกาใน README §5.9–§5.11 (เก็บไฟล์, Audit, PDPA และการลบบัญชี)
+ * ข้อ 9 ใช้ช่องทางในระบบ (หน้าบัญชี / อาจารย์ที่ปรึกษา / ผู้ดูแลแพลตฟอร์มของสถาบัน) ไม่มีอีเมลกลาง — PM ตัดสิน 2026-11-24
  */
-const UPDATED = '17 พฤศจิกายน 2569';
+const VERSION = '1.0';
+const UPDATED = '24 พฤศจิกายน 2569';
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
@@ -27,7 +28,7 @@ export default function PrivacyPage() {
   return (
     <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-semibold">นโยบายความเป็นส่วนตัว</h1>
-      <p className="mt-2 text-sm text-ink-soft">ฉบับร่าง 1.0 · ปรับปรุงล่าสุด {UPDATED}</p>
+      <p className="mt-2 text-sm text-ink-soft">ฉบับที่ {VERSION} · ปรับปรุงล่าสุด {UPDATED}</p>
       <p className="mt-4 text-sm leading-thai text-ink-soft">
         InternPath เป็นแพลตฟอร์มตัวกลางเชื่อมนักศึกษา อาจารย์ที่ปรึกษา และบริษัทสำหรับการฝึกงาน นโยบายนี้อธิบายว่าเราเก็บข้อมูลอะไร ใช้อย่างไร ใครมองเห็นได้
         และคุณมีสิทธิ์อะไรบ้าง ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล พ.ศ. 2562 (PDPA)
@@ -104,7 +105,7 @@ export default function PrivacyPage() {
           'เจ้าของบริษัท (Owner) ต้องโอนสิทธิ์ให้สมาชิกคนอื่นก่อนลบบัญชี',
         ]} />
         <p>
-          ขอลบบัญชีได้เองที่ <Link href="/account/delete" className="font-medium text-primary hover:underline">บัญชีของฉัน › ลบบัญชี</Link> (ต้องเข้าสู่ระบบ) หรือติดต่อเราตามข้อ 9
+          ขอลบบัญชีได้เองที่ <Link href="/account/delete" className="font-medium text-primary hover:underline">บัญชีของฉัน › ลบบัญชี</Link> (ต้องเข้าสู่ระบบ) หรือติดต่อตามช่องทางในข้อ 9
         </p>
       </Section>
 
@@ -123,7 +124,13 @@ export default function PrivacyPage() {
       </Section>
 
       <Section id="contact" title="9. ติดต่อเรา">
-        <p>หากต้องการใช้สิทธิ์ตามข้อ 7 หรือมีคำถามเกี่ยวกับนโยบายนี้ ติดต่อผู้ดูแลแพลตฟอร์ม InternPath ได้ที่ [ระบุอีเมลติดต่อก่อนเปิดใช้งานจริง]</p>
+        <p>หากต้องการใช้สิทธิ์ตามข้อ 7 หรือมีคำถามเกี่ยวกับนโยบายนี้ ใช้ช่องทางต่อไปนี้:</p>
+        <List items={[
+          <>ดูและแก้ไขข้อมูลของคุณได้เองที่หน้า <Link href="/account" className="font-medium text-primary hover:underline">บัญชีของฉัน</Link> และหน้าโปรไฟล์ตามบทบาทของคุณ</>,
+          <>ขอลบบัญชีได้เองที่ <Link href="/account/delete" className="font-medium text-primary hover:underline">บัญชีของฉัน › ลบบัญชี</Link></>,
+          'นักศึกษา: แจ้งอาจารย์ที่ปรึกษาที่ผูกกับบัญชีของคุณ เพื่อส่งเรื่องต่อถึงผู้ดูแลแพลตฟอร์ม',
+          'อาจารย์และบริษัท: ติดต่อผู้ดูแลแพลตฟอร์ม InternPath ของสถาบัน',
+        ]} />
       </Section>
 
       <p className="mt-10 text-sm"><Link href="/" className="text-primary hover:underline">← กลับหน้าแรก</Link></p>
