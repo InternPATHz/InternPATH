@@ -3,13 +3,14 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import type {
-  AcademicResult, AcademicResultRequest, AdvisorApplicationItem, AdvisorDisputeAction, AdvisorDisputeItem, ApplicationStatus, Paginated,
+  AcademicResult, AcademicResultRequest, AdvisorApplicationItem, AdvisorDisputeItem, ApplicationStatus, Paginated,
 } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import {
   ApplicationSummary, type Message, NOTE_MAX, PAGE_SIZE, Pager, failure, inputClass, primaryButton, secondaryButton,
 } from '@/components/advisor/advisor-ui';
+import { useAdvisorDisputeDecision } from '@/components/advisor/advisor-dispute-decision';
 import { formatDate } from '@/components/student/application-ui';
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge';
 
@@ -70,48 +71,28 @@ function DisputeQueue() {
   const { request } = useAuth();
   const [page, setPage] = useState(1);
   const [list, setList] = useState<Paginated<AdvisorDisputeItem> | null>(null);
-  const [message, setMessage] = useState<Message | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
 
   const load = useCallback(async () => {
     try {
       const query = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
       setList(await request<Paginated<AdvisorDisputeItem>>(`/advisor/disputes?${query.toString()}`));
+      setLoadError(null);
     } catch (cause) {
       setList(null);
-      setMessage({ tone: 'error', text: failure(cause) });
+      setLoadError(failure(cause));
     }
   }, [request, page]);
 
   useEffect(() => { void load(); }, [load]);
 
-  async function decide(item: AdvisorDisputeItem, action: AdvisorDisputeAction) {
-    const question = action === 'request-reevaluation'
-      ? `ให้บริษัทประเมิน ${item.student_name} ใหม่? (ประเมินซ้ำได้ 1 รอบ)`
-      : `ยืนยันผลไม่ผ่านของ ${item.student_name}?`;
-    if (!window.confirm(question)) return;
-    const note = (notes[item.id] ?? '').trim();
-    if (note.length > NOTE_MAX) { setMessage({ tone: 'error', text: `หมายเหตุต้องไม่เกิน ${NOTE_MAX} ตัวอักษร` }); return; }
-    setBusyId(item.id);
-    setMessage(null);
-    try {
-      await request(`/advisor/applications/${encodeURIComponent(item.id)}/actions/${action}`, { method: 'POST', body: note ? { note } : {} });
-      setMessage({
-        tone: 'success',
-        text: action === 'request-reevaluation' ? `ส่งให้บริษัทประเมิน ${item.student_name} ใหม่แล้ว` : `ยืนยันผลไม่ผ่านของ ${item.student_name} แล้ว บันทึกผลวิชาได้ในส่วนด้านล่าง`,
-      });
-    } catch (cause) {
-      setMessage({ tone: 'error', text: failure(cause) });
-    } finally {
-      setBusyId(null);
-      await load();
-    }
-  }
+  const { busyId, decide, message } = useAdvisorDisputeDecision(load);
 
   return (
     <section aria-labelledby="disputes-title" className="mt-8">
       <h2 id="disputes-title" className="text-xl font-semibold">คำโต้แย้งผลประเมิน</h2>
+      {loadError && <div className="mt-3"><Notice tone="error">{loadError}</Notice></div>}
       {message && <div className="mt-3"><Notice tone={message.tone}>{message.text}</Notice></div>}
       {list && list.data.length === 0 && <p className="mt-3 rounded-xl bg-surface-muted p-6 text-center text-sm text-ink-soft">ไม่มีคำโต้แย้งที่รอตัดสิน</p>}
       <ul className="mt-3 space-y-4">
@@ -133,8 +114,10 @@ function DisputeQueue() {
               <textarea value={notes[item.id] ?? ''} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} rows={2} className={inputClass} />
             </label>
             <div className="mt-3 flex flex-wrap gap-3">
-              <button type="button" disabled={busyId === item.id} onClick={() => void decide(item, 'request-reevaluation')} className={primaryButton}>ให้บริษัทประเมินใหม่</button>
-              <button type="button" disabled={busyId === item.id} onClick={() => void decide(item, 'uphold-fail')} className={secondaryButton}>ยืนยันผลไม่ผ่าน</button>
+              {item.evaluation?.round !== 2 && (
+                <button type="button" disabled={busyId !== null} onClick={() => void decide(item, 'request-reevaluation', notes[item.id] ?? '')} className={primaryButton}>ให้บริษัทประเมินใหม่</button>
+              )}
+              <button type="button" disabled={busyId !== null} onClick={() => void decide(item, 'uphold-fail', notes[item.id] ?? '')} className={secondaryButton}>ยืนยันผลไม่ผ่าน</button>
             </div>
           </li>
         ))}
