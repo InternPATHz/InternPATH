@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { AuditLogEntry, Paginated } from '@internpath/contracts';
+import type { AdminUserListItem, AuditLogEntry, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { Badge, formatDateTime } from '@/components/admin/queue/queue-ui';
@@ -12,6 +12,7 @@ import { ApiError } from '@/lib/api';
 import { ACTION_LABEL, TARGET_LABEL, actionLabel, endOfDay, startOfDay, targetLabel } from './audit-meta';
 
 const PAGE_SIZE = 20;
+const dateKey = new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Bangkok', dateStyle: 'short' });
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -33,13 +34,40 @@ function toQuery(filters: Filters): string {
   return query.toString();
 }
 
-function Json({ title, value }: { title: string; value: unknown }) {
+function asFields(value: unknown): Record<string, unknown> {
+  if (value === null || value === undefined) return {};
+  if (typeof value === 'object' && !Array.isArray(value)) return value as Record<string, unknown>;
+  return { 'ค่า': value };
+}
+
+function stableJson(value: unknown) {
+  return JSON.stringify(value, (_key, item: unknown) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return item;
+    return Object.fromEntries(Object.entries(item).sort(([first], [second]) => first.localeCompare(second)));
+  });
+}
+
+function AuditChanges({ before, after }: { before: unknown; after: unknown }) {
+  const fields = [asFields(before), asFields(after)];
+  const keys = [...new Set(fields.flatMap((side) => Object.keys(side)))];
   return (
-    <div className="min-w-0 flex-1">
-      <p className="text-xs font-medium text-ink-soft">{title}</p>
-      <pre className="mt-1 max-h-64 overflow-auto rounded-lg border border-border bg-surface p-3 text-xs">
-        {value === null || value === undefined ? '—' : JSON.stringify(value, null, 2)}
-      </pre>
+    <div className="grid gap-3 md:grid-cols-2">
+      {fields.map((side, index) => (
+        <div key={index} className="min-w-0 rounded-lg border border-border bg-surface p-3">
+          <h3 className="text-sm font-semibold">{index === 0 ? 'ก่อน' : 'หลัง'}</h3>
+          {keys.length === 0 ? <p className="mt-2 text-xs text-ink-soft">—</p> : <dl className="mt-2 space-y-1 text-xs">
+            {keys.map((key) => {
+              const changed = stableJson(fields[0][key]) !== stableJson(fields[1][key]);
+              return (
+                <div key={key} className={`rounded px-2 py-1 ${changed ? index === 0 ? 'bg-danger-soft text-danger-text' : 'bg-success-soft text-success-text' : ''}`}>
+                  <dt className="break-all font-semibold">{key}{changed && <span className="sr-only"> มีการเปลี่ยนแปลง</span>}</dt>
+                  <dd className="whitespace-pre-wrap break-all font-mono">{Object.hasOwn(side, key) ? JSON.stringify(side[key], null, 2) : '—'}</dd>
+                </div>
+              );
+            })}
+          </dl>}
+        </div>
+      ))}
     </div>
   );
 }
@@ -60,9 +88,17 @@ export function AuditLog() {
   const [actor, setActor] = useState(filters.actor);
   const [from, setFrom] = useState(filters.from);
   const [to, setTo] = useState(filters.to);
+  const [admins, setAdmins] = useState<AdminUserListItem[]>([]);
   const [formError, setFormError] = useState('');
 
   useEffect(() => { setActor(filters.actor); setFrom(filters.from); setTo(filters.to); }, [filters.actor, filters.from, filters.to]);
+
+  useEffect(() => {
+    let active = true;
+    void request<Paginated<AdminUserListItem>>('/admin/users?role=PLATFORM_ADMIN&page_size=100')
+      .then((data) => { if (active) setAdmins(data.data); }, () => undefined);
+    return () => { active = false; };
+  }, [request]);
 
   useEffect(() => {
     let active = true;
@@ -98,6 +134,13 @@ export function AuditLog() {
     update({ actor: trimmed, from, to });
   }
 
+  function setQuickRange(days: number) {
+    const now = Date.now();
+    setFormError('');
+    update({ from: dateKey.format(now - (days - 1) * 86_400_000), to: dateKey.format(now) });
+  }
+
+  const adminNames = new Map(admins.map((admin) => [admin.id, admin.full_name]));
   const total = result?.meta.total ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const hasFilter = Boolean(filters.action || filters.target_type || filters.actor || filters.from || filters.to);
@@ -118,12 +161,18 @@ export function AuditLog() {
           options={[['', 'ทั้งหมด'], ...Object.entries(ACTION_LABEL).map(([code, label]): [string, string] => [code, label])]} />
         <FilterSelect label="เป้าหมาย" value={filters.target_type} onChange={(target_type) => update({ target_type })}
           options={[['', 'ทั้งหมด'], ...Object.entries(TARGET_LABEL).map(([code, label]): [string, string] => [code, label])]} />
-        <form onSubmit={submitText} className="flex flex-wrap items-end gap-3">
-          <label className="w-72 text-sm">
-            <span className="mb-1 block text-xs font-medium text-ink-soft">ผู้ดูแล (UUID)</span>
-            <input value={actor} onChange={(event) => setActor(event.target.value)} spellCheck={false}
-              className="w-full rounded-lg border border-border px-3 py-2 font-mono text-xs outline-none focus:border-primary" />
-          </label>
+        <form onSubmit={submitText} className="flex min-w-0 max-w-full flex-wrap items-end gap-3">
+          <div className="w-full min-w-0 max-w-72 space-y-2">
+            {admins.length > 0 && (
+              <FilterSelect label="ผู้ดูแล" value={adminNames.has(actor) ? actor : ''} onChange={setActor}
+                options={[['', 'ผู้ดูแลทั้งหมด'], ...admins.map((admin): [string, string] => [admin.id, admin.full_name])]} />
+            )}
+            <details open={actor && !adminNames.has(actor) ? true : undefined} className="text-sm">
+              <summary className="cursor-pointer text-primary">ใช้รหัสผู้ดูแล (UUID)</summary>
+              <input aria-label="ผู้ดูแล (UUID)" value={actor} onChange={(event) => setActor(event.target.value)} spellCheck={false}
+                className="mt-2 w-full rounded-lg border border-border px-3 py-2 font-mono text-xs outline-none focus:border-primary" />
+            </details>
+          </div>
           <label className="text-sm">
             <span className="mb-1 block text-xs font-medium text-ink-soft">ตั้งแต่วันที่</span>
             <input type="date" value={from} onChange={(event) => setFrom(event.target.value)}
@@ -134,6 +183,12 @@ export function AuditLog() {
             <input type="date" value={to} onChange={(event) => setTo(event.target.value)}
               className="rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" />
           </label>
+          <div className="flex gap-2">
+            {[7, 30].map((days) => (
+              <button key={days} type="button" onClick={() => setQuickRange(days)}
+                className="rounded-full border border-border px-3 py-2 text-sm hover:bg-surface-muted">{days} วัน</button>
+            ))}
+          </div>
           <button type="submit" className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">กรอง</button>
           {hasFilter && (
             <button type="button" onClick={() => { setActor(''); setFrom(''); setTo(''); setFormError(''); router.replace(pathname); }}
@@ -174,7 +229,7 @@ export function AuditLog() {
                     <Badge className="bg-surface-muted text-ink-soft">{targetLabel(entry.target_type)}</Badge>
                     <p className="mt-1 break-all font-mono text-xs text-ink-soft">{entry.target_id}</p>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs" title={entry.admin_id}>{entry.admin_id.slice(0, 8)}…</td>
+                  <td className="px-4 py-3 font-mono text-xs" title={entry.admin_id}>{adminNames.get(entry.admin_id) ?? `${entry.admin_id.slice(0, 8)}…`}</td>
                   <td className="max-w-xs px-4 py-3 whitespace-pre-wrap break-words">{entry.reason ?? <span className="text-ink-soft">—</span>}</td>
                   <td className="px-4 py-3 text-right">
                     <button type="button" aria-expanded={openId === entry.id} onClick={() => setOpenId(openId === entry.id ? null : entry.id)}
@@ -186,10 +241,7 @@ export function AuditLog() {
                 {openId === entry.id && (
                   <tr className="bg-surface-muted">
                     <td colSpan={6} className="px-4 py-4">
-                      <div className="flex flex-col gap-3 md:flex-row">
-                        <Json title="ก่อน" value={entry.before} />
-                        <Json title="หลัง" value={entry.after} />
-                      </div>
+                      <AuditChanges before={entry.before} after={entry.after} />
                       <dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-ink-soft sm:grid-cols-2">
                         <div><dt className="inline">ผู้ดูแล: </dt><dd className="inline break-all font-mono">{entry.admin_id}</dd></div>
                         <div><dt className="inline">Correlation ID: </dt><dd className="inline break-all font-mono">{entry.correlation_id}</dd></div>

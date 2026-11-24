@@ -3,11 +3,12 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { CompanyFlagItem, Paginated, SetCompanyFlagRequest, SetCompanyFlagResponse } from '@internpath/contracts';
+import type { CompanyFlagItem, DirectoryCompanyListItem, Paginated, SetCompanyFlagRequest, SetCompanyFlagResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
-import { FilterSelect, Notice } from '@/components/admin/filter-fields';
+import { Notice } from '@/components/admin/filter-fields';
 import { Badge, formatDateTime } from '@/components/admin/queue/queue-ui';
 import { ApiError } from '@/lib/api';
+import { listCompanies } from '@/lib/directory';
 
 const PAGE_SIZE = 20;
 const REASON_MAX = 500;
@@ -64,6 +65,10 @@ export function FlagsList() {
   const [formError, setFormError] = useState('');
 
   const [newCompanyId, setNewCompanyId] = useState('');
+  const [companyName, setCompanyName] = useState('');
+  const [companySearch, setCompanySearch] = useState('');
+  const [companies, setCompanies] = useState<DirectoryCompanyListItem[] | null>(null);
+  const [companyError, setCompanyError] = useState('');
   const [newReason, setNewReason] = useState('');
   const [newError, setNewError] = useState('');
 
@@ -81,6 +86,18 @@ export function FlagsList() {
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [queryString, reloadKey, request]);
+
+  useEffect(() => {
+    if (!companySearch) return;
+    let active = true;
+    setCompanies(null);
+    setCompanyError('');
+    void listCompanies({ q: companySearch }, 1, 10).then(
+      ({ data }) => { if (active) setCompanies(data); },
+      () => { if (active) setCompanyError('ค้นหาบริษัทไม่สำเร็จ'); },
+    );
+    return () => { active = false; };
+  }, [companySearch]);
 
   const update = useCallback((patch: Partial<Filters>) => {
     const query = toQuery({ ...filters, page: 1, ...patch });
@@ -116,7 +133,7 @@ export function FlagsList() {
   async function submitNew(event: FormEvent) {
     event.preventDefault();
     const id = newCompanyId.trim();
-    if (!UUID.test(id)) { setNewError('รหัสบริษัทต้องเป็น UUID'); return; }
+    if (!UUID.test(id)) { setNewError('เลือกบริษัทจากผลการค้นหาหรือกรอกรหัสบริษัทที่ถูกต้อง'); return; }
     if (!newReason.trim()) { setNewError('กรุณากรอกเหตุผล'); return; }
     if (newReason.trim().length > REASON_MAX) { setNewError(`เหตุผลต้องไม่เกิน ${REASON_MAX} ตัวอักษร`); return; }
     setBusy(true);
@@ -125,6 +142,9 @@ export function FlagsList() {
     try {
       await setFlag(id, true, newReason);
       setNewCompanyId('');
+      setCompanyName('');
+      setCompanySearch('');
+      setCompanies(null);
       setNewReason('');
     } catch (cause) { setNewError(cause instanceof Error ? cause.message : 'ดำเนินการไม่สำเร็จ'); }
     finally { setBusy(false); }
@@ -143,12 +163,37 @@ export function FlagsList() {
       <form onSubmit={(event) => void submitNew(event)} className="mt-5 rounded-xl border border-border bg-surface p-4">
         <h2 className="text-sm font-semibold">ตั้งธงให้บริษัท</h2>
         <div className="mt-3 flex flex-wrap items-end gap-3">
-          <label className="min-w-[16rem] flex-1 text-sm">
-            <span className="mb-1 block text-xs font-medium text-ink-soft">รหัสบริษัท (UUID)</span>
-            <input value={newCompanyId} onChange={(event) => setNewCompanyId(event.target.value)} spellCheck={false}
-              className="w-full rounded-lg border border-border px-3 py-2 font-mono text-xs outline-none focus:border-primary" />
-          </label>
-          <label className="min-w-[16rem] flex-[2] text-sm">
+          <div className="min-w-0 flex-1 basis-64">
+            <label htmlFor="company-lookup" className="mb-1 block text-xs font-medium text-ink-soft">ค้นชื่อบริษัทที่ผ่านการรับรอง</label>
+            <div className="flex gap-2">
+              <input id="company-lookup" value={companyName} onChange={(event) => {
+                setCompanyName(event.target.value); setCompanySearch(''); setCompanies(null); setCompanyError(''); setNewCompanyId('');
+              }} className="min-w-0 flex-1 rounded-full border border-border px-3 py-2 text-sm" />
+              <button type="button" disabled={!companyName.trim()} onClick={() => setCompanySearch(companyName.trim())}
+                className="rounded-full border border-border px-4 text-sm disabled:opacity-50">ค้นหา</button>
+            </div>
+            {companyError && <p role="alert" className="mt-2 text-sm text-danger-text">{companyError}</p>}
+            {companySearch && !companies && !companyError && <p role="status" className="mt-2 text-sm text-ink-soft">กำลังค้นหา…</p>}
+            {companies?.length === 0 && <p className="mt-2 text-sm text-ink-soft">ไม่พบบริษัทที่ตรงกับชื่อ</p>}
+            {!!companies?.length && (
+              <ul aria-label="บริษัทที่พบ" className="mt-2 divide-y divide-border rounded-lg border border-border">
+                {companies.map((company) => (
+                  <li key={company.id}>
+                    <button type="button" aria-pressed={company.id === newCompanyId} onClick={() => setNewCompanyId(company.id)}
+                      className={`w-full px-3 py-2 text-left text-sm ${company.id === newCompanyId ? 'bg-primary-soft text-primary' : ''}`}>
+                      {company.name}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <details className="mt-2 text-sm">
+              <summary className="cursor-pointer text-primary">ใช้รหัสบริษัท</summary>
+              <input aria-label="รหัสบริษัท (UUID)" value={newCompanyId} onChange={(event) => setNewCompanyId(event.target.value)}
+                spellCheck={false} className="mt-2 w-full rounded-lg border border-border px-3 py-2 font-mono text-xs" />
+            </details>
+          </div>
+          <label className="min-w-0 flex-[2] basis-64 text-sm">
             <span className="mb-1 block text-xs font-medium text-ink-soft">เหตุผล</span>
             <input value={newReason} onChange={(event) => setNewReason(event.target.value)} maxLength={REASON_MAX}
               className="w-full rounded-lg border border-border px-3 py-2 text-sm outline-none focus:border-primary" />
@@ -159,8 +204,12 @@ export function FlagsList() {
       </form>
 
       <div className="mt-5 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
-        <FilterSelect label="สถานะธง" value={filters.active} onChange={(active) => update({ active })}
-          options={[['', 'ทั้งหมด'], ['true', 'ติดธงอยู่'], ['false', 'เคลียร์แล้ว']]} />
+        <div role="group" aria-label="สถานะธง" className="flex flex-wrap gap-2">
+          {([['', 'ทั้งหมด'], ['true', 'ติดธงอยู่'], ['false', 'เคลียร์แล้ว']] as const).map(([active, label]) => (
+            <button key={label} type="button" aria-pressed={filters.active === active} onClick={() => update({ active })}
+              className={`rounded-full border px-3 py-2 text-sm ${filters.active === active ? 'border-primary bg-primary-soft text-primary' : 'border-border'}`}>{label}</button>
+          ))}
+        </div>
         <form onSubmit={(event) => { event.preventDefault(); update({ q: search }); }} className="flex items-end gap-2" role="search">
           <label className="text-sm">
             <span className="mb-1 block text-xs font-medium text-ink-soft">ค้นชื่อบริษัท</span>
