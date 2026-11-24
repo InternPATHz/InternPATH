@@ -51,70 +51,76 @@ export function CompanyList() {
 
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold">บริษัทและรีวิว</h1>
-      <p className="mt-2 text-sm text-ink-soft">ดูข้อมูลบริษัทที่ผ่านการรับรองและรีวิวจากผู้ฝึกงานจริง</p>
+    <main className="bg-surface-muted">
+      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+        <h1 className="text-4xl font-semibold">บริษัทและรีวิว</h1>
+        <p className="mt-2 text-sm text-ink-soft">ดูข้อมูลบริษัทที่ผ่านการรับรองและรีวิวจากผู้ฝึกงานจริง</p>
 
-      <form role="search" onSubmit={(event) => { event.preventDefault(); update({ q: text.trim() || undefined }); }}
-        className="mt-6 flex flex-col gap-3 rounded-xl bg-surface-muted p-4 sm:flex-row sm:items-end">
-        <div className="flex-1 text-sm">
-          <label htmlFor="company-q" className="mb-1 block text-xs font-medium text-ink-soft">ชื่อบริษัท</label>
-          <input id="company-q" type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder="ค้นหาชื่อบริษัท"
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary" />
-        </div>
-        <div className="text-sm">
-          <label htmlFor="company-category" className="mb-1 block text-xs font-medium text-ink-soft">สายงาน</label>
-          <select id="company-category" value={category ?? ''} onChange={(event) => update({ category: event.target.value || undefined })}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary">
-            <option value="">ทุกสายงาน</option>
-            {CATEGORIES.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-          </select>
-        </div>
-        <label className="flex items-center gap-2 pb-2 text-sm">
-          <input type="checkbox" checked={partner} onChange={(event) => update({ partner: event.target.checked ? 'true' : undefined })} className="h-4 w-4 accent-primary" />
-          เฉพาะ University Partner
-        </label>
-        <button type="submit" className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">ค้นหา</button>
-      </form>
-
-      <section aria-busy={!result && !error} className="mt-6">
-        {error && <Notice tone="error">{error}</Notice>}
-        {!result && !error && <p className="text-sm text-ink-soft">กำลังโหลด…</p>}
-        {result && <h2 className="text-sm text-ink-soft">พบ {result.meta.total} บริษัท</h2>}
-        {result && result.data.length === 0 && (
-          <div className="mt-4 rounded-xl border border-dashed border-border p-10 text-center">
-            <p className="font-semibold">ไม่พบบริษัทที่ตรงกับเงื่อนไข</p>
-            <p className="mt-1 text-sm text-ink-soft">ลองค้นด้วยชื่อที่สั้นลง หรือยกเลิกตัวกรอง</p>
+        <form role="search" onSubmit={(event) => { event.preventDefault(); update({ q: text.trim() || undefined }); }}
+          className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex-1 text-sm">
+            <label htmlFor="company-q" className="mb-1 block text-xs font-medium text-ink-soft">ชื่อบริษัท</label>
+            <input id="company-q" type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder="ค้นหาชื่อบริษัท"
+              className="w-full rounded-full border border-border bg-surface px-5 py-2.5 text-base outline-none focus:border-primary" />
           </div>
-        )}
-        {result && result.data.length > 0 && (
-          <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {result.data.map((company) => (
-              <li key={company.id} className="flex flex-col rounded-xl border border-border bg-surface p-5">
-                <div className="flex items-center gap-3">
-                  <Avatar name={company.name} src={company.logo_url} size="md" />
-                  <h3 className="min-w-0 text-lg font-semibold">{company.name}</h3>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <span className="inline-block rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success-text">Verified by Platform</span>
-                  {company.university_partner && <span className="inline-block rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success-text">University Partner</span>}
-                </div>
-                <div className="mt-3"><RatingSummary average={company.rating_avg} count={company.review_count} /></div>
-                <Link href={`/companies/item?id=${company.id}`} className="mt-4 inline-block self-start rounded-full bg-primary-soft px-4 py-2 text-sm font-semibold text-primary hover:bg-primary hover:text-white">ดูบริษัทและรีวิว</Link>
-              </li>
-            ))}
-          </ul>
-        )}
-        {result && result.meta.total > PAGE_SIZE && (
-          <nav aria-label="เลือกหน้า" className="mt-8 flex items-center justify-center gap-4 text-sm">
-            <button type="button" disabled={page <= 1} onClick={() => update({ page: String(page - 1) }, true)}
-              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
-            <span aria-live="polite">หน้า {page} จาก {totalPages}</span>
-            <button type="button" disabled={page >= totalPages} onClick={() => update({ page: String(page + 1) }, true)}
-              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
-          </nav>
-        )}
-      </section>
+          <button type="submit" className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">ค้นหา</button>
+        </form>
+
+        <div className="mt-5 flex gap-2 overflow-x-auto rounded-xl bg-surface p-3" role="group" aria-label="ตัวกรองบริษัท">
+          {[{ id: '', label: 'ทุกสายงาน' }, ...CATEGORIES].map(({ id, label }) => (
+            <button key={id} type="button" aria-pressed={(category ?? '') === id}
+              className={`shrink-0 rounded-full border px-4 py-2 text-sm ${(category ?? '') === id ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:border-primary'}`}
+              onClick={() => update({ category: id || undefined })}>{label}</button>
+          ))}
+          <button type="button" aria-pressed={partner}
+            className={`shrink-0 rounded-full border px-4 py-2 text-sm ${partner ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:border-primary'}`}
+            onClick={() => update({ partner: partner ? undefined : 'true' })}>เฉพาะ University Partner</button>
+        </div>
+
+        <section aria-busy={!result && !error} className="mt-6">
+          {error && <Notice tone="error">{error}</Notice>}
+          {!result && !error && <p className="text-sm text-ink-soft">กำลังโหลด…</p>}
+          {result && <h2 className="text-sm text-ink-soft">พบ {result.meta.total} บริษัท</h2>}
+          {result && result.data.length === 0 && (
+            <div className="mt-4 rounded-xl border border-dashed border-border p-10 text-center">
+              <p className="font-semibold">ไม่พบบริษัทที่ตรงกับเงื่อนไข</p>
+              <p className="mt-1 text-sm text-ink-soft">ลองค้นด้วยชื่อที่สั้นลง หรือยกเลิกตัวกรอง</p>
+            </div>
+          )}
+          {result && result.data.length > 0 && (
+            <ul className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {result.data.map((company) => (
+                <li key={company.id} className="flex flex-col rounded-xl border border-border bg-surface p-5">
+                  <div className="grid min-h-40 place-items-center rounded-lg bg-surface-muted">
+                    <Avatar name={company.name} src={company.logo_url} size="lg" />
+                  </div>
+                  <h3 className="mt-4 text-lg font-semibold">{company.name}</h3>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {company.university_partner && <span className="inline-block rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success-text">University Partner</span>}
+                  </div>
+                  <div className="mt-3"><RatingSummary average={company.rating_avg} count={company.review_count} /></div>
+                  <Link href={`/companies/item?id=${company.id}`} className="mt-4 inline-block self-start text-sm font-semibold text-primary hover:underline">ดูบริษัทและรีวิว ›</Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {result && result.meta.total > PAGE_SIZE && (
+            <nav aria-label="เลือกหน้า" className="mt-8 flex items-center justify-center gap-4 text-sm">
+              <button type="button" disabled={page <= 1} onClick={() => update({ page: String(page - 1) }, true)}
+                className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ก่อนหน้า</button>
+              <span aria-live="polite">หน้า {page} จาก {totalPages}</span>
+              <button type="button" disabled={page >= totalPages} onClick={() => update({ page: String(page + 1) }, true)}
+                className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40">ถัดไป</button>
+            </nav>
+          )}
+        </section>
+      </div>
+      <aside className="bg-tile px-4 py-12 text-white sm:px-6">
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-2xl font-semibold">รีวิวมาจากผู้ฝึกงานจริง</h2>
+          <p className="mt-2 text-white/75">ทุกรีวิวแสดงผลการฝึกของผู้เขียนประกอบ เพื่อให้คุณเห็นประสบการณ์จากทั้งผู้ที่ผ่านและผู้ที่ไม่ผ่านการฝึกงาน</p>
+        </div>
+      </aside>
     </main>
   );
 }
