@@ -115,87 +115,100 @@ export function CompanyPage() {
   const view = statusView(COMPANY_STATUS, company.status);
   const canEdit = isOwner && !busy;
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-semibold">บริษัทของฉัน</h1>
 
-      <section aria-labelledby="status-title" className="mt-6 rounded-xl bg-surface-muted p-4">
+      <ol aria-label="ขั้นตอนการรับรองบริษัท" className="mt-6 grid grid-cols-3 gap-2">
+        {['ส่งข้อมูลบริษัท', 'ตรวจสอบเอกสาร', 'ผ่านการรับรอง'].map((label, index) => {
+          const current = company.status === 'VERIFIED' ? 2 : company.status === 'SUSPENDED' ? null : 1;
+          return <li key={label} aria-current={current === index ? 'step' : undefined}
+            className={`border-t-2 pt-2 text-sm ${current !== null && index <= current ? 'border-primary font-semibold' : 'border-border text-ink-soft'}`}>{label}</li>;
+        })}
+      </ol>
+      <section aria-labelledby="status-title"
+        className={`mt-6 rounded-xl p-5 ${company.status === 'NEED_MORE_INFO' ? 'bg-tile text-white' : 'bg-surface-muted'}`}>
         <div className="flex flex-wrap items-center gap-3">
-          <h2 id="status-title" className="text-lg font-semibold">สถานะบัญชีบริษัท</h2>
+          <h2 id="status-title" className="text-lg font-semibold">{company.status === 'NEED_MORE_INFO' ? 'ผู้ดูแลระบบขอเอกสารเพิ่ม' : 'สถานะบัญชีบริษัท'}</h2>
           <StatusBadge tone={view.tone} icon={view.icon}>{view.label}</StatusBadge>
         </div>
-        <p className="mt-2 text-sm text-ink-soft">{STATUS_HINT[company.status] ?? ''}</p>
+        <p className={`mt-2 text-sm ${company.status === 'NEED_MORE_INFO' ? 'text-white/75' : 'text-ink-soft'}`}>{STATUS_HINT[company.status] ?? ''}</p>
         {company.review_note && <p className="mt-2 text-sm"><span className="font-medium">หมายเหตุจากผู้ดูแลระบบ:</span> {company.review_note}</p>}
         {company.status === 'NEED_MORE_INFO' && isOwner && (
+          <div className="mt-3 flex flex-wrap items-center gap-3">
+          <a href="#docs-title" className="text-sm font-medium text-primary-on-dark hover:underline">ไปที่เอกสารยืนยัน ›</a>
           <button type="button" disabled={busy} onClick={() => void run(() => request('/companies/me/resubmit', { method: 'POST' }), 'ส่งตรวจอีกครั้งแล้ว')}
             className="mt-3 rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ส่งตรวจอีกครั้ง</button>
+          </div>
         )}
-        {company.status === 'NEED_MORE_INFO' && !isOwner && <p className="mt-2 text-xs text-ink-soft">เฉพาะเจ้าของบัญชี (Owner) ที่ส่งเอกสารและส่งตรวจใหม่ได้</p>}
+        {company.status === 'NEED_MORE_INFO' && !isOwner && <p className="mt-2 text-xs text-white/75">เฉพาะเจ้าของบัญชี (Owner) ที่ส่งเอกสารและส่งตรวจใหม่ได้</p>}
       </section>
 
       {message && <div className="mt-4"><Notice tone={message.tone}>{message.text}</Notice></div>}
       {!isOwner && <p className="mt-4 text-xs text-ink-soft">คุณเป็นสมาชิก HR ดูข้อมูลได้อย่างเดียว การแก้ไขเป็นสิทธิ์ของเจ้าของบัญชี (Owner)</p>}
 
-      <section aria-labelledby="info-title" className="mt-8">
-        <h2 id="info-title" className="text-lg font-semibold">ข้อมูลบริษัท</h2>
-        <div className="mt-3 flex items-center gap-4">
-          <Avatar name={company.name} src={company.logo_url} size="lg" />
+      <div className="mt-8 grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <section aria-labelledby="info-title" className="min-w-0 rounded-xl border border-border p-4 sm:p-5">
+          <h2 id="info-title" className="text-lg font-semibold">ข้อมูลบริษัท</h2>
+          <div className="mt-3 flex items-center gap-4">
+            <Avatar name={company.name} src={company.logo_url} size="lg" />
+            {isOwner && (
+              <div>
+                <input ref={logoInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => pickFile(event, 'logo')} aria-label="เลือกไฟล์โลโก้" />
+                <button type="button" disabled={!canEdit} onClick={() => logoInput.current?.click()} className="rounded-full border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">เปลี่ยนโลโก้</button>
+                <p className="mt-1 text-xs text-ink-soft">jpg, png หรือ webp ไม่เกิน 2 MB (โลโก้แสดงต่อสาธารณะ)</p>
+              </div>
+            )}
+          </div>
+          <form onSubmit={saveInfo} noValidate className="mt-4 space-y-4">
+            <label className="block text-sm font-medium">ชื่อบริษัท
+              <input value={name} onChange={(event) => setName(event.target.value)} disabled={!isOwner} className={inputClass} />
+            </label>
+            <label className="block text-sm font-medium">เลขทะเบียนนิติบุคคล
+              <input value={company.registration_no} disabled className={inputClass} />
+            </label>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <label className="block text-sm font-medium">เว็บไซต์
+                <input value={website} onChange={(event) => setWebsite(event.target.value)} disabled={!isOwner} className={inputClass} placeholder="https://" />
+              </label>
+              <label className="block text-sm font-medium">โทรศัพท์
+                <input value={phone} onChange={(event) => setPhone(event.target.value)} disabled={!isOwner} className={inputClass} />
+              </label>
+            </div>
+            {isOwner && <button type="submit" disabled={busy} className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">บันทึกข้อมูล</button>}
+          </form>
+        </section>
+
+        <section aria-labelledby="docs-title" className="mt-10">
+          <h2 id="docs-title" className="scroll-mt-20 text-lg font-semibold">เอกสารยืนยันบริษัท</h2>
+          <p className="mt-1 text-sm text-ink-soft">ไฟล์ PDF ไม่เกิน 5 MB เก็บแบบส่วนตัว เปิดดูได้เฉพาะสมาชิกบริษัทและผู้ดูแลระบบ</p>
           {isOwner && (
-            <div>
-              <input ref={logoInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => pickFile(event, 'logo')} aria-label="เลือกไฟล์โลโก้" />
-              <button type="button" disabled={!canEdit} onClick={() => logoInput.current?.click()} className="rounded-full border border-border px-4 py-2 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">เปลี่ยนโลโก้</button>
-              <p className="mt-1 text-xs text-ink-soft">jpg, png หรือ webp ไม่เกิน 2 MB (โลโก้แสดงต่อสาธารณะ)</p>
+            <div className="mt-3 flex flex-wrap items-end gap-3">
+              <label className="text-sm font-medium">ประเภทเอกสาร
+                <select value={docType} onChange={(event) => setDocType(event.target.value as CompanyDocType)} className={inputClass}>
+                  {(Object.keys(DOC_LABEL) as CompanyDocType[]).map((type) => <option key={type} value={type}>{DOC_LABEL[type]}</option>)}
+                </select>
+              </label>
+              <input ref={docInput} type="file" accept="application/pdf,.pdf" className="sr-only" onChange={(event) => pickFile(event, 'doc')} aria-label="เลือกไฟล์เอกสาร" />
+              <button type="button" disabled={!canEdit} onClick={() => docInput.current?.click()} className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">อัปโหลดเอกสาร</button>
             </div>
           )}
-        </div>
-        <form onSubmit={saveInfo} noValidate className="mt-4 space-y-4">
-          <label className="block text-sm font-medium">ชื่อบริษัท
-            <input value={name} onChange={(event) => setName(event.target.value)} disabled={!isOwner} className={inputClass} />
-          </label>
-          <label className="block text-sm font-medium">เลขทะเบียนนิติบุคคล
-            <input value={company.registration_no} disabled className={inputClass} />
-          </label>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="block text-sm font-medium">เว็บไซต์
-              <input value={website} onChange={(event) => setWebsite(event.target.value)} disabled={!isOwner} className={inputClass} placeholder="https://" />
-            </label>
-            <label className="block text-sm font-medium">โทรศัพท์
-              <input value={phone} onChange={(event) => setPhone(event.target.value)} disabled={!isOwner} className={inputClass} />
-            </label>
-          </div>
-          {isOwner && <button type="submit" disabled={busy} className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">บันทึกข้อมูล</button>}
-        </form>
-      </section>
-
-      <section aria-labelledby="docs-title" className="mt-10">
-        <h2 id="docs-title" className="text-lg font-semibold">เอกสารยืนยันบริษัท</h2>
-        <p className="mt-1 text-sm text-ink-soft">ไฟล์ PDF ไม่เกิน 5 MB เก็บแบบส่วนตัว เปิดดูได้เฉพาะสมาชิกบริษัทและผู้ดูแลระบบ</p>
-        {isOwner && (
-          <div className="mt-3 flex flex-wrap items-end gap-3">
-            <label className="text-sm font-medium">ประเภทเอกสาร
-              <select value={docType} onChange={(event) => setDocType(event.target.value as CompanyDocType)} className={inputClass}>
-                {(Object.keys(DOC_LABEL) as CompanyDocType[]).map((type) => <option key={type} value={type}>{DOC_LABEL[type]}</option>)}
-              </select>
-            </label>
-            <input ref={docInput} type="file" accept="application/pdf,.pdf" className="sr-only" onChange={(event) => pickFile(event, 'doc')} aria-label="เลือกไฟล์เอกสาร" />
-            <button type="button" disabled={!canEdit} onClick={() => docInput.current?.click()} className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">อัปโหลดเอกสาร</button>
-          </div>
-        )}
-        {documents.length === 0 ? (
-          <p className="mt-4 rounded-xl border border-dashed border-border p-6 text-center text-sm text-ink-soft">ยังไม่มีเอกสาร</p>
-        ) : (
-          <ul className="mt-4 divide-y divide-border rounded-xl border border-border">
-            {documents.map((doc) => (
-              <li key={doc.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
-                <div>
-                  <p className="font-medium">{DOC_LABEL[doc.doc_type] ?? doc.doc_type} ({sizeLabel(doc.size_bytes)})</p>
-                  <p className="text-xs text-ink-soft">อัปโหลดเมื่อ {dateFormat.format(new Date(doc.created_at))}</p>
-                </div>
-                <a href={doc.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">เปิดดู</a>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          {documents.length === 0 ? (
+            <p className="mt-4 rounded-xl border border-dashed border-border p-6 text-center text-sm text-ink-soft">ยังไม่มีเอกสาร</p>
+          ) : (
+            <ul className="mt-4 divide-y divide-border rounded-xl border border-border">
+              {documents.map((doc) => (
+                <li key={doc.id} className="flex flex-wrap items-center justify-between gap-3 p-4 text-sm">
+                  <div>
+                    <p className="font-medium">{DOC_LABEL[doc.doc_type] ?? doc.doc_type} ({sizeLabel(doc.size_bytes)})</p>
+                    <p className="text-xs text-ink-soft">อัปโหลดเมื่อ {dateFormat.format(new Date(doc.created_at))}</p>
+                  </div>
+                  <a href={doc.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">เปิดดู</a>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </div>
     </main>
   );
 }

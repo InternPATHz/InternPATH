@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { CompanyMemberItem, JobCategory, UserMeResponse } from '@internpath/contracts';
+import type { CompanyInvitationItem, CompanyMemberItem, JobCategory, OwnerTransferPendingResponse, UserMeResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { Avatar } from '@/components/ui/avatar';
@@ -43,13 +43,15 @@ function failure(cause: unknown): string {
 /**
  * ทีม HR ของบริษัท (api-contract §4.3): ดูสมาชิก — Owner เชิญ (อีเมลโดเมนองค์กร + สายงาน), กำหนดสายงานของสมาชิก, ลบสมาชิก, โอนสิทธิ์ Owner
  * สมาชิกเห็นและจัดการใบสมัครเฉพาะประกาศในสายงานของตน (Owner ทุกสายงาน — ปรับ Requirement 2026-11-21)
- * หมายเหตุสัญญา: ยังไม่มี endpoint อ่านรายการคำเชิญค้างหรือคำขอโอนสิทธิ์ที่รออยู่ — หน้านี้จึงแจ้งผลเฉพาะตอนกดเท่านั้น
  */
 export function TeamPage() {
   const { request, user } = useAuth();
   const [members, setMembers] = useState<CompanyMemberItem[]>([]);
   const [isOwner, setIsOwner] = useState(false);
+  const [transfer, setTransfer] = useState<OwnerTransferPendingResponse | null>(null);
+  const [invitations, setInvitations] = useState<CompanyInvitationItem[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [pendingError, setPendingError] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -60,8 +62,17 @@ export function TeamPage() {
   const load = useCallback(async () => {
     try {
       const [me, list] = await Promise.all([request<UserMeResponse>('/users/me'), request<CompanyMemberItem[] | { data: CompanyMemberItem[] }>('/companies/me/members')]);
-      setIsOwner(me.company?.member_role === 'OWNER');
+      const owner = me.company?.member_role === 'OWNER';
+      setIsOwner(owner);
       setMembers(asList(list as never));
+      const [pending, invites] = await Promise.allSettled([
+        request<OwnerTransferPendingResponse>('/companies/me/owner-transfer'),
+        owner ? request<{ data: CompanyInvitationItem[] }>('/companies/me/invitations') : Promise.resolve({ data: [] }),
+      ]);
+      setTransfer(pending.status === 'fulfilled' ? pending.value : null);
+      setInvitations(invites.status === 'fulfilled' ? invites.value.data : []);
+      const transferError = pending.status === 'rejected' && !(pending.reason instanceof ApiError && pending.reason.status === 404);
+      setPendingError(transferError || invites.status === 'rejected');
       setLoadError(null);
     } catch (cause) { setLoadError(failure(cause)); }
     finally { setLoaded(true); }
@@ -108,6 +119,43 @@ export function TeamPage() {
       <h1 className="text-3xl font-semibold">ทีม HR</h1>
       <p className="mt-2 text-sm text-ink-soft">สมาชิกจัดการผู้สมัครได้เฉพาะประกาศในสายงานที่ได้รับกำหนด ส่วน Owner เห็นทุกสายงาน และเป็นผู้จัดการข้อมูลบริษัทกับสมาชิก</p>
       {message && <div className="mt-4"><Notice tone={message.tone}>{message.text}</Notice></div>}
+      {pendingError && <div className="mt-4"><Notice tone="error">โหลดคำเชิญหรือคำขอโอนสิทธิ์ไม่สำเร็จ</Notice></div>}
+
+      {transfer && (
+        <section aria-labelledby="transfer-title" className={`mt-6 rounded-xl p-5 ${transfer.direction === 'INCOMING' ? 'bg-tile text-white' : 'bg-surface-muted'}`}>
+          <h2 id="transfer-title" className="text-lg font-semibold">คำขอโอนสิทธิ์ Owner</h2>
+          <p className="mt-2 text-sm">{transfer.direction === 'INCOMING'
+            ? `${transfer.other_user.full_name} ขอให้คุณรับสิทธิ์ Owner`
+            : `รอ ${transfer.other_user.full_name} ตอบรับคำขอ`}</p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            {transfer.direction === 'INCOMING' ? (
+              <>
+                <button type="button" disabled={busy} onClick={() => void run(() => request('/companies/me/owner-transfer/actions/accept', { method: 'POST' }), 'รับสิทธิ์ Owner แล้ว กรุณาเข้าสู่ระบบใหม่เพื่อให้สิทธิ์อัปเดต')}
+                  className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ยืนยันรับสิทธิ์ Owner</button>
+                <button type="button" disabled={busy} onClick={() => void run(() => request('/companies/me/owner-transfer/actions/decline', { method: 'POST' }), 'ปฏิเสธคำขอแล้ว')}
+                  className="rounded-full border border-white/30 px-5 py-2 text-sm font-semibold disabled:opacity-60">ปฏิเสธ</button>
+              </>
+            ) : (
+              <button type="button" disabled={busy} onClick={() => void run(() => request('/companies/me/owner-transfer/actions/cancel', { method: 'POST' }), 'ยกเลิกคำขอโอนสิทธิ์แล้ว')}
+                className="rounded-full border border-border px-5 py-2 text-sm font-semibold hover:bg-surface disabled:opacity-60">ยกเลิกคำขอ</button>
+            )}
+          </div>
+        </section>
+      )}
+
+      {isOwner && (
+        <section aria-labelledby="invite-title" className="mt-6 rounded-xl border border-border p-5">
+          <h2 id="invite-title" className="text-lg font-semibold">เชิญสมาชิกใหม่</h2>
+          <p className="mt-1 text-sm text-ink-soft">ใช้อีเมลโดเมนขององค์กรเท่านั้น และเลือกสายงานที่สมาชิกจะดูแล (1–3 สายงาน) ผู้ได้รับเชิญจะได้ลิงก์ทางอีเมลเพื่อตั้งรหัสผ่านและเข้าร่วมทีม</p>
+          <div className="mt-3"><CategoryPicker label="สายงานของสมาชิกใหม่" value={inviteCategories} onChange={setInviteCategories} disabled={busy} /></div>
+          <form onSubmit={invite} noValidate className="mt-3 flex flex-col gap-3 sm:flex-row">
+            <label className="flex-1 text-sm"><span className="sr-only">อีเมลที่จะเชิญ</span>
+              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.co.th" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft" />
+            </label>
+            <button type="submit" disabled={busy} className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ส่งคำเชิญ</button>
+          </form>
+        </section>
+      )}
 
       <section aria-labelledby="members-title" className="mt-6">
         <h2 id="members-title" className="text-lg font-semibold">สมาชิก ({members.length})</h2>
@@ -147,40 +195,23 @@ export function TeamPage() {
         </ul>
       </section>
 
-      {isOwner && (
-        <section aria-labelledby="invite-title" className="mt-8">
-          <h2 id="invite-title" className="text-lg font-semibold">เชิญสมาชิกใหม่</h2>
-          <p className="mt-1 text-sm text-ink-soft">ใช้อีเมลโดเมนขององค์กรเท่านั้น และเลือกสายงานที่สมาชิกจะดูแล (1–3 สายงาน) ผู้ได้รับเชิญจะได้ลิงก์ทางอีเมลเพื่อตั้งรหัสผ่านและเข้าร่วมทีม</p>
-          <div className="mt-3"><CategoryPicker label="สายงานของสมาชิกใหม่" value={inviteCategories} onChange={setInviteCategories} disabled={busy} /></div>
-          <form onSubmit={invite} noValidate className="mt-3 flex flex-col gap-3 sm:flex-row">
-            <label className="flex-1 text-sm"><span className="sr-only">อีเมลที่จะเชิญ</span>
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="name@company.co.th" className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft" />
-            </label>
-            <button type="submit" disabled={busy} className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ส่งคำเชิญ</button>
-          </form>
+      {isOwner && invitations.length > 0 && (
+        <section className="mt-6">
+          <h2 className="text-lg font-semibold">คำเชิญที่ยังรอตอบรับ</h2>
+          <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
+            {invitations.map((item) => (
+              <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
+                <span className="min-w-0 break-all text-sm">{item.email} · หมดอายุ {dateFormat.format(new Date(item.expires_at))}</span>
+                <button type="button" disabled={busy} onClick={() => {
+                  if (window.confirm('ยกเลิกคำเชิญนี้? ลิงก์เดิมจะใช้ไม่ได้')) void run(
+                    () => request(`/companies/me/invitations/${encodeURIComponent(item.id)}`, { method: 'DELETE' }), 'ยกเลิกคำเชิญแล้ว',
+                  );
+                }} className="text-sm font-medium text-danger-text hover:underline">ยกเลิกคำเชิญ</button>
+              </li>
+            ))}
+          </ul>
         </section>
       )}
-
-      <section aria-labelledby="transfer-title" className="mt-8 rounded-xl bg-surface-muted p-4">
-        <h2 id="transfer-title" className="text-lg font-semibold">คำขอโอนสิทธิ์ Owner</h2>
-        <p className="mt-1 text-sm text-ink-soft">
-          {isOwner ? 'ถ้าส่งคำขอโอนสิทธิ์ไปแล้วและต้องการเปลี่ยนใจ ยกเลิกได้ที่นี่' : 'ถ้าเจ้าของบัญชีส่งคำขอโอนสิทธิ์ Owner มาให้คุณ ตอบรับหรือปฏิเสธได้ที่นี่'}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-3">
-          {isOwner ? (
-            <button type="button" disabled={busy} onClick={() => void run(() => request('/companies/me/owner-transfer/actions/cancel', { method: 'POST' }), 'ยกเลิกคำขอโอนสิทธิ์แล้ว')}
-              className="rounded-full border border-border px-5 py-2 text-sm font-semibold hover:bg-surface disabled:opacity-60">ยกเลิกคำขอที่ส่งไว้</button>
-          ) : (
-            <>
-              <button type="button" disabled={busy} onClick={() => void run(() => request('/companies/me/owner-transfer/actions/accept', { method: 'POST' }), 'รับสิทธิ์ Owner แล้ว กรุณาเข้าสู่ระบบใหม่เพื่อให้สิทธิ์อัปเดต')}
-                className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ยืนยันรับสิทธิ์ Owner</button>
-              <button type="button" disabled={busy} onClick={() => void run(() => request('/companies/me/owner-transfer/actions/decline', { method: 'POST' }), 'ปฏิเสธคำขอแล้ว')}
-                className="rounded-full border border-border px-5 py-2 text-sm font-semibold hover:bg-surface disabled:opacity-60">ปฏิเสธ</button>
-            </>
-          )}
-        </div>
-        <p className="mt-2 text-xs text-ink-soft">ไม่มีคำขอที่รออยู่ ระบบจะแจ้งว่าไม่พบคำขอ</p>
-      </section>
     </main>
   );
 }

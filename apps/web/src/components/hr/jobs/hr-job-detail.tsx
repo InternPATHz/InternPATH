@@ -16,7 +16,7 @@ import { CATEGORIES } from '@/lib/categories';
 const failure = (cause: unknown) => (cause instanceof ApiError || cause instanceof Error ? cause.message : 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่');
 
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
-  return <div><dt className="text-xs text-ink-soft">{label}</dt><dd className="mt-0.5 font-medium">{children}</dd></div>;
+  return <div><dt className="text-xs text-ink-soft">{label}</dt><dd className="mt-0.5 font-medium [overflow-wrap:anywhere]">{children}</dd></div>;
 }
 
 function TextSection({ title, text }: { title: string; text: string | null }) {
@@ -91,11 +91,11 @@ export function HrJobDetail() {
   const missing = canSubmit ? missingRequired(job as unknown as Record<string, unknown>) : [];
   const showApplicants = status === 'PUBLISHED' || status === 'CLOSED';
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       <Link href="/hr/jobs" className="text-sm font-medium text-primary hover:underline">ประกาศของฉัน</Link>
 
       <header className="mt-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
+        <div className="min-w-0 [overflow-wrap:anywhere]">
           <h1 className="text-3xl font-semibold">{jobTitleOf(job)}</h1>
           <p className="mt-1 text-sm text-ink-soft">{[category, job.work_mode ? WORK_MODE_LABEL[job.work_mode] : null, job.location].filter(Boolean).join(' · ')}</p>
         </div>
@@ -129,29 +129,40 @@ export function HrJobDetail() {
           <Link href={`/hr/applicants?job_id=${job.id}`} className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted">ดูผู้สมัคร</Link>
         )}
       </div>
+      {showApplicants && <Link href={`/jobs/item?id=${job.id}`} className="mt-3 inline-block text-sm font-medium text-primary hover:underline">ดูแบบที่นักศึกษาเห็น ›</Link>}
       {canSubmit && missing.length > 0 && <p className="mt-2 text-xs text-ink-soft">ยังกรอกไม่ครบ จึงเผยแพร่ไม่ได้ กด "แก้ไข" เพื่อกรอกข้อมูลบังคับให้ครบ</p>}
 
       {status === 'ADMIN_REJECTED' && (
-        <section aria-labelledby="result-title" className="mt-6 rounded-xl bg-surface-muted p-4">
+        <section aria-labelledby="result-title" className="mt-6 rounded-xl bg-danger-soft p-4">
           <h2 id="result-title" className="text-lg font-semibold">ผลการตรวจสอบ</h2>
           <p className="mt-1 text-sm text-ink-soft">ผู้ดูแลระบบไม่อนุมัติประกาศนี้ แก้ไขแล้วเผยแพร่ใหม่ได้</p>
           {job.admin_reason && <p className="mt-3 text-sm"><span className="font-medium">เหตุผลจากผู้ดูแลระบบ:</span> {job.admin_reason}</p>}
         </section>
       )}
 
-      <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-3">
-        <Fact label="เบี้ยเลี้ยง">{allowanceLabel}</Fact>
-        <Fact label="ชั่วโมงต่อสัปดาห์">{job.hours_per_week ?? '-'}</Fact>
-        <Fact label="จำนวนที่รับ">{job.quota !== null ? `${job.quota} ตำแหน่ง${job.quota_available !== null ? ` (เหลือ ${job.quota_available})` : ''}` : '-'}</Fact>
-        <Fact label="ช่วงฝึกงาน">{job.period.start && job.period.end ? `${formatDay(job.period.start)} – ${formatDay(job.period.end)}` : '-'}</Fact>
-        <Fact label="ปิดรับสมัคร">{job.application_deadline ? formatDay(job.application_deadline) : '-'}</Fact>
-        <Fact label="สาขาที่เปิดรับ">{job.target_majors && job.target_majors.length > 0 ? job.target_majors.join(', ') : '-'}</Fact>
-        <Fact label="Tag ทักษะ">{job.tags && job.tags.length > 0 ? job.tags.map((tag) => tag.name).join(', ') : '-'}</Fact>
-      </dl>
+      <div className="mt-6 grid gap-6 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+        <div className="min-w-0">
+          <h2 className="text-xl font-semibold">ข้อมูลประกาศ</h2>
+          <dl className="mt-3 grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-3">
+            <Fact label="เบี้ยเลี้ยง">{allowanceLabel}</Fact>
+            <Fact label="ชั่วโมงต่อสัปดาห์">{job.hours_per_week ?? '-'}</Fact>
+            <Fact label="จำนวนที่รับ">{job.quota !== null ? `${job.quota} ตำแหน่ง${job.quota_available !== null ? ` (เหลือ ${job.quota_available})` : ''}` : '-'}</Fact>
+            <Fact label="ช่วงฝึกงาน">{job.period.start && job.period.end ? `${formatDay(job.period.start)} – ${formatDay(job.period.end)}` : '-'}</Fact>
+            <Fact label="ปิดรับสมัคร">{job.application_deadline ? formatDay(job.application_deadline) : '-'}</Fact>
+            <Fact label="สาขาที่เปิดรับ">{job.target_majors && job.target_majors.length > 0 ? job.target_majors.join(', ') : '-'}</Fact>
+            <Fact label="Tag ทักษะ">{job.tags && job.tags.length > 0 ? job.tags.map((tag) => tag.name).join(', ') : '-'}</Fact>
+          </dl>
 
-      <TextSection title="รายละเอียดงาน" text={job.description} />
-      <TextSection title="หน้าที่ความรับผิดชอบ" text={job.responsibilities} />
-      <TextSection title="คุณสมบัติผู้สมัคร" text={job.qualifications} />
+          <TextSection title="รายละเอียดงาน" text={job.description} />
+          <TextSection title="หน้าที่ความรับผิดชอบ" text={job.responsibilities} />
+          <TextSection title="คุณสมบัติผู้สมัคร" text={job.qualifications} />
+        </div>
+        <aside className="self-start rounded-xl bg-surface-muted p-5">
+          <h2 className="text-lg font-semibold">สถานะประกาศ</h2>
+          <div className="mt-3"><JobStatusBadge status={status} /></div>
+          {'published_at' in job && job.published_at && <p className="mt-3 text-sm text-ink-soft">เผยแพร่เมื่อ {formatDay(job.published_at)}</p>}
+        </aside>
+      </div>
     </main>
   );
 }

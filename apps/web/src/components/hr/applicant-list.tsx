@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import { ApplicantDetail } from './applicant-detail';
 import type { ApplicationStatus, HrApplicationItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
@@ -35,11 +36,13 @@ export function ApplicantList() {
   const page = Number.isInteger(pageParam) && pageParam >= 1 ? pageParam : 1;
 
   const [result, setResult] = useState<Paginated<HrApplicationItem> | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [refresh, setRefresh] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setResult(null);
     setError(null);
     const query = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
     if (status) query.set('status', status);
@@ -49,19 +52,31 @@ export function ApplicantList() {
       (cause) => { if (!cancelled) setError(cause instanceof ApiError ? cause.message : 'โหลดรายการผู้สมัครไม่สำเร็จ กรุณาลองใหม่'); },
     );
     return () => { cancelled = true; };
-  }, [request, status, jobId, page]);
+  }, [request, status, jobId, page, refresh]);
+
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const update = () => setShowDetails(desktop.matches);
+    update();
+    desktop.addEventListener('change', update);
+    return () => desktop.removeEventListener('change', update);
+  }, []);
 
   function update(changes: Record<string, string | undefined>, keepPage = false) {
     const next = new URLSearchParams(searchParams.toString());
     for (const [name, value] of Object.entries(changes)) { if (value) next.set(name, value); else next.delete(name); }
     if (!keepPage) next.delete('page');
     const qs = next.toString();
+    if (qs === searchParams.toString()) return;
+    setSelectedId(null);
+    setResult(null);
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
+  const selected = result?.data.find((app) => app.id === selectedId) ?? result?.data[0];
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-semibold">ผู้สมัครของบริษัท</h1>
       <p className="mt-2 text-sm text-ink-soft">พิจารณาใบสมัคร ส่งข้อเสนอ และติดตามผู้ฝึกงาน</p>
 
@@ -94,26 +109,37 @@ export function ApplicantList() {
           </div>
         )}
         {result && result.data.length > 0 && (
-          <ul className="space-y-3">
-            {result.data.map((application) => (
-              <li key={application.id} className="rounded-xl border border-border bg-surface p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold">{application.job_title}</h2>
-                    <p className="text-sm text-ink-soft">ผู้สมัคร #{application.student_user_id.slice(0, 8)}{application.major_mismatch && ' · สาขาไม่ตรงกับประกาศ'}</p>
-                  </div>
-                  <ApplicationStatusBadge status={application.status} />
-                </div>
-                <p className="mt-3 text-xs text-ink-soft">
-                  สมัครเมื่อ {formatDate(application.created_at)} · อัปเดตล่าสุด {formatDate(application.status_changed_at)}
-                  {application.frozen && ' · ประกาศถูกระงับชั่วคราว'}
-                </p>
-                <Link href={`/hr/applicants/item?id=${application.id}`} className="mt-3 inline-block text-sm font-semibold text-primary hover:underline">
-                  ดูรายละเอียดและดำเนินการ
-                </Link>
-              </li>
-            ))}
-          </ul>
+          <div className="grid gap-4 lg:grid-cols-[minmax(16rem,1fr)_minmax(0,2fr)]">
+            <ul className="min-w-0 divide-y divide-border self-start overflow-hidden [overflow-wrap:anywhere] rounded-xl border border-border bg-surface">
+              {result.data.map((app) => {
+                const name = app.student_name || `ผู้สมัคร #${app.student_user_id.slice(0, 8)}`;
+                const summary = (
+                  <>
+                    <span className="block break-words text-base font-semibold">{name}</span>
+                    <span className="mt-1 block text-sm text-ink-soft">{app.job_title}</span>
+                    <span className="mt-2 flex flex-wrap items-center gap-2">
+                      <ApplicationStatusBadge status={app.status} />
+                      <span className="text-xs text-ink-soft">{formatDate(app.created_at)}</span>
+                    </span>
+                    {app.major_mismatch && <span className="mt-2 block text-xs text-warning-text">สาขาไม่ตรงกับประกาศ</span>}
+                    {app.frozen && <span className="mt-1 block text-xs text-ink-soft">ประกาศถูกระงับชั่วคราว</span>}
+                  </>
+                );
+                return (
+                  <li key={app.id}>
+                    <Link href={`/hr/applicants/item?id=${app.id}`} className="block p-4 hover:bg-surface-muted lg:hidden">{summary}</Link>
+                    <button type="button" aria-pressed={selected?.id === app.id} onClick={() => setSelectedId(app.id)}
+                      className={`hidden w-full p-4 text-left lg:block ${selected?.id === app.id ? 'bg-primary-soft' : 'hover:bg-surface-muted'}`}>{summary}</button>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="hidden min-w-0 rounded-xl border border-border lg:block">
+              {showDetails && selected
+                ? <ApplicantDetail key={selected.id} applicationId={selected.id} onChanged={() => setRefresh((value) => value + 1)} />
+                : <p className="p-8 text-sm text-ink-soft">เลือกผู้สมัครเพื่อดูโปรไฟล์และพิจารณาใบสมัคร</p>}
+            </div>
+          </div>
         )}
         {result && result.meta.total > PAGE_SIZE && (
           <nav aria-label="เลือกหน้า" className="mt-8 flex items-center justify-center gap-4 text-sm">
