@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
+import { Mail } from 'lucide-react';
 import { ActionButton, AuthShell, Field, Notice } from '@/auth/ui';
 import { apiRequest } from '@/lib/api';
 
@@ -23,7 +24,7 @@ export default function ResendVerificationPage() {
     finally { setBusy(false); }
   }
 
-  return <AuthShell title="ขอลิงก์ยืนยันใหม่" subtitle="หากบัญชียังรอยืนยันอีเมล เราจะส่งลิงก์ใหม่ให้">
+  return <AuthShell title={sent ? 'ตรวจอีเมลของคุณ' : 'ขอลิงก์ยืนยันใหม่'} subtitle={sent ? undefined : 'หากบัญชียังรอยืนยันอีเมล เราจะส่งลิงก์ใหม่ให้'} icon={<Mail size={34} />}>
     {sent ? <Notice>หากบัญชียังรอยืนยันอีเมล กรุณาตรวจกล่องจดหมาย</Notice> :
       <form onSubmit={submit} className="space-y-4">
         <Field label="อีเมล" name="email" type="email" autoComplete="email" required />

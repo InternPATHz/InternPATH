@@ -5,7 +5,10 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { UserMeResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
-import { AuthShell, Notice } from '@/auth/ui';
+import { Notice } from '@/auth/ui';
+import { SiteHeader } from '@/components/layout/site-header';
+import { SiteFooter } from '@/components/layout/site-footer';
+import { Avatar } from '@/components/ui/avatar';
 import { RequireAuth } from '@/components/layout/require-auth';
 import { ROLE_HOME } from '@/components/layout/site-nav';
 import { ADVISOR_LINK_LABEL, ROLE_LABEL, USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
@@ -40,25 +43,70 @@ function AccountContent() {
     router.replace('/login');
   }
 
-  return <AuthShell title="บัญชีของฉัน" subtitle="ข้อมูลบัญชีที่ใช้เข้าสู่ระบบ InternPath">
-    {!profile && !error ? <p className="text-sm text-ink-soft">กำลังโหลดข้อมูลบัญชี…</p> : <div className="space-y-5">
-      {error && <Notice error>{error}</Notice>}
-      {profile && <dl className="grid gap-4 rounded-xl bg-surface-muted p-5 text-sm sm:grid-cols-2">
-        <div><dt className="text-ink-soft">ชื่อ</dt><dd className="mt-1 font-medium">{profile.full_name}</dd></div>
-        <div><dt className="text-ink-soft">บทบาท</dt><dd className="mt-1 font-medium">{labelOf(ROLE_LABEL, profile.role)}</dd></div>
-        <div><dt className="text-ink-soft">อีเมล</dt><dd className="mt-1 break-all font-medium">{profile.email}</dd></div>
-        <div><dt className="text-ink-soft">สถานะ</dt><dd className="mt-1 font-medium">{labelOf(USER_STATUS_LABEL, profile.status)}</dd></div>
-        {profile.company && <div><dt className="text-ink-soft">บริษัท</dt><dd className="mt-1 font-medium">{profile.company.name}</dd></div>}
-        {profile.student && <div><dt className="text-ink-soft">สถานะอาจารย์ที่ปรึกษา</dt><dd className="mt-1 font-medium">{labelOf(ADVISOR_LINK_LABEL, profile.student.advisor_link_status)}</dd></div>}
-      </dl>}
-      <div className="flex flex-wrap items-center gap-4">
-        <button type="button" disabled={busy} onClick={signOut}
-          className="rounded-full border border-border px-4 py-2.5 font-medium text-ink hover:bg-surface-muted disabled:opacity-50">
-          {busy ? 'กำลังออกจากระบบ…' : 'ออกจากระบบ'}
-        </button>
-        <Link href={profile ? ROLE_HOME[profile.role] ?? '/' : '/'} className="text-sm text-primary hover:underline">กลับหน้าหลัก</Link>
-        <Link href="/account/delete" className="text-sm text-danger-text hover:underline">ลบบัญชี</Link>
-      </div>
-    </div>}
-  </AuthShell>;
+  const role = profile?.role ?? user?.role;
+
+  return (
+    <div className="flex min-h-screen flex-col">
+      <SiteHeader />
+      <main className="mx-auto grid w-full max-w-5xl flex-1 gap-8 px-4 py-12 sm:px-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <header>
+          <Avatar name={profile?.full_name ?? user?.full_name} size="lg" />
+          <h1 className="mt-4 break-words text-3xl font-semibold">{profile?.full_name ?? user?.full_name ?? 'บัญชีของฉัน'}</h1>
+          {role && <p className="mt-1 text-sm text-ink-soft">{labelOf(ROLE_LABEL, role)}</p>}
+          <button type="button" disabled={busy} onClick={signOut}
+            className="mt-5 rounded-full border border-border px-4 py-2 text-sm font-medium hover:bg-surface-muted disabled:opacity-50">
+            {busy ? 'กำลังออกจากระบบ…' : 'ออกจากระบบ'}
+          </button>
+        </header>
+        <div className="min-w-0 space-y-6">
+          {!profile && !error && <p role="status" className="text-sm text-ink-soft">กำลังโหลดข้อมูลบัญชี…</p>}
+          {error && <Notice error>{error}</Notice>}
+          {profile && (
+            <section aria-labelledby="account-info">
+              <h2 id="account-info" className="text-lg font-semibold">ข้อมูลบัญชี</h2>
+              <dl className="mt-2 divide-y divide-border rounded-xl bg-surface-muted px-4 text-sm">
+                {[
+                  ['ชื่อ', profile.full_name],
+                  ['อีเมล', profile.email],
+                  ['บทบาท', labelOf(ROLE_LABEL, profile.role)],
+                  ['สถานะบัญชี', labelOf(USER_STATUS_LABEL, profile.status)],
+                ].map(([label, value]) => (
+                  <div key={label} className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-3">
+                    <dt className="text-ink-soft">{label}</dt>
+                    <dd className="break-all font-medium">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          )}
+          {(profile?.student || profile?.company || profile?.advisor) && (
+            <section aria-labelledby="account-training">
+              <h2 id="account-training" className="text-lg font-semibold">การฝึกงาน</h2>
+              <ul className="mt-2 divide-y divide-border rounded-xl bg-surface-muted px-4 text-sm">
+                {profile.student && <>
+                  <li className="flex flex-wrap justify-between gap-2 py-3"><span>สถานะอาจารย์ที่ปรึกษา</span><span className="font-medium">{labelOf(ADVISOR_LINK_LABEL, profile.student.advisor_link_status)}</span></li>
+                  <li><Link href="/student/profile" className="block py-3 text-primary hover:underline">โปรไฟล์และเรซูเม่ ›</Link></li>
+                </>}
+                {profile.company && <>
+                  <li><Link href="/hr/company" className="block py-3 text-primary hover:underline">บริษัทของฉัน · {profile.company.name} ›</Link></li>
+                  <li><Link href="/hr/team" className="block py-3 text-primary hover:underline">ทีม HR ›</Link></li>
+                </>}
+                {profile.advisor?.department && <li className="py-3">ภาควิชา · {profile.advisor.department}</li>}
+              </ul>
+            </section>
+          )}
+          <section aria-labelledby="account-privacy">
+            <h2 id="account-privacy" className="text-lg font-semibold">ความปลอดภัยและความเป็นส่วนตัว</h2>
+            <ul className="mt-2 divide-y divide-border rounded-xl bg-surface-muted px-4 text-sm">
+              <li><Link href="/forgot-password" className="block py-3 text-primary hover:underline">ขอลิงก์ตั้งรหัสผ่านใหม่ ›</Link></li>
+              <li><Link href="/privacy" className="block py-3 text-primary hover:underline">นโยบายความเป็นส่วนตัว ›</Link></li>
+              <li><Link href="/account/delete" className="block py-3 text-danger-text hover:underline">ลบบัญชี ›</Link></li>
+            </ul>
+          </section>
+          <Link href={role ? ROLE_HOME[role] : '/'} className="inline-block text-sm text-primary hover:underline">กลับหน้าหลัก</Link>
+        </div>
+      </main>
+      <SiteFooter />
+    </div>
+  );
 }

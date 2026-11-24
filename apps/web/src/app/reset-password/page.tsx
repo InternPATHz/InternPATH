@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
-import { ActionButton, AuthShell, Field, Notice } from '@/auth/ui';
+import { CircleCheck, KeyRound } from 'lucide-react';
+import { ActionButton, AuthShell, NewPasswordFields, Notice } from '@/auth/ui';
 import { apiRequest } from '@/lib/api';
 
 export default function ResetPasswordPage() {
@@ -28,12 +29,11 @@ export default function ResetPasswordPage() {
     finally { setBusy(false); }
   }
 
-  return <AuthShell title="ตั้งรหัสผ่านใหม่" subtitle="ลิงก์ใช้ได้ครั้งเดียวภายใน 30 นาที">
+  return <AuthShell title={done ? 'ตั้งรหัสผ่านใหม่แล้ว' : 'ตั้งรหัสผ่านใหม่'} subtitle={done ? undefined : 'ลิงก์ใช้ได้ครั้งเดียวภายใน 30 นาที'} icon={done ? <CircleCheck size={34} /> : <KeyRound size={34} />}>
     {done ? <Notice>ตั้งรหัสผ่านใหม่สำเร็จแล้ว กรุณาเข้าสู่ระบบ</Notice> : !token ?
       <Notice error>ไม่พบ token ในลิงก์ กรุณาขอลิงก์รีเซ็ตใหม่</Notice> :
       <form onSubmit={submit} className="space-y-4">
-        <Field label="รหัสผ่านใหม่ (อย่างน้อย 12 ตัวอักษร)" name="new_password" type="password" minLength={12} autoComplete="new-password" required />
-        <Field label="ยืนยันรหัสผ่านใหม่" name="confirm_password" type="password" minLength={12} autoComplete="new-password" required />
+        <NewPasswordFields name="new_password" />
         {error && <Notice error>{error}</Notice>}
         <ActionButton busy={busy}>ตั้งรหัสผ่านใหม่</ActionButton>
       </form>}

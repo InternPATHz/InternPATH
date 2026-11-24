@@ -5,7 +5,7 @@ import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/auth/session';
-import { ActionButton, AuthShell, Field, Notice } from '@/auth/ui';
+import { ActionButton, AuthShell, Field, Notice, PasswordField } from '@/auth/ui';
 import { ROLE_HOME } from '@/components/layout/site-nav';
 
 export default function LoginPage() {
@@ -29,16 +29,16 @@ export default function LoginPage() {
     } finally { setBusy(false); }
   }
 
-  return <AuthShell title="เข้าสู่ระบบ" subtitle="ใช้อีเมลที่สมัครไว้กับ InternPath">
+  return <AuthShell title="เข้าสู่ระบบ InternPath" subtitle="ใช้อีเมลที่สมัครไว้กับ InternPath">
     <form onSubmit={submit} className="space-y-4">
       <Field label="อีเมล" name="email" type="email" autoComplete="email" required />
-      <Field label="รหัสผ่าน" name="password" type="password" autoComplete="current-password" required />
+      <PasswordField label="รหัสผ่าน" name="password" autoComplete="current-password" required />
       {error && <Notice error>{error}</Notice>}
       <ActionButton busy={busy}>เข้าสู่ระบบ</ActionButton>
     </form>
-    <div className="mt-4 flex justify-between gap-4 text-sm">
-      <Link href="/unlock-login" className="text-ink-soft hover:text-primary hover:underline">บัญชีถูกล็อก?</Link>
-      <Link href="/forgot-password" className="text-ink-soft hover:text-primary hover:underline">ลืมรหัสผ่าน?</Link>
+    <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm">
+      <Link href="/unlock-login" className="text-primary hover:underline">บัญชีถูกล็อก?</Link>
+      <Link href="/forgot-password" className="text-primary hover:underline">ลืมรหัสผ่าน?</Link>
     </div>
     <p className="mt-6 border-t border-border pt-5 text-center text-sm text-ink-soft">
       ยังไม่มีบัญชี?{' '}

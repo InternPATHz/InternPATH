@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
-import { ActionButton, AuthShell, Field, Notice } from '@/auth/ui';
+import { Building2, CircleCheck } from 'lucide-react';
+import { ActionButton, AuthShell, Field, NewPasswordFields, Notice } from '@/auth/ui';
 import { apiRequest } from '@/lib/api';
 
 // ลิงก์ในอีเมลเชิญสมาชิก HR (Identity ส่ง `/auth/invitations/accept?token=`) — token ใช้ได้ครั้งเดียว
@@ -30,19 +31,18 @@ export default function AcceptInvitationPage() {
   }
 
   return (
-    <AuthShell title="เข้าร่วมทีมบริษัท" subtitle="ตั้งชื่อและรหัสผ่านเพื่อเปิดบัญชี HR ของบริษัทที่เชิญคุณ ลิงก์ใช้ได้ครั้งเดียว">
+    <AuthShell title={done ? 'ยินดีต้อนรับสู่ทีม' : 'เข้าร่วมทีมบริษัท'} subtitle={done ? undefined : 'ตั้งชื่อและรหัสผ่านเพื่อเปิดบัญชี HR ของบริษัทที่เชิญคุณ'} icon={done ? <CircleCheck size={34} /> : <Building2 size={34} />}>
       {done ? (
         <div className="space-y-4">
           <Notice>เปิดบัญชีสำเร็จแล้ว เข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญได้เลย</Notice>
-          <Link href="/login" className="text-sm text-primary hover:underline">เข้าสู่ระบบ</Link>
+          <Link href="/login" className="block rounded-full bg-primary px-4 py-3 text-center font-semibold text-white hover:bg-primary-hover">เข้าสู่ระบบ</Link>
         </div>
       ) : (
         <form onSubmit={submit} className="space-y-4">
           {!token && <Notice error>ไม่พบ token ในลิงก์ กรุณาเปิดลิงก์จากอีเมลคำเชิญอีกครั้ง</Notice>}
           {error && <Notice error>{error}</Notice>}
           <Field label="ชื่อ-นามสกุล" name="full_name" autoComplete="name" required />
-          <Field label="รหัสผ่าน (อย่างน้อย 12 ตัวอักษร)" name="password" type="password" minLength={12} autoComplete="new-password" required />
-          <Field label="ยืนยันรหัสผ่าน" name="confirm_password" type="password" minLength={12} autoComplete="new-password" required />
+          <NewPasswordFields />
           <ActionButton busy={busy}>เปิดบัญชีและเข้าร่วมทีม</ActionButton>
         </form>
       )}
