@@ -35,6 +35,14 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
   PLATFORM_ADMIN: [{ label: 'หลังบ้าน', href: '/admin/queue', ready: true }],
 };
 
+/** หน้าแรกของแต่ละบทบาท — ใช้พาไปหลังล็อกอินเมื่อไม่มี `?next=` */
+export const ROLE_HOME: Record<Role, string> = {
+  STUDENT: '/jobs',
+  COMPANY_HR: '/hr/jobs',
+  ADVISOR: '/advisor/approvals',
+  PLATFORM_ADMIN: '/admin/queue',
+};
+
 export const FOOTER_LINKS: NavItem[] = [
   { label: 'ตรวจสอบใบรับรอง', href: '/public/certificates', ready: true },
   { label: 'นโยบายความเป็นส่วนตัว', href: '/privacy', ready: true },

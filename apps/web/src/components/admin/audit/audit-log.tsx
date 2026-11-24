@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -106,7 +107,9 @@ export function AuditLog() {
       <div>
         <h1 className="text-2xl font-semibold">Audit log ของ Verification</h1>
         <p className="mt-1 text-sm text-ink-soft">
-          บันทึกการกระทำของ Admin ในส่วนตรวจสอบและความไว้วางใจ เรียงใหม่ไปเก่า ลบหรือแก้ไม่ได้ (Audit log ของ Identity และ Lifecycle แยกอยู่ที่ Service นั้น)
+          บันทึกการกระทำของ Admin ในส่วนตรวจสอบและความไว้วางใจ เรียงใหม่ไปเก่า ลบหรือแก้ไม่ได้ · ดู{' '}
+          <Link href="/admin/identity-audit" className="text-primary hover:underline">Audit log ของ Identity</Link> และ{' '}
+          <Link href="/admin/lifecycle-audit" className="text-primary hover:underline">Audit log ของ Lifecycle</Link>
         </p>
       </div>
 

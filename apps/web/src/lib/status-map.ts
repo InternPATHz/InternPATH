@@ -57,7 +57,59 @@ export const COMPANY_STATUS: StatusMap = {
   SUSPENDED: { label: 'ถูกระงับ', tone: 'danger', icon: CircleX },
 };
 
-const UNKNOWN: StatusView = { label: 'ไม่ทราบสถานะ', tone: 'neutral', icon: Clock5 };
+// ป้ายข้อความล้วนของค่า enum ฝั่งบัญชีผู้ใช้ (ไม่ต้องมีโทนสี) — ค่าที่ไม่รู้จักแสดงค่าดิบผ่าน `labelOf`
+export const ROLE_LABEL: Record<string, string> = {
+  STUDENT: 'นักศึกษา',
+  COMPANY_HR: 'ฝ่ายบุคคลบริษัท',
+  ADVISOR: 'อาจารย์ที่ปรึกษา',
+  PLATFORM_ADMIN: 'ผู้ดูแลแพลตฟอร์ม',
+};
+
+export const USER_STATUS_LABEL: Record<string, string> = {
+  PENDING_EMAIL: 'รอยืนยันอีเมล',
+  PENDING_APPROVAL: 'รออนุมัติ',
+  ACTIVE: 'ใช้งานอยู่',
+  SUSPENDED: 'ถูกระงับ',
+  DELETED: 'ลบแล้ว',
+};
+
+export const ADVISOR_LINK_LABEL: Record<string, string> = {
+  NONE: 'ยังไม่มีอาจารย์ที่ปรึกษา',
+  ADVISOR_LINK_PENDING: 'รออาจารย์ยืนยัน',
+  LINKED: 'มีอาจารย์ที่ปรึกษาแล้ว',
+};
+
+/** Audit log ของ Identity — ชื่อการกระทำที่ Identity บันทึก (apps/identity: admin, companies, company-members, advisor-links) */
+export const IDENTITY_AUDIT_ACTION_LABEL: Record<string, string> = {
+  COMPANY_VERIFY: 'อนุมัติบริษัท',
+  COMPANY_NEED_MORE_INFO: 'ขอเอกสารบริษัทเพิ่ม',
+  COMPANY_REJECT: 'ปฏิเสธบริษัท',
+  COMPANY_SUSPEND: 'ระงับบริษัท',
+  COMPANY_UNSUSPEND: 'ยกเลิกระงับบริษัท',
+  COMPANY_UNIVERSITY_PARTNER: 'ตั้งค่า University Partner',
+  COMPANY_ENTITLEMENTS: 'ตั้งสิทธิ์ Featured / Fast-Track',
+  COMPANY_OWNER_APPOINT: 'แต่งตั้ง Owner บริษัท',
+  COMPANY_OWNER_TRANSFER: 'โอนสิทธิ์ Owner บริษัท',
+  COMPANY_MEMBER_CATEGORIES: 'กำหนดสายงานของสมาชิก HR',
+  COMPANY_MEMBER_REMOVE: 'นำสมาชิก HR ออก',
+  COMPANY_INVITATION_CANCEL: 'ยกเลิกคำเชิญ HR',
+  USER_SUSPEND: 'ระงับบัญชีผู้ใช้',
+  USER_UNSUSPEND: 'ยกเลิกระงับบัญชีผู้ใช้',
+  ADVISOR_APPROVE: 'อนุมัติอาจารย์',
+  ADVISOR_REJECT: 'ปฏิเสธอาจารย์',
+  STUDENT_ADVISOR_MOVE: 'ย้ายอาจารย์ที่ปรึกษาของนักศึกษา',
+};
+
+export const IDENTITY_AUDIT_TARGET_LABEL: Record<string, string> = {
+  COMPANY: 'บริษัท',
+  USER: 'ผู้ใช้',
+};
+
+export function labelOf(map: Record<string, string>, value: string): string {
+  return map[value] ?? value;
+}
+
+const UNKNOWN: StatusView ={ label: 'ไม่ทราบสถานะ', tone: 'neutral', icon: Clock5 };
 
 // สถานะที่ยังไม่รู้จัก (เช่น Service เพิ่มค่าใหม่) ต้องไม่ทำให้หน้าพัง — แสดงเป็นป้ายกลาง
 export function statusView(map: StatusMap, status: string): StatusView {

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/auth/session';
 import { ActionButton, AuthShell, Field, Notice } from '@/auth/ui';
+import { ROLE_HOME } from '@/components/layout/site-nav';
 import { apiRequest } from '@/lib/api';
 
 export default function UnlockLoginPage() {
@@ -26,8 +27,8 @@ export default function UnlockLoginPage() {
     setError('');
     try {
       if (token) {
-        await login(email, String(form.get('password')), token);
-        router.replace('/account');
+        const user = await login(email, String(form.get('password')), token);
+        router.replace(ROLE_HOME[user.role] ?? '/account');
       } else {
         await apiRequest<void>('/auth/login/unlock/request', { email });
         setSent(true);

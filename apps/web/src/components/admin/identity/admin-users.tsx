@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { AdminUserListItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
+import { ROLE_LABEL, USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
 
 const roles: Array<[string, string]> = [['', 'ทุกบทบาท'], ['STUDENT', 'นักศึกษา'], ['ADVISOR', 'อาจารย์'], ['COMPANY_HR', 'HR'], ['PLATFORM_ADMIN', 'Admin']];
 const statuses: Array<[string, string]> = [['', 'ทุกสถานะ'], ['ACTIVE', 'ใช้งานอยู่'], ['PENDING_EMAIL', 'รอยืนยันอีเมล'], ['PENDING_APPROVAL', 'รออนุมัติ'], ['SUSPENDED', 'ถูกระงับ']];
@@ -66,9 +67,10 @@ export function AdminUsers() {
       {loading ? <p className="text-sm text-ink-soft">กำลังโหลด…</p> : !result?.data.length ? <p className="text-sm text-ink-soft">ไม่พบบัญชีที่ตรงกับตัวกรอง</p> :
         <div className="divide-y divide-border">{result.data.map((item) => <div key={item.id} className="py-4 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium">{item.full_name}</p>
-            <p className="text-sm text-ink-soft">{item.email}</p><p className="mt-1 text-xs text-ink-soft">{item.role} · {item.status}{item.student_code ? ` · ${item.student_code}` : ''}</p>
-            <p className="mt-1 break-all font-mono text-xs text-ink-soft">{item.id}</p>
-            {item.advisor_id && <p className="mt-1 break-all text-xs text-ink-soft">อาจารย์: {item.advisor_id}</p>}</div>
+            <p className="text-sm text-ink-soft">{item.email}</p><p className="mt-1 text-xs text-ink-soft">{labelOf(ROLE_LABEL, item.role)} · {labelOf(USER_STATUS_LABEL, item.status)}{item.student_code ? ` · รหัสนักศึกษา ${item.student_code}` : ''}</p>
+            <p className="mt-1 break-all text-xs text-ink-soft">รหัสบัญชี <span className="font-mono">{item.id}</span></p>
+            {/* API ส่งแค่รหัสบัญชีอาจารย์ (ไม่มีชื่อ) — ใช้รหัสนี้ในฟอร์มย้ายอาจารย์ */}
+            {item.advisor_id && <p className="mt-1 break-all text-xs text-ink-soft">รหัสบัญชีอาจารย์ที่ปรึกษา <span className="font-mono">{item.advisor_id}</span></p>}</div>
             <div className="flex gap-2">{item.role === 'STUDENT' && item.status === 'ACTIVE' && <a href={`/admin/advisors?student=${encodeURIComponent(item.id)}`} className="rounded-lg border border-border px-3 py-2 text-sm">ย้ายอาจารย์</a>}
               {(item.status === 'ACTIVE' || item.status === 'SUSPENDED') && <button disabled={busy} onClick={() => { if (item.status === 'SUSPENDED') void changeStatus(item); else { setActionId(item.id); setReason(''); } }} className="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-50">{item.status === 'SUSPENDED' ? 'ยกเลิกการระงับ' : 'ระงับ'}</button>}</div></div>
           {actionId === item.id && <div className="mt-3 flex flex-wrap gap-2"><input aria-label="เหตุผลที่ระงับบัญชี" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} placeholder="เหตุผลที่ระงับบัญชี" className="min-w-60 flex-1 rounded-lg border border-border px-3 py-2 text-sm" />

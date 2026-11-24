@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
+import { IDENTITY_AUDIT_ACTION_LABEL, IDENTITY_AUDIT_TARGET_LABEL, labelOf } from '@/lib/status-map';
 
 type AuditEntry = {
   id: string;
@@ -100,7 +101,8 @@ export function IdentityAuditLog() {
         <p className="text-sm text-ink-soft">ไม่พบรายการที่ตรงกับตัวกรอง</p> :
         <div className="divide-y divide-border">{result.data.map((entry) => <article key={entry.id} className="py-4 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 space-y-1">
-            <p className="font-medium">{entry.action} <span className="text-sm font-normal text-ink-soft">· {entry.target_type}</span></p>
+            <p className="font-medium">{labelOf(IDENTITY_AUDIT_ACTION_LABEL, entry.action)} <span className="text-sm font-normal text-ink-soft">· {labelOf(IDENTITY_AUDIT_TARGET_LABEL, entry.target_type)}</span></p>
+            <p className="font-mono text-xs text-ink-soft">{entry.action}</p>
             <p className="break-all text-xs text-ink-soft">เป้าหมาย {entry.target_id} · ผู้ดูแล {entry.admin_id}</p>
             <p className="text-xs text-ink-soft">{new Date(entry.occurred_at).toLocaleString('th-TH')} · Correlation ID {entry.correlation_id}</p>
             {entry.reason && <p className="text-sm">เหตุผล: {entry.reason}</p>}

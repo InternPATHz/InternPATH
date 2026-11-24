@@ -75,6 +75,17 @@ const applicationStatusMessages: Partial<
   EXPIRED: 'ใบสมัครหมดเวลา',
 };
 
+/**
+ * หน้าของอาจารย์ที่ต้องเปิดตามสถานะใหม่ของใบสมัคร (หน้าอาจารย์ไม่มีหน้ารายละเอียดรายใบ จึงลิงก์ไปหน้ารายการ)
+ * รออนุมัติ ⇒ อนุมัติฝึกงาน • ผลประเมิน/โต้แย้ง/สิ้นสุด ⇒ ประเมินผล • อื่น ๆ ⇒ นักศึกษาของฉัน
+ */
+function advisorLink(status: ApplicationStatusChangedPayload['to_status']): string {
+  if (status === 'ADVISOR_PENDING') return '/advisor/approvals';
+  if (['EVALUATED_PASS', 'EVALUATED_FAIL', 'FAIL_DISPUTED', 'COMPLETED', 'NO_EVALUATION', 'TERMINATED'].includes(status))
+    return '/advisor/evaluations';
+  return '/advisor/students';
+}
+
 const escalations = new Set<ReminderType>([
   'ADVISOR_APPROVE_ESCALATE_ADMIN_D7',
   'START_CONFIRM_ESCALATE_D7',
@@ -384,6 +395,7 @@ export class NotificationEvents implements OnModuleInit {
       recipients.push({
         id: p.advisor_user_id,
         email: channels.advisor === 'EMAIL',
+        link: advisorLink(p.to_status),
       });
     if (channels.hr) {
       const ids =
@@ -398,7 +410,7 @@ export class NotificationEvents implements OnModuleInit {
     }
     return {
       title,
-      body: 'ตรวจสอบสถานะล่าสุดในใบสมัครที่เกี่ยวข้อง',
+      body: 'เปิดเพื่อดูรายละเอียดและดำเนินการต่อ',
       recipients: recipients.filter((recipient) => recipient.id !== p.actor_user_id),
     };
   }

@@ -11,7 +11,8 @@ const notoSansThai = Noto_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: 'InternPath',
+  // หน้าลูกตั้งแค่ชื่อหน้า (`title: 'ค้นหางาน'`) แล้วได้ "ค้นหางาน · InternPath" — หน้าที่ไม่ตั้งได้ "InternPath"
+  title: { default: 'InternPath', template: '%s · InternPath' },
   description: 'University Internship Platform',
 };
 

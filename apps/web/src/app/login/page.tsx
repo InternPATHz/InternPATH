@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/auth/session';
 import { ActionButton, AuthShell, Field, Notice } from '@/auth/ui';
+import { ROLE_HOME } from '@/components/layout/site-nav';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -19,10 +20,10 @@ export default function LoginPage() {
     setError('');
     const form = new FormData(event.currentTarget);
     try {
-      await login(String(form.get('email')), String(form.get('password')));
-      // `next` ใช้ได้เฉพาะเส้นทางภายในเว็บ (ขึ้นต้น / และไม่ใช่ //) กัน open redirect
+      const user = await login(String(form.get('email')), String(form.get('password')));
+      // `next` ใช้ได้เฉพาะเส้นทางภายในเว็บ (ขึ้นต้น / และไม่ใช่ //) กัน open redirect • ไม่มี ⇒ หน้าแรกของบทบาท
       const next = new URLSearchParams(window.location.search).get('next');
-      router.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : '/account');
+      router.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : ROLE_HOME[user.role] ?? '/account');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'เข้าสู่ระบบไม่สำเร็จ');
     } finally { setBusy(false); }

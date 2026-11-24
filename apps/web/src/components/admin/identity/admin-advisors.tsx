@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import type { AdminAdvisorListItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
+import { USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const statusOptions: Array<[string, string]> = [['PENDING_APPROVAL', 'รออนุมัติ'], ['ACTIVE', 'ใช้งานอยู่'], ['', 'ทั้งหมด']];
@@ -73,7 +74,7 @@ export function AdminAdvisors() {
         <div className="mt-4 divide-y divide-border">{result.data.map((item) => <div key={item.id} className="py-4 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-medium">{item.full_name}</p>
             <p className="text-sm text-ink-soft">{item.email}{item.department ? ` · ${item.department}` : ''}</p>
-            <p className="mt-1 text-xs text-ink-soft">{item.status} · {new Date(item.created_at).toLocaleDateString('th-TH')}</p></div>
+            <p className="mt-1 text-xs text-ink-soft">{labelOf(USER_STATUS_LABEL, item.status)} · สมัครเมื่อ {new Date(item.created_at).toLocaleDateString('th-TH')}</p></div>
             {item.status === 'PENDING_APPROVAL' && <div className="flex gap-2">
               <button disabled={busy} onClick={() => void decide(item.id, 'approve')} className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50">อนุมัติ</button>
               <button disabled={busy} onClick={() => { setRejectId(item.id); setReason(''); }} className="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-50">ปฏิเสธ</button>
