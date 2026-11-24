@@ -4,23 +4,24 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { DirectoryCompanyDetail, Paginated, PublicReviewItem } from '@internpath/contracts';
-import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { OUTCOME, reviewerLabel } from '@/components/companies/review-display';
 import { ReportPanel } from '@/components/reports/report-panel';
 import { Avatar } from '@/components/ui/avatar';
 import { RatingSummary, Stars } from '@/components/ui/rating';
 import { StatusBadge } from '@/components/ui/status-badge';
-import { ApiError } from '@/lib/api';
+import { ApiError, apiRequest } from '@/lib/api';
 
 const PAGE_SIZE = 10;
 
 const dateFormat = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' });
 
-
+/**
+ * หน้า Public: ข้อมูลบริษัท (§4.4) และรีวิวที่เผยแพร่ (§7.6) อ่านได้โดยไม่ล็อกอิน ⇒ เรียก `apiRequest` ไม่แนบ token
+ * (`useAuth().request` refresh session ก่อนเสมอ ผู้เยี่ยมชมจะได้ 401) • การรายงานรีวิวใน `ReportPanel` ยังต้องล็อกอินตามเดิม
+ */
 export function CompanyDetail() {
   const id = useSearchParams().get('id') ?? '';
-  const { request } = useAuth();
   const [company, setCompany] = useState<DirectoryCompanyDetail | null>(null);
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +35,7 @@ export function CompanyDetail() {
     setCompany(null);
     setMissing(false);
     setError(null);
-    request<DirectoryCompanyDetail>(`/directory/companies/${encodeURIComponent(id)}`).then(
+    apiRequest<DirectoryCompanyDetail>(`/directory/companies/${encodeURIComponent(id)}`).then(
       (data) => { if (!cancelled) setCompany(data); },
       (cause) => {
         if (cancelled) return;
@@ -43,19 +44,19 @@ export function CompanyDetail() {
       },
     );
     return () => { cancelled = true; };
-  }, [request, id]);
+  }, [id]);
 
   useEffect(() => {
     if (!company) return;
     let cancelled = false;
     setReviews(null);
     setReviewError(null);
-    request<Paginated<PublicReviewItem>>(`/companies/${encodeURIComponent(company.id)}/reviews?page=${page}&page_size=${PAGE_SIZE}`).then(
+    apiRequest<Paginated<PublicReviewItem>>(`/companies/${encodeURIComponent(company.id)}/reviews?page=${page}&page_size=${PAGE_SIZE}`).then(
       (data) => { if (!cancelled) setReviews(data); },
       (cause) => { if (!cancelled) setReviewError(cause instanceof ApiError ? cause.message : 'โหลดรีวิวไม่สำเร็จ กรุณาลองใหม่'); },
     );
     return () => { cancelled = true; };
-  }, [request, company, page]);
+  }, [company, page]);
 
   if (missing || error) {
     return (

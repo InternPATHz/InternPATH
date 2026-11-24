@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { DirectoryCompanyListItem, Paginated } from '@internpath/contracts';
-import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { Avatar } from '@/components/ui/avatar';
 import { RatingSummary } from '@/components/ui/rating';
@@ -18,7 +17,6 @@ export function CompanyList() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { request } = useAuth();
   const q = searchParams.get('q')?.trim() ?? '';
   const partner = searchParams.get('partner') === 'true';
   const categoryParam = searchParams.get('category');
@@ -36,12 +34,12 @@ export function CompanyList() {
     let cancelled = false;
     setResult(null);
     setError(null);
-    listCompanies(request, { q: q || undefined, category, partner }, page, PAGE_SIZE).then(
+    listCompanies({ q: q || undefined, category, partner }, page, PAGE_SIZE).then(
       (data) => { if (!cancelled) setResult(data); },
       (cause) => { if (!cancelled) setError(cause instanceof ApiError ? cause.message : 'โหลดรายชื่อบริษัทไม่สำเร็จ กรุณาลองใหม่'); },
     );
     return () => { cancelled = true; };
-  }, [request, q, category, partner, page]);
+  }, [q, category, partner, page]);
 
   function update(changes: Record<string, string | undefined>, keepPage = false) {
     const next = new URLSearchParams(searchParams.toString());
