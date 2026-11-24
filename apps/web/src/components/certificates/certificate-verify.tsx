@@ -92,7 +92,7 @@ function CertificateCard({ code, certificate }: { code: string; certificate: Pub
         ? <StatusBadge tone="success" icon={BadgeCheck}>ใบรับรองถูกต้อง</StatusBadge>
         : <StatusBadge tone="danger" icon={CircleX}>ใบรับรองถูกเพิกถอนแล้ว</StatusBadge>}
       {!valid && <p className="mt-3 text-sm text-danger-text">ใบรับรองนี้ถูกเพิกถอนและใช้อ้างอิงไม่ได้แล้ว</p>}
-      <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+      <dl className="mt-5 grid grid-cols-1 gap-4 [overflow-wrap:anywhere] sm:grid-cols-2">
         <div className="sm:col-span-2"><dt className="text-xs text-ink-soft">ผู้ถือใบรับรอง</dt><dd className="mt-0.5 text-xl font-semibold">{certificate.holder_name}</dd></div>
         <div><dt className="text-xs text-ink-soft">บริษัท</dt><dd className="mt-0.5 font-medium">{certificate.company_name}</dd></div>
         <div><dt className="text-xs text-ink-soft">ตำแหน่ง</dt><dd className="mt-0.5 font-medium">{certificate.job_title}</dd></div>

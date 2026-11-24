@@ -20,3 +20,9 @@ export function notificationsApi(request: Request): NotificationsApi {
     markAllRead: async () => { await request<void>('/notifications/actions/read-all', { method: 'POST' }); },
   };
 }
+
+/** Accept app-relative destinations from notification payloads. */
+export function notificationTarget(link: string | undefined): string | undefined {
+  if (!link || !link.startsWith('/') || link.startsWith('//') || /[\\\x00-\x1f]/.test(link)) return undefined;
+  return link;
+}

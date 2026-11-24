@@ -1,6 +1,10 @@
+'use client';
+
 import Link from 'next/link';
-import type { JobCategory } from '@internpath/contracts';
+import { useEffect, useState } from 'react';
+import type { JobCategory, Paginated, SearchJobItem } from '@internpath/contracts';
 import { CATEGORIES } from '@/lib/categories';
+import { apiRequest } from '@/lib/api';
 
 const icons: Record<JobCategory, React.ReactNode> = {
   TECH_IT: <><rect x="4" y="5" width="16" height="11" rx="1.5" /><path d="M2 19h20" /></>,
@@ -8,26 +12,41 @@ const icons: Record<JobCategory, React.ReactNode> = {
   CORPORATE_SERVICES: <><rect x="6" y="3" width="12" height="18" rx="1" /><path d="M10 7h1M13 7h1M10 11h1M13 11h1M10 15h4" /></>,
 };
 
-/** Tile สีพื้น Parchment (DESIGN-apple: product-tile-parchment) ที่มีการ์ดสายงานสีขาวขอบบาง */
+/** Tile เข้มสำหรับเลือกสายงาน */
 export function CategorySection() {
+  const [counts, setCounts] = useState<Partial<Record<JobCategory, number>>>({});
+
+  useEffect(() => {
+    let active = true;
+    for (const { id } of CATEGORIES) {
+      const query = new URLSearchParams({ category: id, page_size: '1' });
+      void apiRequest<Paginated<SearchJobItem>>(`/search/jobs?${query}`).then(
+        ({ meta }) => { if (active) setCounts((current) => ({ ...current, [id]: meta.total })); },
+        () => undefined,
+      );
+    }
+    return () => { active = false; };
+  }, []);
+
   return (
-    <section aria-labelledby="categories-title" className="bg-surface-muted px-4 py-16 sm:py-20">
+    <section aria-labelledby="categories-title" className="bg-tile px-4 py-16 text-white sm:py-20">
       <div className="mx-auto max-w-6xl text-center">
-        <h2 id="categories-title" className="text-3xl font-semibold sm:text-[40px] sm:leading-[1.1]">เลือกสายงานที่สนใจ</h2>
-        <p className="mt-3 text-lg text-ink-soft">สามสายงานหลักบนแพลตฟอร์ม</p>
+        <h2 id="categories-title" className="text-3xl font-semibold sm:text-[40px] sm:leading-[1.1]">เลือกสายงานที่ใช่สำหรับคุณ</h2>
+        <p className="mt-3 text-lg text-white/75">สามสายงานหลักบนแพลตฟอร์ม</p>
         <ul className="mt-10 grid gap-5 text-left sm:grid-cols-3">
           {CATEGORIES.map((category) => (
             <li key={category.id}>
               <Link
                 href={`/jobs?category=${category.id}`}
-                className="group flex h-full flex-col rounded-xl border border-border bg-surface p-6 hover:border-primary/40"
+                className="group flex h-full flex-col rounded-xl border border-white/10 bg-white/5 p-6 hover:border-primary-on-dark"
               >
-                <svg aria-hidden viewBox="0 0 24 24" className="h-10 w-10 text-ink" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg aria-hidden viewBox="0 0 24 24" className="h-10 w-10 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   {icons[category.id]}
                 </svg>
                 <span className="mt-5 text-xl font-semibold">{category.label}</span>
-                <span className="mt-1 text-sm text-ink-soft">{category.description}</span>
-                <span className="mt-4 text-sm text-primary group-hover:underline">ดูงานในสายนี้ ›</span>
+                <span className="mt-1 text-sm text-white/75">{category.description}</span>
+                {counts[category.id] !== undefined && <span className="mt-2 text-sm text-white/75">{counts[category.id]} ประกาศ</span>}
+                <span className="mt-4 text-sm text-primary-on-dark group-hover:underline">ดูงานในสายนี้ ›</span>
               </Link>
             </li>
           ))}

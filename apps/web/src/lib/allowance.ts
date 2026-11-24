@@ -10,7 +10,9 @@ const baht = new Intl.NumberFormat('th-TH');
 export function allowanceLabel(allowance: JobObject['allowance']): string {
   const text = allowance.text?.trim() ?? '';
   if (allowance.type === 'AMOUNT' && allowance.amount_thb != null) {
-    return [`${baht.format(allowance.amount_thb)} บาท`, text].filter(Boolean).join(' · ');
+    const amount = `${baht.format(allowance.amount_thb)} บาท`;
+    if (text.replace(/[\s,]/g, '').startsWith(amount.replace(/[\s,]/g, ''))) return text;
+    return [amount, text].filter(Boolean).join(' · ');
   }
   return text || 'ไม่มีค่าตอบแทน';
 }

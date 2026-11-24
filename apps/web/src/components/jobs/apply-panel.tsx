@@ -45,9 +45,8 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  // โหลดเมื่อเปิดแผงครั้งแรกเท่านั้น (ไม่ยิง API ให้ทุกคนที่แค่เปิดดูประกาศ)
+  // แผงนี้แสดงเฉพาะนักศึกษาที่ล็อกอินและกำลังดูประกาศที่เปิดรับ
   useEffect(() => {
-    if (!open || loaded || loadFailed) return;
     let cancelled = false;
     Promise.all([
       request<ApplicationEligibilityResponse>('/me/application-eligibility'),
@@ -61,7 +60,7 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
       () => { if (!cancelled) setLoadFailed(true); },
     );
     return () => { cancelled = true; };
-  }, [open, loaded, loadFailed, request]);
+  }, [request]);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -93,14 +92,6 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
     );
   }
 
-  if (!open) {
-    return (
-      <button type="button" onClick={() => setOpen(true)} className="w-full rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
-        สมัครงานนี้
-      </button>
-    );
-  }
-
   if (loadFailed) return <Notice tone="error">โหลดข้อมูลการสมัครไม่สำเร็จ กรุณาลองใหม่ภายหลัง</Notice>;
   if (!loaded) return <p className="text-sm text-ink-soft">กำลังตรวจสอบสิทธิ์การสมัคร…</p>;
 
@@ -122,25 +113,39 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
     );
   }
 
+  if (!open) {
+    return (
+      <div className="space-y-3">
+        <p className="rounded-lg bg-success-soft px-3 py-2 text-sm text-success-text">บัญชีพร้อมสมัคร · มีเรซูเม่ {loaded.resumes.length} ไฟล์</p>
+      <button type="button" onClick={() => setOpen(true)} className="w-full rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
+        สมัครงานนี้
+      </button>
+      </div>
+    );
+  }
+
   return (
     <form onSubmit={submit} className="space-y-4 text-sm" noValidate>
       <fieldset>
         <legend className="font-medium">เลือกเรซูเม่</legend>
         <div className="mt-2 space-y-2">
           {loaded.resumes.map((resume, index) => (
-            <label key={resume.id} className="flex items-center gap-2">
+            <label key={resume.id} className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
               <input type="radio" name="resume" value={resume.id} checked={resumeId === resume.id} onChange={() => setResumeId(resume.id)} className="accent-primary" />
-              เรซูเม่ {index + 1}{resume.is_primary && ' (ไฟล์หลัก)'}
+              <span>เรซูเม่ {index + 1}{resume.is_primary && ' (ไฟล์หลัก)'}<br /><span className="text-xs text-ink-soft">อัปโหลด {new Intl.DateTimeFormat('th-TH', { dateStyle: 'medium', timeZone: 'Asia/Bangkok' }).format(new Date(resume.uploaded_at))}</span></span>
             </label>
           ))}
         </div>
       </fieldset>
-      <label className="block font-medium">
-        จดหมายสมัคร (ไม่บังคับ)
+      <details>
+        <summary className="cursor-pointer font-medium">จดหมายสมัคร (ไม่บังคับ)</summary>
+        <label className="block">
+          <span className="sr-only">จดหมายสมัคร</span>
         <textarea value={coverLetter} onChange={(event) => setCoverLetter(event.target.value)} rows={4}
           className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-base font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft" />
         <span className="mt-1 block text-xs font-normal text-ink-soft">{coverLetter.length}/{COVER_LETTER_MAX}</span>
-      </label>
+        </label>
+      </details>
       <label className="flex items-start gap-2">
         <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} className="mt-1 h-4 w-4 accent-primary" />
         <span>ฉันยินยอมให้ส่งเรซูเม่และโปรไฟล์ให้ {job.company.name} เพื่อพิจารณาใบสมัครนี้</span>

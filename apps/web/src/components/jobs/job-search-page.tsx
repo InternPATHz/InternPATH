@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+import { Search, X } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { JobCategory, JobTag, SearchJobsQuery, StudentProfile, WorkMode } from '@internpath/contracts';
@@ -104,136 +106,173 @@ export function JobSearchPage() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
-  const hasFilters = Boolean(query.q || query.category || query.work_mode || query.major || query.tags || query.allowance || query.company_id);
+  const selectedTags = (query.tags ?? '').split(',').filter(Boolean);
+  const workOptions: Array<[WorkMode, string]> = [['ONSITE', 'On-Site'], ['HYBRID', 'Hybrid'], ['REMOTE', 'Remote']];
+  const filters = [
+    { key: 'q', label: query.q, changes: { q: undefined } },
+    { key: 'major', label: query.major, changes: { major: undefined } },
+    { key: 'category', label: CATEGORIES.find((item) => item.id === query.category)?.label, changes: { category: undefined } },
+    { key: 'work_mode', label: workOptions.find(([value]) => value === query.work_mode)?.[1], changes: { work_mode: undefined } },
+    { key: 'allowance', label: query.allowance ? 'มีค่าตอบแทน' : undefined, changes: { allowance: undefined } },
+    { key: 'company_id', label: query.company_id ? 'บริษัทที่เลือก' : undefined, changes: { company_id: undefined } },
+    ...selectedTags.map((slug) => ({ key: slug, label: tags?.find((tag) => tag.slug === slug)?.name ?? slug,
+      changes: { tags: selectedTags.filter((entry) => entry !== slug).join(',') || undefined } })),
+  ].filter((filter) => filter.label);
+  const chipClass = (active: boolean) => `shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm ${active ? 'border-primary bg-primary-soft font-semibold text-primary' : 'border-border hover:border-primary'}`;
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
 
   return (
-    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
-      <h1 className="text-3xl font-semibold">ค้นหางานฝึกงาน</h1>
-      <p className="mt-2 text-sm text-ink-soft">เลือกจากประกาศที่ผ่านการตรวจสอบแล้ว กรองตามสายงาน รูปแบบการทำงาน และสาขาของคุณ</p>
-
-      <form
-        role="search"
-        onSubmit={(event) => { event.preventDefault(); update({ q: text.trim() || undefined, major: major.trim() || undefined }); }}
-        className="mt-6 grid gap-3 rounded-xl bg-surface-muted p-4 md:grid-cols-[2fr_1fr_auto]"
-      >
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-ink-soft">ตำแหน่งหรือชื่อบริษัท</span>
-          <input
-            type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder="เช่น Software Engineer"
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary"
-          />
-        </label>
-        <label className="text-sm">
-          <span className="mb-1 block text-xs font-medium text-ink-soft">สาขาของคุณ (ใช้เตือนเมื่อไม่ตรง)</span>
-          <input
-            type="text" value={major} onChange={(event) => setMajor(event.target.value)}
-            placeholder={profileMajor ? `ใช้สาขาจากโปรไฟล์: ${profileMajor}` : 'เช่น วิทยาการคอมพิวเตอร์'}
-            aria-describedby="major-hint"
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary"
-          />
-          <span id="major-hint" className="mt-1 block text-xs text-ink-soft">
-            {profileMajor ? 'ใช้สาขาจากโปรไฟล์ของคุณอยู่ พิมพ์ที่นี่เพื่อเปลี่ยน' : 'พิมพ์ชื่อสาขาให้ตรงกับที่ประกาศระบุ จึงจะเทียบได้ถูกต้อง'}
-          </span>
-        </label>
-        <button type="submit" className="self-end rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
-          ค้นหา
-        </button>
-      </form>
-
-      <div className="mt-4" role="group" aria-label="กรองตาม Tag ทักษะ">
-        <span className="mb-1 block text-xs font-medium text-ink-soft">Tag ทักษะ (เลือกได้หลายรายการ — แสดงประกาศที่มี Tag ใดก็ได้)</span>
-        <div className="flex flex-wrap gap-2">
-          {tagsFailed && <span className="text-sm text-ink-soft">โหลดรายการ Tag ไม่สำเร็จ</span>}
-          {!tags && !tagsFailed && <span className="text-sm text-ink-soft">กำลังโหลด…</span>}
-          {tags?.length === 0 && <span className="text-sm text-ink-soft">ยังไม่มี Tag ทักษะ</span>}
-          {tags?.map(({ slug, name }) => {
-            const selected = (query.tags ?? '').split(',').filter(Boolean);
-            const on = selected.includes(slug);
-            return (
-              <button key={slug} type="button" aria-pressed={on}
-                onClick={() => update({ tags: (on ? selected.filter((entry) => entry !== slug) : [...selected, slug]).join(',') || undefined })}
-                className={`rounded-full border px-3 py-1 text-sm ${on ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:bg-surface-muted'}`}>
-                {name}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="mt-4 flex flex-wrap items-end gap-4">
-        <FilterSelect
-          label="สายงาน" value={query.category ?? ''} onChange={(value) => update({ category: value || undefined })}
-          options={[['', 'ทุกสายงาน'], ...CATEGORIES.map((entry): [string, string] => [entry.id, entry.label])]}
-        />
-        <FilterSelect
-          label="รูปแบบการทำงาน" value={query.work_mode ?? ''} onChange={(value) => update({ work_mode: value || undefined })}
-          options={[['', 'ทั้งหมด'], ['ONSITE', 'On-Site'], ['HYBRID', 'Hybrid'], ['REMOTE', 'Remote']]}
-        />
-        <FilterSelect
-          label="เรียงตาม" value={query.sort ?? 'newest'} onChange={(value) => update({ sort: value === 'newest' ? undefined : value })}
-          options={[['newest', 'ประกาศใหม่ล่าสุด'], ['deadline', 'ใกล้ปิดรับสมัคร']]}
-        />
-        <label className="flex items-center gap-2 pb-2 text-sm">
-          <input
-            type="checkbox" checked={query.allowance === true} onChange={(event) => update({ allowance: event.target.checked ? 'true' : undefined })}
-            className="h-4 w-4 accent-primary"
-          />
-          เฉพาะงานที่มีค่าตอบแทน
-        </label>
-        {hasFilters && (
-          <button
-            type="button" onClick={() => router.replace(pathname, { scroll: false })}
-            className="pb-2 text-sm font-medium text-primary hover:underline"
-          >
-            ล้างตัวกรอง
-          </button>
-        )}
-      </div>
-
-      <section aria-labelledby="results-title" aria-busy={!result && !failed} className="mt-6">
-        <h2 id="results-title" className="text-sm text-ink-soft">
-          {failed ? 'โหลดผลการค้นหาไม่สำเร็จ' : result ? `พบ ${result.meta.total} ประกาศ` : 'กำลังโหลด…'}
-        </h2>
-
-        {failed && (
-          <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger-text">
-            ระบบค้นหาไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง
-          </p>
-        )}
-
-        {result && result.jobs.length === 0 && (
-          <div className="mt-4 rounded-xl border border-dashed border-border p-10 text-center">
-            <p className="font-semibold">ไม่พบประกาศที่ตรงกับเงื่อนไข</p>
-            <p className="mt-1 text-sm text-ink-soft">ลองลดตัวกรอง หรือค้นด้วยคำที่กว้างขึ้น</p>
+    <main>
+      <nav aria-label="เมนูค้นหางาน" className="frosted sticky top-12 z-20 border-b border-border">
+        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-2 sm:px-6">
+          <p className="font-semibold">ค้นหางาน</p>
+          <div className="hidden gap-4 text-sm sm:flex">
+            <Link href="/jobs" className="text-ink-soft hover:text-primary">ประกาศทั้งหมด</Link>
+            <Link href="/companies" className="text-ink-soft hover:text-primary">บริษัทและรีวิว</Link>
           </div>
-        )}
+        </div>
+      </nav>
+      <header className="bg-surface-muted px-4 py-12 sm:px-6">
+        <div className="mx-auto max-w-6xl">
+          <h1 className="text-4xl font-semibold">ค้นหางานฝึกงาน</h1>
+          <p className="mt-2 text-sm text-ink-soft">เลือกจากประกาศที่ผ่านการตรวจสอบแล้ว กรองตามสายงาน รูปแบบการทำงาน และสาขาของคุณ</p>
 
-        {result && result.jobs.length > 0 && (
-          <ul className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {result.jobs.map((job) => (
-              <li key={job.id} className="contents"><JobResultCard job={job} rating={result.ratings[job.company.id]} /></li>
-            ))}
-          </ul>
-        )}
+          <form
+            role="search"
+            onSubmit={(event) => { event.preventDefault(); update({ q: text.trim() || undefined }); }}
+            className="mt-6 flex flex-col gap-3 sm:flex-row"
+          >
+            <label className="relative flex-1">
+              <span className="sr-only">ตำแหน่งหรือชื่อบริษัท</span>
+              <Search size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-soft" aria-hidden="true" />
+              <input
+                type="search" value={text} onChange={(event) => setText(event.target.value)} placeholder="เช่น Software Engineer"
+                className="w-full rounded-full border border-border bg-surface py-2.5 pl-11 pr-5 text-base outline-none focus:border-primary"
+              />
+            </label>
+            <button type="submit" className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
+              ค้นหา
+            </button>
+          </form>
 
-        {result && result.meta.total > PAGE_SIZE && (
-          <nav aria-label="เลือกหน้า" className="mt-8 flex items-center justify-center gap-4 text-sm">
-            <button
-              type="button" disabled={page <= 1} onClick={() => update({ page: String(page - 1) }, true)}
-              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              ก่อนหน้า
-            </button>
-            <span aria-live="polite">หน้า {page} จาก {totalPages}</span>
-            <button
-              type="button" disabled={page >= totalPages} onClick={() => update({ page: String(page + 1) }, true)}
-              className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              ถัดไป
-            </button>
-          </nav>
-        )}
+          {profileMajor && !query.major && (
+            <p className="mt-4 text-sm text-ink-soft">
+              เทียบกับสาขา <strong className="text-ink">{profileMajor}</strong> จากโปรไฟล์
+              <Link href="/student/profile" className="ml-2 text-primary hover:underline">ดูโปรไฟล์ ›</Link>
+            </p>
+          )}
+          <details className="mt-3 text-sm" open={query.major ? true : undefined}>
+            <summary className="cursor-pointer text-primary">ระบุสาขาที่ต้องการเทียบ</summary>
+            <form className="mt-2 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); update({ major: major.trim() || undefined }); }}>
+              <input type="text" value={major} onChange={(event) => setMajor(event.target.value)}
+                aria-label="สาขาของคุณ" placeholder="เช่น วิทยาการคอมพิวเตอร์"
+                className="min-w-0 rounded-lg border border-border px-3 py-2" />
+              <button type="submit" className="rounded-full border border-primary px-4 py-2 font-semibold text-primary">ใช้สาขานี้</button>
+            </form>
+          </details>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-6xl space-y-4 px-4 py-5 sm:px-6">
+        <div className="flex gap-2 overflow-x-auto p-1" role="group" aria-label="สายงาน">
+          <button type="button" aria-pressed={!query.category} className={chipClass(!query.category)} onClick={() => update({ category: undefined })}>ทุกสายงาน</button>
+          {CATEGORIES.map(({ id, label }) => (
+            <button key={id} type="button" aria-pressed={query.category === id} className={chipClass(query.category === id)}
+              onClick={() => update({ category: query.category === id ? undefined : id })}>{label}</button>
+          ))}
+        </div>
+        <div className="flex gap-2 overflow-x-auto p-1" role="group" aria-label="รูปแบบการทำงานและค่าตอบแทน">
+          {workOptions.map(([value, label]) => (
+            <button key={value} type="button" aria-pressed={query.work_mode === value} className={chipClass(query.work_mode === value)}
+              onClick={() => update({ work_mode: query.work_mode === value ? undefined : value })}>{label}</button>
+          ))}
+          <button type="button" aria-pressed={query.allowance === true} className={chipClass(query.allowance === true)}
+            onClick={() => update({ allowance: query.allowance ? undefined : 'true' })}>มีค่าตอบแทน</button>
+        </div>
+        <div className="mt-4" role="group" aria-label="กรองตาม Tag ทักษะ">
+          <span className="mb-1 block text-xs font-medium text-ink-soft">Tag ทักษะ (เลือกได้หลายรายการ — แสดงประกาศที่มี Tag ใดก็ได้)</span>
+          <div className="flex flex-wrap gap-2">
+            {tagsFailed && <span className="text-sm text-ink-soft">โหลดรายการ Tag ไม่สำเร็จ</span>}
+            {!tags && !tagsFailed && <span className="text-sm text-ink-soft">กำลังโหลด…</span>}
+            {tags?.length === 0 && <span className="text-sm text-ink-soft">ยังไม่มี Tag ทักษะ</span>}
+            {tags?.map(({ slug, name }) => {
+              const selected = (query.tags ?? '').split(',').filter(Boolean);
+              const on = selected.includes(slug);
+              return (
+                <button key={slug} type="button" aria-pressed={on}
+                  onClick={() => update({ tags: (on ? selected.filter((entry) => entry !== slug) : [...selected, slug]).join(',') || undefined })}
+                  className={`max-w-full rounded-full border px-3 py-1 text-sm [overflow-wrap:anywhere] ${on ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:bg-surface-muted'}`}>
+                  {name}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+      </div>
+      <section aria-labelledby="results-title" aria-busy={!result && !failed} className="bg-surface-muted px-4 py-8 sm:px-6">
+        <div className="mx-auto max-w-6xl">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <h2 id="results-title" className="text-xl font-semibold">
+              {failed ? 'โหลดผลการค้นหาไม่สำเร็จ' : result ? `พบ ${result.meta.total} ประกาศ` : 'กำลังโหลด…'}
+            </h2>
+            <FilterSelect
+              label="เรียงตาม" value={query.sort ?? 'newest'} onChange={(value) => update({ sort: value === 'newest' ? undefined : value })}
+              options={[['newest', 'ประกาศใหม่ล่าสุด'], ['deadline', 'ใกล้ปิดรับสมัคร']]}
+            />
+          </div>
+          {filters.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="ตัวกรองที่ใช้อยู่">
+              {filters.map(({ key, label, changes }) => (
+                <button key={key} type="button" onClick={() => update(changes)} aria-label={`เอาตัวกรอง ${label} ออก`}
+                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm hover:border-primary">
+                  <span className="min-w-0 [overflow-wrap:anywhere]">{label}</span>
+                  <X size={14} aria-hidden="true" className="shrink-0" />
+                </button>
+              ))}
+              <button type="button" onClick={() => router.replace(pathname, { scroll: false })} className="text-sm font-medium text-primary hover:underline">ล้างทั้งหมด</button>
+            </div>
+          )}
+
+          {failed && (
+            <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger-text">
+              ระบบค้นหาไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง
+            </p>
+          )}
+
+          {result && result.jobs.length === 0 && (
+            <div className="mt-4 rounded-xl border border-dashed border-border p-10 text-center">
+              <p className="font-semibold">ไม่พบประกาศที่ตรงกับเงื่อนไข</p>
+              <p className="mt-1 text-sm text-ink-soft">ลองลดตัวกรอง หรือค้นด้วยคำที่กว้างขึ้น</p>
+            </div>
+          )}
+
+          {result && result.jobs.length > 0 && (
+            <ul className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+              {result.jobs.map((job) => (
+                <li key={job.id} className="contents"><JobResultCard job={job} rating={result.ratings[job.company.id]} /></li>
+              ))}
+            </ul>
+          )}
+
+          {result && result.meta.total > PAGE_SIZE && (
+            <nav aria-label="เลือกหน้า" className="mt-8 flex items-center justify-center gap-4 text-sm">
+              <button
+                type="button" disabled={page <= 1} onClick={() => update({ page: String(page - 1) }, true)}
+                className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ก่อนหน้า
+              </button>
+              <span aria-live="polite">หน้า {page} จาก {totalPages}</span>
+              <button
+                type="button" disabled={page >= totalPages} onClick={() => update({ page: String(page + 1) }, true)}
+                className="rounded-full border border-border px-4 py-2 font-medium disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                ถัดไป
+              </button>
+            </nav>
+          )}
+        </div>
       </section>
     </main>
   );
