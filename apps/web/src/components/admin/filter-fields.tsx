@@ -11,10 +11,10 @@ export function FilterSelect({ label, value, onChange, options }: {
 }) {
   const id = useId();
   return (
-    <div className="text-sm">
+    <div className="min-w-0 max-w-full text-sm">
       <label htmlFor={id} className="mb-1 block text-xs font-medium text-ink-soft">{label}</label>
       <select id={id} value={value} onChange={(event) => onChange(event.target.value)}
-        className="rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary">
+        className="max-w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary">
         {options.map(([optionValue, text]) => <option key={optionValue} value={optionValue}>{text}</option>)}
       </select>
     </div>

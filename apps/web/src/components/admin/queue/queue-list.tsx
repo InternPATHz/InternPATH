@@ -10,6 +10,18 @@ import { ApiError } from '@/lib/api';
 import { ItemBadges, STATUS_LABEL, TYPE_LABEL, formatDateTime } from './queue-ui';
 
 const PAGE_SIZE = 20;
+const summaryCards = [
+  { label: 'เกินกำหนด', query: 'overdue=true', danger: true },
+  { label: 'Fast-Track', query: 'priority=FAST_TRACK', danger: false },
+  { label: 'ยังไม่ปิดทั้งหมด', query: '', danger: false },
+];
+
+function remainingTime(dueAt: string, overdue: boolean) {
+  const minutes = Math.max(0, Math.floor(Math.abs(Date.parse(dueAt) - Date.now()) / 60_000));
+  const duration = minutes >= 1440 ? `${Math.floor(minutes / 1440)} วัน`
+    : minutes >= 60 ? `${Math.floor(minutes / 60)} ชม.` : `${Math.max(1, minutes)} นาที`;
+  return `${overdue ? 'เกิน' : 'อีก'} ${duration}`;
+}
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -46,6 +58,7 @@ export function QueueList() {
   const queryString = toQuery(filters);
 
   const [result, setResult] = useState<Paginated<QueueItemSummary> | null>(null);
+  const [summary, setSummary] = useState<Array<number | null> | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -66,6 +79,16 @@ export function QueueList() {
     return () => { active = false; };
   }, [queryString, request]);
 
+  useEffect(() => {
+    let active = true;
+    void Promise.allSettled(summaryCards.map(({ query }) =>
+      request<Paginated<QueueItemSummary>>(`/admin/queue?page_size=1${query ? `&${query}` : ''}`),
+    )).then((results) => {
+      if (active) setSummary(results.map((entry) => entry.status === 'fulfilled' ? entry.value.meta.total : null));
+    });
+    return () => { active = false; };
+  }, [request]);
+
   const update = useCallback((patch: Partial<Filters>) => {
     const next = { ...filters, page: 1, ...patch };
     const query = toQuery(next);
@@ -79,6 +102,17 @@ export function QueueList() {
     <div>
       <h1 className="text-2xl font-semibold">คิวตรวจ</h1>
       <p className="mt-1 text-sm text-ink-soft">ประกาศของบริษัทที่ติดธงรอตรวจ รายงานประกาศ รายงานรีวิว และธงบริษัท เรียงตามกำหนดเวลา</p>
+
+      <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="ภาพรวมคิวตรวจ">
+        {summaryCards.map(({ label, danger }, index) => (
+          <div key={label} className="rounded-xl bg-surface-muted p-4">
+            <dt className="text-sm text-ink-soft">{label}</dt>
+            <dd className={`mt-1 text-3xl font-semibold tabular-nums ${danger && (summary?.[index] ?? 0) > 0 ? 'text-danger-text' : ''}`}>
+              {summary ? summary[index] ?? '–' : '…'}
+            </dd>
+          </div>
+        ))}
+      </dl>
 
       <div className="mt-5 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
         <FilterSelect label="ประเภท" value={filters.type} onChange={(type) => update({ type })}
@@ -121,13 +155,13 @@ export function QueueList() {
             )}
             {result?.data.map((item) => (
               <tr key={item.id} className="border-t border-border hover:bg-surface-muted">
-                <td className="px-4 py-3">
+                <td className={`border-l-4 px-4 py-3 ${item.overdue ? 'border-l-danger' : 'border-l-transparent'}`}>
                   <Link href={`/admin/queue/item?id=${item.id}`} className="font-semibold text-primary hover:underline">{TYPE_LABEL[item.type]}</Link>
                   <div className="mt-1"><ItemBadges item={item} /></div>
                 </td>
                 <td className="px-4 py-3">{item.company_name ?? <span className="text-ink-soft">—</span>}</td>
                 <td className="px-4 py-3">{STATUS_LABEL[item.status]}</td>
-                <td className="px-4 py-3 whitespace-nowrap">{formatDateTime(item.due_at)}</td>
+                <td className="whitespace-nowrap px-4 py-3"><time dateTime={item.due_at} title={formatDateTime(item.due_at)} className={item.overdue ? 'font-semibold text-danger-text' : undefined}>{item.status === 'RESOLVED' ? formatDateTime(item.due_at) : remainingTime(item.due_at, item.overdue)}</time></td>
               </tr>
             ))}
           </tbody>

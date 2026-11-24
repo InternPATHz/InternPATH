@@ -41,7 +41,7 @@ function AdminFrame({ children }: { children: ReactNode }) {
           <p className="px-3 text-xs font-semibold text-ink-soft">{group.title}</p>
           <ul className="mt-2 space-y-0.5">
             {group.items.map((item) => {
-              const active = pathname.startsWith(item.href);
+              const active = (pathname === item.href || pathname.startsWith(`${item.href}/`));
               const Icon = ADMIN_NAV_ICONS[item.label];
               return (
                 <li key={item.label}>
@@ -63,23 +63,38 @@ function AdminFrame({ children }: { children: ReactNode }) {
   );
 
   return (
-    <div className="min-h-screen bg-surface-muted lg:flex">
-      <header className="flex items-center justify-between border-b border-border bg-surface px-4 py-3 lg:hidden">
+    <div className="min-h-screen bg-surface-muted">
+      <header className="frosted sticky top-0 z-30 flex min-h-12 items-center justify-between gap-3 border-b border-border px-4 py-2">
         <Link href="/admin/queue" aria-label="INTERNPATH Admin" className="font-semibold text-ink"><BrandLogo label="INTERNPATH Admin" size="sm" /></Link>
         <button type="button" onClick={() => setMenuOpen((open) => !open)} aria-expanded={menuOpen} aria-controls="admin-sidebar"
-          className="rounded-lg border border-border px-3 py-1.5 text-sm">เมนู</button>
-      </header>
-      <aside id="admin-sidebar" className={`${menuOpen ? 'block' : 'hidden'} border-b border-border frosted p-4 lg:sticky lg:top-0 lg:block lg:h-screen lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r`}>
-        <Link href="/admin/queue" aria-label="INTERNPATH Admin" className="mb-6 hidden px-3 text-lg font-semibold text-ink lg:block"><BrandLogo label="INTERNPATH Admin" size="md" /></Link>
-        {nav}
-        <div className="mt-8 border-t border-border px-3 pt-4 text-sm">
-          <p className="truncate font-medium">{user.full_name}</p>
-          <p className="truncate text-xs text-ink-soft">{user.email}</p>
+          className="rounded-lg border border-border px-3 py-1.5 text-sm lg:hidden">เมนู</button>
+        <div className="hidden items-center gap-4 text-sm lg:flex">
+          <span className="max-w-64 truncate text-ink-soft">{user.full_name}</span>
           <button type="button" onClick={() => { void logout().finally(() => router.replace('/login')); }}
-            className="mt-2 text-primary hover:underline">ออกจากระบบ</button>
+            className="text-primary hover:underline">ออกจากระบบ</button>
         </div>
-      </aside>
-      <main className="min-w-0 flex-1 p-4 sm:p-6 lg:p-8">{children}</main>
+      </header>
+      <nav aria-label="ทางลัด Admin บนมือถือ" className="flex gap-2 overflow-x-auto border-b border-border bg-surface px-4 py-2 lg:hidden">
+        {groups.flatMap((group) => group.items).map((item) => {
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          return (
+            <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
+              className={`shrink-0 rounded-full border px-3 py-1.5 text-sm ${active ? 'border-ink bg-ink text-white' : 'border-border'}`}>{item.label}</Link>
+          );
+        })}
+      </nav>
+      <div className="lg:flex">
+        <aside id="admin-sidebar" className={`${menuOpen ? 'block' : 'hidden'} border-b border-border bg-surface-muted p-4 lg:sticky lg:top-12 lg:block lg:h-[calc(100vh-3rem)] lg:w-60 lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r`}>
+          {nav}
+          <div className="mt-8 border-t border-border px-3 pt-4 text-sm lg:hidden">
+            <p className="truncate font-medium">{user.full_name}</p>
+            <p className="truncate text-xs text-ink-soft">{user.email}</p>
+            <button type="button" onClick={() => { void logout().finally(() => router.replace('/login')); }}
+              className="mt-2 text-primary hover:underline">ออกจากระบบ</button>
+          </div>
+        </aside>
+        <main className="min-w-0 flex-1 bg-surface p-4 sm:p-6 lg:p-8">{children}</main>
+      </div>
     </div>
   );
 }

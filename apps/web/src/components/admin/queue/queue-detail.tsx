@@ -107,77 +107,83 @@ export function QueueDetail() {
         </dl>
       </header>
 
-      {item.content === null && item.type.startsWith('JOB_') && item.type !== 'JOB_REPORT' && (
-        <Section title="เนื้อหาประกาศ"><p className="text-sm text-ink-soft">รายการนี้เกิดจาก Fail-safe หมดเวลาและยังไม่ได้รับสำเนาเนื้อหาประกาศ</p></Section>
-      )}
-      {contentFields.length > 0 && (
-        <Section title="เนื้อหาประกาศ">
-          <div className="space-y-4">
-            {contentFields.map(([field, text]) => (
-              <div key={field}>
-                <p className="text-xs font-medium text-ink-soft">{FIELD_LABEL[field] ?? field}</p>
-                <p className="mt-1 whitespace-pre-wrap text-sm leading-thai">{text}</p>
+      <div className={`grid gap-5 ${open && actions.length > 0 ? 'lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]' : ''}`}>
+        <div className="min-w-0 space-y-5">
+          {item.content === null && item.type.startsWith('JOB_') && item.type !== 'JOB_REPORT' && (
+            <Section title="เนื้อหาประกาศ"><p className="text-sm text-ink-soft">รายการนี้เกิดจาก Fail-safe หมดเวลาและยังไม่ได้รับสำเนาเนื้อหาประกาศ</p></Section>
+          )}
+          {contentFields.length > 0 && (
+            <Section title="เนื้อหาประกาศ">
+              <div className="space-y-4">
+                {contentFields.map(([field, text]) => (
+                  <div key={field}>
+                    <p className="text-xs font-medium text-ink-soft">{FIELD_LABEL[field] ?? field}</p>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-thai">{text}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        </Section>
-      )}
+            </Section>
+          )}
 
-      {review && (
-        <Section title={`รีวิว · ${review.rating}/5 · ${review.outcome_label}`}>
-          <div className="mb-2 flex gap-2"><Badge className="bg-surface-muted text-ink-soft">{review.moderation_status}</Badge></div>
-          <p className="whitespace-pre-wrap text-sm leading-thai">{reviewText}</p>
-        </Section>
-      )}
+          {review && (
+            <Section title={`รีวิว · ${review.rating}/5 · ${review.outcome_label}`}>
+              <div className="mb-2 flex gap-2"><Badge className="bg-surface-muted text-ink-soft">{review.moderation_status}</Badge></div>
+              <p className="whitespace-pre-wrap text-sm leading-thai">{reviewText}</p>
+            </Section>
+          )}
 
-      {item.reports.length > 0 && (
-        <Section title={`รายงานประกาศ (${item.reports.length})`}>
-          <ul className="divide-y divide-border text-sm">
-            {item.reports.map((report) => (
-              <li key={report.id} className="py-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge className="bg-surface-muted text-ink-soft">{report.category}</Badge>
-                  <Badge className={report.counted ? 'bg-danger-soft text-danger-text' : 'bg-surface-muted text-ink-soft'}>{report.counted ? 'นับเข้าเกณฑ์' : 'ไม่นับ'}</Badge>
-                  <span className="text-xs text-ink-soft">{report.status} · {formatDateTime(report.created_at)} · ผู้รายงาน {report.reporter_user_id}</span>
-                </div>
-                <p className="mt-1 whitespace-pre-wrap">{report.detail}</p>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
+          {item.reports.length > 0 && (
+            <Section title={`รายงานประกาศ (${item.reports.length})`}>
+              <ul className="divide-y divide-border text-sm">
+                {item.reports.map((report) => (
+                  <li key={report.id} className="py-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge className="bg-surface-muted text-ink-soft">{report.category}</Badge>
+                      <Badge className={report.counted ? 'bg-danger-soft text-danger-text' : 'bg-surface-muted text-ink-soft'}>{report.counted ? 'นับเข้าเกณฑ์' : 'ไม่นับ'}</Badge>
+                      <span className="text-xs text-ink-soft">{report.status} · {formatDateTime(report.created_at)} · ผู้รายงาน {report.reporter_user_id}</span>
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap">{report.detail}</p>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
 
-      {item.review_reports.length > 0 && (
-        <Section title={`รายงานรีวิว (${item.review_reports.length})`}>
-          <ul className="divide-y divide-border text-sm">
-            {item.review_reports.map((report) => (
-              <li key={report.id} className="py-2">
-                <p className="text-xs text-ink-soft">{formatDateTime(report.created_at)} · ผู้รายงาน {report.reporter_user_id}</p>
-                <p className="mt-1 whitespace-pre-wrap">{report.reason}</p>
-              </li>
-            ))}
-          </ul>
-        </Section>
-      )}
+          {item.review_reports.length > 0 && (
+            <Section title={`รายงานรีวิว (${item.review_reports.length})`}>
+              <ul className="divide-y divide-border text-sm">
+                {item.review_reports.map((report) => (
+                  <li key={report.id} className="py-2">
+                    <p className="text-xs text-ink-soft">{formatDateTime(report.created_at)} · ผู้รายงาน {report.reporter_user_id}</p>
+                    <p className="mt-1 whitespace-pre-wrap">{report.reason}</p>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
 
-      {open && actions.length > 0 && (
-        <Section title="ตัดสินรายการนี้">
-          <label className="block text-sm">
-            <span className="font-medium">เหตุผล {actions.some((a) => a.reasonRequired) && <span className="text-xs text-ink-soft">(จำเป็นเมื่อปฏิเสธ/ลบ)</span>}</span>
-            <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={REASON_MAX}
-              className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary" />
-          </label>
-          {formError && <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger-text">{formError}</p>}
-          <div className="mt-4 flex flex-wrap gap-3">
-            {actions.map((spec) => (
-              <button key={spec.action} type="button" disabled={busy} onClick={() => void decide(spec.action, spec.reasonRequired)}
-                className={`rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${spec.tone === 'primary' ? 'bg-primary text-white hover:bg-primary-hover' : spec.tone === 'danger' ? 'bg-danger text-white hover:opacity-90' : 'border border-border text-ink hover:bg-surface-muted'}`}>
-                {spec.label}
-              </button>
-            ))}
-          </div>
-        </Section>
-      )}
+        </div>
+        {open && actions.length > 0 && (
+          <aside className="min-w-0 self-start lg:sticky lg:top-16">
+          <Section title="ตัดสินรายการนี้">
+            <label className="block text-sm">
+              <span className="font-medium">เหตุผล {actions.some((a) => a.reasonRequired) && <span className="text-xs text-ink-soft">(จำเป็นเมื่อปฏิเสธ/ลบ)</span>}</span>
+              <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={REASON_MAX}
+                className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary" />
+            </label>
+            {formError && <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger-text">{formError}</p>}
+            <div className="mt-4 flex flex-wrap gap-3">
+              {actions.map((spec) => (
+                <button key={spec.action} type="button" disabled={busy} onClick={() => void decide(spec.action, spec.reasonRequired)}
+                  className={`rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${spec.tone === 'primary' ? 'bg-primary text-white hover:bg-primary-hover' : spec.tone === 'danger' ? 'bg-danger text-white hover:opacity-90' : 'border border-border text-ink hover:bg-surface-muted'}`}>
+                  {spec.label}
+                </button>
+              ))}
+            </div>
+          </Section>
+          </aside>
+        )}
+      </div>
     </div>
   );
 }
