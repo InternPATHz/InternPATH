@@ -25,25 +25,37 @@ function failure(cause: unknown): string {
   return 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่';
 }
 
-export function ResumeManager() {
+export function ResumeManager({ onCountChange }: { onCountChange: (count: number | null) => void }) {
   const { request } = useAuth();
   const input = useRef<HTMLInputElement>(null);
   const [resumes, setResumes] = useState<ResumeItem[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
 
   const load = useCallback(async () => {
     // รายการห่อด้วย { data, meta } (api-contract §1) — มีได้ไม่เกิน 5 ไฟล์ จึงอยู่ในหน้าเดียวเสมอ
-    try { setResumes((await request<Paginated<ResumeItem>>('/me/resumes')).data); }
-    catch (cause) { setResumes([]); setMessage({ tone: 'error', text: failure(cause) }); }
-  }, [request]);
+    try {
+      const result = await request<Paginated<ResumeItem>>('/me/resumes');
+      setResumes(result.data);
+      onCountChange(result.data.length);
+    } catch (cause) {
+      onCountChange(null);
+      setResumes([]);
+      setMessage({ tone: 'error', text: failure(cause) });
+    }
+  }, [request, onCountChange]);
 
   useEffect(() => { void load(); }, [load]);
 
-  async function upload(event: ChangeEvent<HTMLInputElement>) {
+  function selectFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
+    void upload(file);
+  }
+
+  async function upload(file: File | undefined) {
+    if (!file || busy || full) return;
     if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
       setMessage({ tone: 'error', text: 'อัปโหลดได้เฉพาะไฟล์ PDF' });
       return;
@@ -64,7 +76,8 @@ export function ResumeManager() {
   }
 
   async function remove(resume: ResumeItem) {
-    if (!window.confirm('ลบเรซูเม่ไฟล์นี้? ใบสมัครที่ใช้ไฟล์นี้จะเปิดเรซูเม่ไม่ได้อีก')) return;
+    if (busy) return;
+    setConfirmId(null);
     setBusy(true);
     setMessage(null);
     try {
@@ -81,8 +94,11 @@ export function ResumeManager() {
       <h2 id="resume-title" className="text-xl font-semibold">เรซูเม่</h2>
       <p className="mt-1 text-sm text-ink-soft">ไฟล์ PDF ไม่เกิน 5 MB มีได้สูงสุด {MAX_FILES} ไฟล์ ไฟล์แรกที่อัปโหลดเป็นไฟล์หลักโดยอัตโนมัติ บริษัทจะเห็นเรซูเม่เมื่อคุณยินยอมตอนสมัครเท่านั้น</p>
 
-      <div className="mt-4">
-        <input ref={input} type="file" accept="application/pdf,.pdf" onChange={upload} className="sr-only" id="resume-file" disabled={busy || full} />
+      <div className="mt-4 rounded-xl border border-dashed border-border bg-surface-muted p-5 text-center"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => { event.preventDefault(); void upload(event.dataTransfer.files[0]); }}>
+        <p className="mb-3 text-sm text-ink-soft">ลากไฟล์ PDF มาวาง หรือเลือกไฟล์ {resumes && `· ${resumes.length} จาก ${MAX_FILES} ไฟล์`}</p>
+        <input ref={input} type="file" accept="application/pdf,.pdf" onChange={selectFile} className="sr-only" id="resume-file" disabled={busy || full} />
         <button type="button" onClick={() => input.current?.click()} disabled={busy || full}
           className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50">
           {busy ? 'กำลังดำเนินการ…' : 'อัปโหลดเรซูเม่'}
@@ -111,8 +127,17 @@ export function ResumeManager() {
                 <div className="flex items-center gap-4 text-sm">
                   {/* Signed URL อายุ ~10 นาที — เปิดแท็บใหม่ทันที ถ้าหมดอายุให้รีเฟรชหน้า */}
                   <a href={resume.url} target="_blank" rel="noreferrer" className="font-medium text-primary hover:underline">เปิดดู</a>
-                  <button type="button" onClick={() => void remove(resume)} disabled={busy} className="font-medium text-danger-text hover:underline disabled:opacity-50">ลบ</button>
+                  <button type="button" onClick={() => setConfirmId(resume.id)} disabled={busy} className="font-medium text-danger-text hover:underline disabled:opacity-50">ลบ</button>
                 </div>
+                {confirmId === resume.id && (
+                  <div className="basis-full rounded-lg bg-warning-soft p-3 text-sm">
+                    <p>ใบสมัครที่ใช้ไฟล์นี้จะเปิดเรซูเม่ไม่ได้อีก</p>
+                    <div className="mt-2 flex gap-3">
+                      <button type="button" onClick={() => setConfirmId(null)} className="font-medium text-primary">ยกเลิก</button>
+                      <button type="button" disabled={busy} onClick={() => void remove(resume)} className="font-medium text-danger-text">ยืนยันลบไฟล์</button>
+                    </div>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

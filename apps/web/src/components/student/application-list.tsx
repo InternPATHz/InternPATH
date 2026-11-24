@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import type { ApplicationStatus, Paginated, StudentApplicationItem } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
-import { ApplicationStatusBadge, formatDate } from '@/components/student/application-ui';
+import { ApplicationProgress, ApplicationStatusBadge, formatDate, isClosedApplication } from '@/components/student/application-ui';
 import { ApiError } from '@/lib/api';
 import { APPLICATION_STATUS } from '@/lib/status-map';
 
@@ -46,9 +46,14 @@ export function ApplicationList() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
+  const active = result?.data.filter((app) => !isClosedApplication(app.status)) ?? [];
+  const closed = result?.data.filter((app) => isClosedApplication(app.status)) ?? [];
+  const waitingForStudent = active.filter((app) => app.status === 'HR_ACCEPTED' && !app.frozen);
+  const waitingIds = new Set(waitingForStudent.map((app) => app.id));
+  const otherActive = active.filter((app) => !waitingIds.has(app.id));
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-semibold">ใบสมัครของฉัน</h1>
       <p className="mt-2 text-sm text-ink-soft">ติดตามสถานะใบสมัครและตอบรับข้อเสนอจากบริษัท</p>
 
@@ -68,28 +73,39 @@ export function ApplicationList() {
             <Link href="/jobs" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">ไปค้นหางาน</Link>
           </div>
         )}
-        {result && result.data.length > 0 && (
-          <ul className="space-y-3">
-            {result.data.map((application) => (
-              <li key={application.id} className="rounded-xl border border-border bg-surface p-5">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-semibold">{application.job_title}</h2>
-                    <p className="text-sm text-ink-soft">{application.company_name}</p>
+        {[
+          { heading: 'ถึงตาคุณ', items: waitingForStudent, highlighted: true, compact: false },
+          { heading: 'กำลังดำเนินการ', items: otherActive, highlighted: false, compact: false },
+          { heading: 'จบแล้ว', items: closed, highlighted: false, compact: true },
+        ].map(({ heading, items, highlighted, compact }) => items.length > 0 && (
+          <section key={heading} className="mb-6">
+            <h2 className="mb-3 text-lg font-semibold">{heading}</h2>
+            <ul className="space-y-3">
+              {items.map((app) => (
+                <li key={app.id} className={`rounded-xl border border-border bg-surface ${compact ? 'p-4' : 'p-5'}`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 [overflow-wrap:anywhere]">
+                      <h3 className="font-semibold">{app.job_title}</h3>
+                      <p className="text-sm text-ink-soft">{app.company_name}</p>
+                    </div>
+                    <ApplicationStatusBadge status={app.status} academicResult={app.academic_result} />
                   </div>
-                  <ApplicationStatusBadge status={application.status} />
-                </div>
-                <p className="mt-3 text-xs text-ink-soft">
-                  สมัครเมื่อ {formatDate(application.created_at)} · อัปเดตล่าสุด {formatDate(application.status_changed_at)}
-                  {application.frozen && ' · ประกาศถูกระงับชั่วคราว'}
-                </p>
-                <Link href={`/student/applications/item?id=${application.id}`} className="mt-3 inline-block text-sm font-semibold text-primary hover:underline">
-                  ดูรายละเอียด
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
+                  {!compact && <div className="mt-4"><ApplicationProgress status={app.status} /></div>}
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-xs text-ink-soft">
+                      {compact ? 'อัปเดตล่าสุด' : 'สมัครเมื่อ'} {formatDate(compact ? app.status_changed_at : app.created_at)}
+                      {app.frozen && ' · ประกาศถูกระงับชั่วคราว'}
+                    </p>
+                    <Link href={`/student/applications/item?id=${app.id}`}
+                      className={`text-sm font-semibold ${highlighted ? 'rounded-full bg-primary px-4 py-2 text-white hover:bg-primary-hover' : 'text-primary hover:underline'}`}>
+                      {highlighted ? 'พิจารณาข้อเสนอ' : 'ดูรายละเอียด ›'}
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
         {result && result.meta.total > PAGE_SIZE && (
           <nav aria-label="เลือกหน้า" className="mt-8 flex items-center justify-center gap-4 text-sm">
             <button type="button" disabled={page <= 1} onClick={() => update({ page: String(page - 1) }, true)}
