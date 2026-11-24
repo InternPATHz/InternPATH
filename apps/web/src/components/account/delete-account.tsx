@@ -24,7 +24,7 @@ function describe(cause: unknown): string {
  * สิ่งที่ลบ/เก็บตาม README 5.11 และ data-schema §2.3 — หน้านี้เป็นการยืนยันที่ย้อนกลับไม่ได้ จึงให้พิมพ์คำยืนยันก่อน
  */
 export function DeleteAccount() {
-  const { request, logout } = useAuth();
+  const { request, logout, user } = useAuth();
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,31 +54,37 @@ export function DeleteAccount() {
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
       <Link href="/account" className="text-sm font-medium text-primary hover:underline">บัญชีของฉัน</Link>
       <h1 className="mt-3 text-3xl font-semibold">ลบบัญชี</h1>
       <p className="mt-2 text-sm text-ink-soft">การลบบัญชีทำย้อนกลับไม่ได้ ทุกอุปกรณ์จะถูกออกจากระบบทันที</p>
 
-      <section aria-labelledby="deleted-title" className="mt-6 rounded-xl border border-border p-4">
-        <h2 id="deleted-title" className="text-lg font-semibold">สิ่งที่จะถูกลบ</h2>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-soft">
-          <li>ข้อมูลส่วนตัว โปรไฟล์ รูปโปรไฟล์ และเรซูเม่ที่อัปโหลดไว้</li>
-          <li>ใบสมัครที่ยังไม่ถึงขั้นรออาจารย์อนุมัติจะถูกยกเลิก และโควตาที่จองไว้จะถูกคืน</li>
-          <li>รีวิวที่ยังรอตรวจหรือถูกพักไว้ จะถูกลบพร้อมเนื้อหา</li>
-        </ul>
-      </section>
-      <section aria-labelledby="kept-title" className="mt-4 rounded-xl border border-border p-4">
-        <h2 id="kept-title" className="text-lg font-semibold">สิ่งที่ยังเก็บไว้ (โดยไม่ระบุตัวตน)</h2>
-        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-soft">
-          <li>E-Certificate ที่ออกแล้วยังตรวจสอบได้ แต่ชื่อบนหน้าตรวจสอบจะแสดงเป็น "ผู้ใช้ที่ลบบัญชีแล้ว"</li>
-          <li>รีวิวที่เผยแพร่แล้วยังอยู่ แต่ไม่ระบุตัวตน และไม่กระทบคะแนนของบริษัท</li>
-          <li>ประวัติการเปลี่ยนสถานะและบันทึกตรวจสอบ ซึ่งแทนตัวตนด้วยรหัสนิรนาม</li>
-        </ul>
-      </section>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <section aria-labelledby="deleted-title" className="rounded-xl border border-border p-4">
+          <h2 id="deleted-title" className="text-lg font-semibold">สิ่งที่จะถูกลบ</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-soft">
+            <li>ข้อมูลส่วนตัว โปรไฟล์ รูปโปรไฟล์ และเรซูเม่ที่อัปโหลดไว้</li>
+            <li>ใบสมัครที่ยังไม่ถึงขั้นรออาจารย์อนุมัติจะถูกยกเลิก และโควตาที่จองไว้จะถูกคืน</li>
+            <li>รีวิวที่ยังรอตรวจหรือถูกพักไว้ จะถูกลบพร้อมเนื้อหา</li>
+          </ul>
+        </section>
+        <section aria-labelledby="kept-title" className="rounded-xl border border-border p-4">
+          <h2 id="kept-title" className="text-lg font-semibold">สิ่งที่ยังเก็บไว้ (โดยไม่ระบุตัวตน)</h2>
+          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-ink-soft">
+            <li>E-Certificate ที่ออกแล้วยังตรวจสอบได้ แต่ชื่อบนหน้าตรวจสอบจะแสดงเป็น "ผู้ใช้ที่ลบบัญชีแล้ว"</li>
+            <li>รีวิวที่เผยแพร่แล้วยังอยู่ แต่ไม่ระบุตัวตน และไม่กระทบคะแนนของบริษัท</li>
+            <li>ประวัติการเปลี่ยนสถานะและบันทึกตรวจสอบ ซึ่งแทนตัวตนด้วยรหัสนิรนาม</li>
+          </ul>
+        </section>
+      </div>
+
       <section aria-labelledby="blocked-title" className="mt-4 rounded-xl border border-border bg-warning-soft p-4">
         <h2 id="blocked-title" className="text-lg font-semibold text-warning-text">ลบไม่ได้เมื่อ</h2>
         <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-warning-text">
-          <li>มีใบสมัครที่ยังดำเนินอยู่ (รออาจารย์อนุมัติ อนุมัติแล้ว กำลังฝึกงาน หรืออยู่ระหว่างโต้แย้ง/ประเมินซ้ำ)</li>
+          <li>
+            มีใบสมัครที่ยังดำเนินอยู่ (รออาจารย์อนุมัติ อนุมัติแล้ว กำลังฝึกงาน หรืออยู่ระหว่างโต้แย้ง/ประเมินซ้ำ)
+            {user?.role === 'STUDENT' && <> <Link href="/student/applications" className="font-medium text-primary hover:underline">ดูใบสมัครของฉัน ›</Link></>}
+          </li>
           <li>คุณเป็นเจ้าของบัญชีบริษัท (Owner) ที่ยังไม่ได้โอนสิทธิ์ให้สมาชิกคนอื่น</li>
         </ul>
       </section>

@@ -3,9 +3,10 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import Link from 'next/link';
+import { LockKeyhole, LockKeyholeOpen, Mail } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/auth/session';
-import { ActionButton, AuthShell, Field, Notice } from '@/auth/ui';
+import { ActionButton, AuthShell, Field, Notice, PasswordField } from '@/auth/ui';
 import { ROLE_HOME } from '@/components/layout/site-nav';
 import { apiRequest } from '@/lib/api';
 
@@ -37,16 +38,20 @@ export default function UnlockLoginPage() {
     finally { setBusy(false); }
   }
 
-  return <AuthShell title="เข้าสู่ระบบเมื่อบัญชีถูกล็อก" subtitle={token
+  return <AuthShell title={sent ? 'ตรวจอีเมลของคุณ' : token ? 'เข้าสู่ระบบเพื่อปลดล็อก' : 'บัญชีถูกล็อกชั่วคราว'}
+    icon={sent ? <Mail size={34} /> : token ? <LockKeyholeOpen size={34} /> : <LockKeyhole size={34} />} subtitle={sent ? undefined : token
     ? 'ลิงก์นี้ใช้ได้ครั้งเดียว กรุณาใส่อีเมลและรหัสผ่านของบัญชี'
     : 'หากบัญชีถูกล็อก เราจะส่งลิงก์เข้าสู่ระบบไปยังอีเมลที่สมัครไว้'}>
     {sent ? <Notice>หากบัญชีนี้ถูกล็อก กรุณาตรวจอีเมลเพื่อเปิดลิงก์เข้าสู่ระบบ</Notice> :
       <form onSubmit={submit} className="space-y-4">
         <Field label="อีเมล" name="email" type="email" autoComplete="email" required />
-        {token && <Field label="รหัสผ่าน" name="password" type="password" autoComplete="current-password" required />}
+        {token && <PasswordField label="รหัสผ่าน" name="password" autoComplete="current-password" required />}
         {error && <Notice error>{error}</Notice>}
         <ActionButton busy={busy}>{token ? 'เข้าสู่ระบบ' : 'ส่งลิงก์'}</ActionButton>
       </form>}
-    <p className="mt-5 text-sm"><Link href="/login" className="text-primary hover:underline">กลับไปเข้าสู่ระบบ</Link></p>
+    <div className="mt-5 flex flex-wrap justify-center gap-4 text-sm">
+      <Link href="/login" className="text-primary hover:underline">กลับไปเข้าสู่ระบบ</Link>
+      <Link href="/forgot-password" className="text-primary hover:underline">ตั้งรหัสผ่านใหม่</Link>
+    </div>
   </AuthShell>;
 }
