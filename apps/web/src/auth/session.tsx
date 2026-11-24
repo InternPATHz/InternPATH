@@ -11,7 +11,8 @@ const REFRESH_KEY = 'internpath.refresh_token';
 type AuthContextValue = {
   ready: boolean;
   user: AuthUser | null;
-  login(email: string, password: string, unlockToken?: string): Promise<void>;
+  /** คืนผู้ใช้ที่เพิ่งล็อกอิน เพื่อให้หน้าที่เรียกพาไปหน้าแรกตามบทบาทได้ทันที (state `user` ยังไม่อัปเดตในรอบนี้) */
+  login(email: string, password: string, unlockToken?: string): Promise<AuthUser>;
   logout(): Promise<void>;
   request<T>(path: string, init?: { method?: HttpMethod; body?: unknown }): Promise<T>;
 };
@@ -66,6 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       email, password, ...(unlockToken ? { unlock_token: unlockToken } : {}),
     });
     applySession(session);
+    return session.user;
   }, [applySession]);
 
   const logout = useCallback(async () => {

@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { CircleCheck, CircleX } from 'lucide-react';
-import type { HrApplicationDetail, HrStartResponse, ResumeUrlResponse } from '@internpath/contracts';
+import type { HrApplicationDetail, HrJobDetail, HrStartResponse, ResumeUrlResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { HrEvaluationForm } from '@/components/hr/hr-evaluation-form';
@@ -81,6 +81,13 @@ export function ApplicantDetail() {
     setStartDate(app?.start_date ?? '');
     setEndDate(app?.end_date ?? '');
     setActualDate(todayBangkok());
+    // ส่งข้อเสนอครั้งแรก: เติมช่วงฝึกจากประกาศให้ HR แก้ต่อได้ (โหลดไม่ได้ก็ปล่อยว่างให้กรอกเอง)
+    if (kind === 'accept' && app && !app.start_date && !app.end_date) {
+      void request<HrJobDetail>(`/hr/jobs/${encodeURIComponent(app.job_id)}`).then((job) => {
+        setStartDate((current) => current || job.period.start || '');
+        setEndDate((current) => current || job.period.end || '');
+      }, () => undefined);
+    }
   }
 
   /** เรียก action แล้วโหลดสถานะจริงใหม่เสมอ (แม้ error เพราะสถานะอาจเปลี่ยนไปแล้ว — 409) */

@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
 
-export const metadata: Metadata = { title: 'นโยบายความเป็นส่วนตัว · InternPath' };
+export const metadata: Metadata = { title: 'นโยบายความเป็นส่วนตัว' };
 
 /**
  * ฉบับร่างสำหรับระบบ InternPath — เนื้อหาอ้างอิงกติกาใน README §5.9–§5.11 (เก็บไฟล์, Audit, PDPA และการลบบัญชี)

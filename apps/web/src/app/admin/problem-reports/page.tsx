@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import { AdminProblemReports } from '@/components/admin/lifecycle/admin-problem-reports';
 
-export const metadata = { title: 'รายงานปัญหาระหว่างฝึกงาน — InternPath Admin' };
+export const metadata = { title: 'รายงานปัญหาระหว่างฝึกงาน' };
 
 // `useSearchParams` ต้องอยู่ใน Suspense เพื่อให้หน้าสร้างแบบ static ได้
 export default function AdminProblemReportsPage() {
