@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { AdvisorApplicationItem, ApplicationStatus, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
@@ -32,7 +32,10 @@ export function AdvisorApprovals() {
   const [message, setMessage] = useState<Message | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejecting, setRejecting] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
+  const approvalDialog = useRef<HTMLDialogElement>(null);
+  const [approving, setApproving] = useState<AdvisorApplicationItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -69,8 +72,8 @@ export function AdvisorApprovals() {
   }
 
   function approve(app: AdvisorApplicationItem) {
-    const warning = app.major_mismatch ? '\nสาขาของนักศึกษาไม่ตรงกับที่ประกาศระบุ' : '';
-    if (window.confirm(`อนุมัติให้ ${app.student_name} ออกฝึกงานที่ ${app.company_name}?${warning}`)) void act(app, 'approve');
+    setApproving(app);
+    approvalDialog.current?.showModal();
   }
 
   function submitReject(event: FormEvent, app: AdvisorApplicationItem) {
@@ -81,8 +84,9 @@ export function AdvisorApprovals() {
     void act(app, 'reject', { reason: value });
   }
 
+  const selected = list?.data.find((app) => app.id === selectedId) ?? list?.data[0];
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-semibold">อนุมัติการออกฝึกงาน</h1>
       <p className="mt-2 text-sm text-ink-soft">
         ตรวจคำขอออกฝึกงานของนักศึกษาในความดูแล และความตรงสายก่อนเริ่มฝึก การไม่อนุมัติต้องระบุเหตุผลเสมอ
@@ -102,38 +106,70 @@ export function AdvisorApprovals() {
         </p>
       )}
 
-      <ul className="mt-6 space-y-4">
-        {list?.data.map((app) => (
-          <li key={app.id} className="rounded-xl border border-border bg-surface p-5">
-            <ApplicationSummary app={app} />
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <ResumeButton applicationId={app.id} onError={(text) => setMessage({ tone: 'error', text })} />
-              {app.status === 'ADVISOR_PENDING' && (
-                <>
-                  <span className="flex-1" />
-                  <button type="button" disabled={busyId === app.id} onClick={() => approve(app)} className={primaryButton}>อนุมัติ</button>
-                  <button type="button" disabled={busyId === app.id} onClick={() => { setRejecting(app.id); setReason(''); setMessage(null); }}
-                    className={`${secondaryButton} text-danger-text`}>ไม่อนุมัติ</button>
-                </>
+      <div className="mt-6 grid gap-4 lg:grid-cols-[minmax(16rem,1fr)_minmax(0,2fr)]">
+        {!!list?.data.length && (
+          <ul className="hidden min-w-0 divide-y divide-border self-start [overflow-wrap:anywhere] rounded-xl border border-border lg:block" aria-label="เลือกใบสมัคร">
+            {list.data.map((app) => (
+              <li key={app.id}>
+                <button type="button" aria-pressed={selected?.id === app.id} onClick={() => { setSelectedId(app.id); setRejecting(null); }}
+                  className={`w-full p-4 text-left ${selected?.id === app.id ? 'bg-primary-soft' : 'hover:bg-surface-muted'}`}>
+                  <span className="block font-semibold">{app.student_name}</span>
+                  <span className="block text-sm text-ink-soft">{app.company_name}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        <ul className="min-w-0 space-y-4">
+          {list?.data.map((app) => (
+            <li key={app.id} className={`rounded-xl border border-border bg-surface p-5 ${selected?.id === app.id ? '' : 'lg:hidden'}`}>
+              <ApplicationSummary app={app} />
+              <div className="mt-4 flex flex-wrap items-center gap-3">
+                <ResumeButton applicationId={app.id} onError={(text) => setMessage({ tone: 'error', text })} />
+                {app.status === 'ADVISOR_PENDING' && (
+                  <>
+                    <span className="flex-1" />
+                    <button type="button" disabled={busyId === app.id} onClick={() => approve(app)} className={primaryButton}>อนุมัติ</button>
+                    <button type="button" disabled={busyId === app.id} onClick={() => { setRejecting(app.id); setReason(''); setMessage(null); }}
+                      className={`${secondaryButton} text-danger-text`}>ไม่อนุมัติ</button>
+                  </>
+                )}
+              </div>
+              {rejecting === app.id && (
+                <form onSubmit={(event) => submitReject(event, app)} noValidate className="mt-4 space-y-3 rounded-xl bg-surface-muted p-4 text-sm">
+                  <label className="block font-medium">
+                    เหตุผลที่ไม่อนุมัติ (นักศึกษาจะเห็นเหตุผลนี้)
+                    <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className={inputClass} />
+                    <span className="mt-1 block text-xs font-normal text-ink-soft">{reason.length}/{REASON_MAX}</span>
+                  </label>
+                  <div className="flex gap-3">
+                    <button type="submit" disabled={busyId === app.id} className={primaryButton}>{busyId === app.id ? 'กำลังส่ง…' : 'ยืนยันไม่อนุมัติ'}</button>
+                    <button type="button" onClick={() => setRejecting(null)} className={secondaryButton}>ยกเลิก</button>
+                  </div>
+                </form>
               )}
-            </div>
-            {rejecting === app.id && (
-              <form onSubmit={(event) => submitReject(event, app)} noValidate className="mt-4 space-y-3 rounded-xl bg-surface-muted p-4 text-sm">
-                <label className="block font-medium">
-                  เหตุผลที่ไม่อนุมัติ (นักศึกษาจะเห็นเหตุผลนี้)
-                  <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className={inputClass} />
-                  <span className="mt-1 block text-xs font-normal text-ink-soft">{reason.length}/{REASON_MAX}</span>
-                </label>
-                <div className="flex gap-3">
-                  <button type="submit" disabled={busyId === app.id} className={primaryButton}>{busyId === app.id ? 'กำลังส่ง…' : 'ยืนยันไม่อนุมัติ'}</button>
-                  <button type="button" onClick={() => setRejecting(null)} className={secondaryButton}>ยกเลิก</button>
-                </div>
-              </form>
-            )}
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
 
+      </div>
+      <dialog ref={approvalDialog} onClose={() => setApproving(null)} aria-labelledby="approve-title"
+        className="m-auto w-[calc(100%-2rem)] max-w-md [overflow-wrap:anywhere] rounded-xl bg-surface p-6 text-ink backdrop:bg-black/40">
+        <h2 id="approve-title" className="text-xl font-semibold">อนุมัติการออกฝึกงาน</h2>
+        {approving && <>
+          <p className="mt-2 text-sm">อนุมัติให้ {approving.student_name} ออกฝึกงานที่ {approving.company_name}</p>
+          {approving.major_mismatch && <p className="mt-2 rounded-lg bg-warning-soft p-3 text-sm text-warning-text">สาขาของนักศึกษาไม่ตรงกับที่ประกาศระบุ</p>}
+          <p className="mt-2 text-sm text-ink-soft">ระบบจะถอนใบสมัครอื่นของนักศึกษาที่ยังรอบริษัทพิจารณา</p>
+        </>}
+        <form method="dialog" className="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="submit" className={secondaryButton}>ยกเลิก</button>
+          <button type="button" className={primaryButton} disabled={!approving || busyId !== null} onClick={() => {
+            if (!approving) return;
+            approvalDialog.current?.close();
+            void act(approving, 'approve');
+          }}>ยืนยันอนุมัติ</button>
+        </form>
+      </dialog>
       {list && <Pager page={page} total={list.meta.total} onPage={setPage} />}
     </main>
   );

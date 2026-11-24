@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import { useCallback, useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import type {
@@ -138,8 +140,31 @@ export function AdvisorStudents() {
         นักศึกษาไม่ต้องสมัครสมาชิกเอง อาจารย์เพิ่มนักศึกษาที่นี่ นักศึกษาจะได้อีเมลลิงก์เพื่อตั้งรหัสผ่าน แล้วสมัครฝึกงานด้วยตนเองได้ตามปกติ
       </p>
 
-      <section aria-labelledby="add-title" className="mt-6 rounded-xl border border-border bg-surface p-5">
-        <h2 id="add-title" className="text-lg font-semibold">เพิ่มนักศึกษา</h2>
+      {pending.length > 0 && (
+        <section aria-labelledby="pending-title" className="mt-8">
+          <h2 id="pending-title" className="text-lg font-semibold">รอตั้งรหัสผ่าน ({pending.length})</h2>
+          {pendingMessage && <div className="mt-3"><Notice tone={pendingMessage.tone}>{pendingMessage.text}</Notice></div>}
+          <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
+            {pending.map((student) => (
+              <li key={student.user_id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{student.full_name} <span className="text-xs text-ink-soft">({student.student_code})</span></p>
+                  <p className="truncate text-xs text-ink-soft">
+                    {student.email}{student.invitation_expires_at && ` · ลิงก์หมดอายุ ${dateTime.format(new Date(student.invitation_expires_at))}`}
+                  </p>
+                </div>
+                <button type="button" disabled={busyId === student.user_id} onClick={() => void act(student, 'resend')}
+                  className="font-medium text-primary hover:underline disabled:opacity-60">ส่งคำเชิญอีกครั้ง</button>
+                <button type="button" disabled={busyId === student.user_id} onClick={() => void act(student, 'cancel')}
+                  className="font-medium text-danger-text hover:underline disabled:opacity-60">ยกเลิกบัญชี</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <details className="mt-6 rounded-xl border border-border bg-surface p-5">
+        <summary className="cursor-pointer text-lg font-semibold text-primary">เพิ่มนักศึกษา</summary>
         <form onSubmit={(event) => void create(event)} className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field id={`${fieldId}-email`} label="อีเมลสถาบัน (.ac.th ของสถาบันเดียวกับอาจารย์)" className="sm:col-span-2">
             <input id={`${fieldId}-email`} type="email" inputMode="email" required value={form.email} onChange={set('email')} className={inputClass}
@@ -164,30 +189,7 @@ export function AdvisorStudents() {
             </button>
           </div>
         </form>
-      </section>
-
-      {pending.length > 0 && (
-        <section aria-labelledby="pending-title" className="mt-8">
-          <h2 id="pending-title" className="text-lg font-semibold">รอตั้งรหัสผ่าน ({pending.length})</h2>
-          {pendingMessage && <div className="mt-3"><Notice tone={pendingMessage.tone}>{pendingMessage.text}</Notice></div>}
-          <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
-            {pending.map((student) => (
-              <li key={student.user_id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{student.full_name} <span className="text-xs text-ink-soft">({student.student_code})</span></p>
-                  <p className="truncate text-xs text-ink-soft">
-                    {student.email}{student.invitation_expires_at && ` · ลิงก์หมดอายุ ${dateTime.format(new Date(student.invitation_expires_at))}`}
-                  </p>
-                </div>
-                <button type="button" disabled={busyId === student.user_id} onClick={() => void act(student, 'resend')}
-                  className="font-medium text-primary hover:underline disabled:opacity-60">ส่งคำเชิญอีกครั้ง</button>
-                <button type="button" disabled={busyId === student.user_id} onClick={() => void act(student, 'cancel')}
-                  className="font-medium text-danger-text hover:underline disabled:opacity-60">ยกเลิกบัญชี</button>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      </details>
 
       <section aria-labelledby="list-title" className="mt-8">
         <h2 id="list-title" className="text-lg font-semibold">รายชื่อนักศึกษา</h2>
@@ -220,7 +222,7 @@ export function AdvisorStudents() {
               {!loading && !listError && list && list.data.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-soft">ไม่มีนักศึกษาตามตัวกรองนี้</td></tr>}
               {list?.data.map((student) => (
                 <tr key={student.student_user_id} className="border-t border-border">
-                  <td className="px-4 py-3"><p className="font-medium">{student.full_name}</p><p className="text-xs text-ink-soft">{student.student_code}</p></td>
+                  <td className="px-4 py-3"><Link href={`/advisor/students/item?id=${student.student_user_id}`} className="font-medium text-primary hover:underline">{student.full_name}</Link><p className="text-xs text-ink-soft">{student.student_code}</p></td>
                   <td className="px-4 py-3">{student.major}</td>
                   <td className="px-4 py-3">{student.year_level}</td>
                   <td className="px-4 py-3">

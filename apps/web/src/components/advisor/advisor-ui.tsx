@@ -33,7 +33,7 @@ export function failure(cause: unknown): string {
 export function ApplicationSummary({ app }: { app: AdvisorApplicationItem }) {
   return (
     <div className="flex flex-wrap items-start justify-between gap-3">
-      <div className="min-w-0">
+      <div className="min-w-0 [overflow-wrap:anywhere]">
         <p className="font-semibold">{app.student_name}</p>
         <p className="text-sm text-ink-soft">{app.job_title} · {app.company_name}</p>
         <p className="mt-1 text-xs text-ink-soft">

@@ -1,10 +1,12 @@
 'use client';
 
+import Link from 'next/link';
+
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Paginated, ProblemReportItem, ProblemReportStatus, ResolveProblemReportRequest } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
-import { FilterSelect, Notice } from '@/components/admin/filter-fields';
+import { Notice } from '@/components/admin/filter-fields';
 import { type Message, NOTE_MAX, PAGE_SIZE, Pager, failure, inputClass, primaryButton, secondaryButton } from '@/components/advisor/advisor-ui';
 import {
   PROBLEM_CATEGORY_LABEL as CATEGORY_LABEL,
@@ -75,9 +77,12 @@ export function AdvisorProblemReports() {
         รายงานจากนักศึกษาในความดูแล ส่งถึงอาจารย์และผู้ดูแลระบบพร้อมกัน บริษัทมองไม่เห็นรายงานเหล่านี้
       </p>
 
-      <div className="mt-6 flex flex-wrap items-end gap-3 rounded-xl bg-surface-muted p-4">
-        <FilterSelect label="สถานะ" value={status} onChange={(value) => { setStatus(value as '' | ProblemReportStatus); setPage(1); setResolving(null); }}
-          options={[['', 'ทั้งหมด'], ['OPEN', 'รอรับเรื่อง'], ['ACKNOWLEDGED', 'รับเรื่องแล้ว'], ['RESOLVED', 'ปิดเรื่องแล้ว']]} />
+      <div className="mt-6 flex flex-wrap gap-2" role="group" aria-label="สถานะรายงาน">
+        {([['', 'ทั้งหมด'], ['OPEN', 'เปิดอยู่'], ['ACKNOWLEDGED', 'รับทราบแล้ว'], ['RESOLVED', 'แก้ไขแล้ว']] as const).map(([value, label]) => (
+          <button key={value} type="button" aria-pressed={status === value}
+            className={`rounded-full border px-4 py-2 text-sm font-medium ${status === value ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:bg-surface-muted'}`}
+            onClick={() => { setStatus(value); setPage(1); setResolving(null); }}>{label}</button>
+        ))}
       </div>
 
       {message && <div className="mt-4"><Notice tone={message.tone}>{message.text}</Notice></div>}
@@ -105,7 +110,7 @@ export function AdvisorProblemReports() {
                   {report.follow_up_action && <span className="text-ink-soft"> ({FOLLOW_UP_LABEL[report.follow_up_action]})</span>}
                 </p>
               )}
-              <div className="mt-4 flex flex-wrap gap-3">
+              <div className="mt-4 flex flex-wrap items-center gap-3">
                 {report.status === 'OPEN' && (
                   <button type="button" disabled={busyId === report.id} onClick={() => void act(report, 'acknowledge')} className={primaryButton}>รับเรื่อง</button>
                 )}
@@ -113,6 +118,7 @@ export function AdvisorProblemReports() {
                   <button type="button" disabled={busyId === report.id} onClick={() => { setResolving(report.id); setNote(''); setFollowUp(''); setMessage(null); }}
                     className={secondaryButton}>ปิดเรื่อง</button>
                 )}
+                <Link href={`/advisor/students/item?id=${report.student_user_id}`} className="text-sm font-medium text-primary hover:underline">ดูข้อมูลนักศึกษา ›</Link>
               </div>
               {resolving === report.id && (
                 <form onSubmit={(event) => submitResolve(event, report)} noValidate className="mt-4 space-y-3 rounded-xl bg-surface-muted p-4 text-sm">
