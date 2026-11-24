@@ -43,8 +43,13 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
   return <div><dt className="text-xs text-ink-soft">{label}</dt><dd className="mt-0.5 font-medium">{children}</dd></div>;
 }
 
-export function ApplicantDetail() {
-  const id = useSearchParams().get('id') ?? '';
+export function ApplicantDetail({ applicationId, onChanged }: {
+  applicationId?: string; onChanged?: () => void;
+} = {}) {
+  const params = useSearchParams();
+  const id = applicationId ?? params.get('id') ?? '';
+  const Container = applicationId ? 'section' : 'main';
+  const Heading = applicationId ? 'h2' : 'h1';
   const { request } = useAuth();
   const [app, setApp] = useState<HrApplicationDetail | null>(null);
   const [loadError, setLoadError] = useState<{ missing: boolean; text: string } | null>(null);
@@ -75,6 +80,7 @@ export function ApplicantDetail() {
 
   function openForm(kind: FormKind) {
     setForm(kind);
+    window.requestAnimationFrame(() => document.getElementById('applicant-action-form')?.scrollIntoView({ block: 'nearest' }));
     setText('');
     setMessage(null);
     // ค่าเริ่มต้นของฟอร์ม: ใช้วันที่ตามข้อเสนอเดิมถ้ามี
@@ -98,6 +104,7 @@ export function ApplicantDetail() {
       const response = await request<HrStartResponse | undefined>(`/hr/applications/${encodeURIComponent(id)}/actions/${action}`, { method: 'POST', body });
       setForm(null);
       await load();
+      onChanged?.();
       const warning = response?.warning === 'NO_CERTIFICATE_ELIGIBLE'
         ? ' แต่ระยะฝึกจริงสั้นกว่า 30 วัน นักศึกษาจะไม่มีสิทธิ์รับ E-Certificate' : '';
       setMessage({ tone: 'success', text: success + warning });
@@ -185,14 +192,14 @@ export function ApplicantDetail() {
 
   if (loadError) {
     return (
-      <main className="mx-auto max-w-md px-4 py-16 text-center">
-        <h1 className="text-xl font-semibold">{loadError.missing ? 'ไม่พบใบสมัครนี้' : 'โหลดใบสมัครไม่สำเร็จ'}</h1>
+      <Container className="mx-auto max-w-md px-4 py-16 text-center">
+        <Heading className="text-xl font-semibold">{loadError.missing ? 'ไม่พบใบสมัครนี้' : 'โหลดใบสมัครไม่สำเร็จ'}</Heading>
         <p className="mt-2 text-sm text-ink-soft">{loadError.text}</p>
-        <Link href="/hr/applicants" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปรายการผู้สมัคร</Link>
-      </main>
+        {!applicationId && <Link href="/hr/applicants" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปรายการผู้สมัคร</Link>}
+      </Container>
     );
   }
-  if (!app) return <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6"><p className="text-sm text-ink-soft">กำลังโหลด…</p></main>;
+  if (!app) return <Container className="mx-auto max-w-3xl px-4 py-10 sm:px-6"><p className="text-sm text-ink-soft">กำลังโหลด…</p></Container>;
 
   const can = (action: string) => app.available_actions.includes(action);
   const buttons: Array<[FormKind, string, boolean]> = [
@@ -204,13 +211,13 @@ export function ApplicantDetail() {
   const canRevoke = certificate?.status === 'VALID';
   const showActions = visibleButtons.length > 0 || Boolean(app.accept_blocked_reason) || can('evaluate') || can('certificate') || canRevoke;
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
-      <Link href="/hr/applicants" className="text-sm font-medium text-primary hover:underline">← ผู้สมัครของบริษัท</Link>
+    <Container className={applicationId ? 'p-5' : 'mx-auto max-w-4xl px-4 py-10 sm:px-6'}>
+      {!applicationId && <Link href="/hr/applicants" className="text-sm font-medium text-primary hover:underline">← ผู้สมัครของบริษัท</Link>}
 
       <header className="mt-3 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-3xl font-semibold">{app.job_title}</h1>
-          <p className="mt-1 text-ink-soft">{app.profile?.full_name || `ผู้สมัคร #${app.student_user_id.slice(0, 8)}`}</p>
+        <div className="min-w-0 [overflow-wrap:anywhere]">
+          <Heading className="text-3xl font-semibold">{app.profile?.full_name || app.student_name || `ผู้สมัคร #${app.student_user_id.slice(0, 8)}`}</Heading>
+          <p className="mt-1 text-ink-soft">{app.job_title}</p>
         </div>
         <ApplicationStatusBadge status={app.status} />
       </header>
@@ -218,6 +225,17 @@ export function ApplicantDetail() {
       {app.frozen && <div className="mt-4"><Notice tone="error">ประกาศนี้ถูกระงับชั่วคราว จึงยังส่งข้อเสนอไม่ได้จนกว่าผู้ดูแลระบบจะตรวจสอบเสร็จ</Notice></div>}
       {message && <div className="mt-4"><Notice tone={message.tone}>{message.text}</Notice></div>}
 
+      {visibleButtons.some((button) => button[2]) && (
+        <section className="mt-5 rounded-xl bg-tile p-5 text-white">
+          <h2 className="text-lg font-semibold">ขั้นตอนถัดไป</h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {visibleButtons.filter((button) => button[2]).map(([kind, label]) => (
+              <button key={kind} type="button" disabled={busy} onClick={() => openForm(kind)}
+                className="rounded-full bg-primary px-5 py-2 text-sm font-semibold hover:bg-primary-hover disabled:opacity-60">{label}</button>
+            ))}
+          </div>
+        </section>
+      )}
       <dl className="mt-6 grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-3">
         <Fact label="สมัครเมื่อ">{formatDate(app.created_at)}</Fact>
         <Fact label="เริ่มฝึก (ตามข้อเสนอ)">{app.start_date ? formatDate(app.start_date) : '-'}</Fact>
@@ -293,7 +311,7 @@ export function ApplicantDetail() {
 
       {showActions && (
         <section aria-labelledby="actions-title" className="mt-8">
-          <h2 id="actions-title" className="text-lg font-semibold">ดำเนินการ</h2>
+          <h2 id="actions-title" className="text-lg font-semibold">ตัวเลือกและการดำเนินการ</h2>
           {app.accept_blocked_reason && (
             <p className="mt-1 text-sm text-warning-text">
               ส่งข้อเสนอไม่ได้ในขณะนี้: {app.accept_blocked_reason === 'ALREADY_CONFIRMED_ELSEWHERE' ? 'นักศึกษายืนยันฝึกงานกับที่อื่นแล้ว' : app.accept_blocked_reason === 'JOB_FROZEN' ? 'ประกาศถูกระงับชั่วคราว' : app.accept_blocked_reason}
@@ -314,16 +332,16 @@ export function ApplicantDetail() {
                 เพิกถอนใบรับรอง
               </button>
             )}
-            {visibleButtons.map(([kind, label, primary]) => (
+            {visibleButtons.filter((button) => !button[2]).map(([kind, label]) => (
               <button key={kind} type="button" disabled={busy} onClick={() => openForm(kind)}
-                className={`rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-60 ${primary ? 'bg-primary text-white hover:bg-primary-hover' : 'border border-border hover:bg-surface-muted'}`}>
+                className={`rounded-full px-5 py-2.5 text-sm font-semibold disabled:opacity-60 border border-border hover:bg-surface-muted`}>
                 {label}
               </button>
             ))}
           </div>
 
           {form && (
-            <form onSubmit={submit} noValidate className="mt-4 space-y-3 rounded-xl border border-border p-4 text-sm">
+            <form id="applicant-action-form" onSubmit={submit} noValidate className="mt-4 scroll-mt-20 space-y-3 rounded-xl border border-border p-4 text-sm">
               <h3 className="font-semibold">{FORM_TITLE[form]}</h3>
               {form === 'accept' && (
                 <>
@@ -374,6 +392,6 @@ export function ApplicantDetail() {
         </section>
       )}
 
-    </main>
+    </Container>
   );
 }

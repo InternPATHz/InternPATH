@@ -52,7 +52,7 @@ export function HrJobList() {
   }
 
   return (
-    <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-semibold">ประกาศของฉัน</h1>
@@ -61,6 +61,20 @@ export function HrJobList() {
         <Link href="/hr/jobs/form" className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover">สร้างประกาศใหม่</Link>
       </div>
 
+      {!!result?.data.length && (
+        <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="สรุปประกาศในหน้านี้">
+          {[
+            ['เปิดรับในหน้านี้', result.data.filter((job) => job.status === 'PUBLISHED').length],
+            ['ตำแหน่งว่างในหน้านี้', result.data.filter((job) => job.status === 'PUBLISHED').reduce((sum, job) => sum + (job.quota_available ?? 0), 0)],
+            ['ถูกตีกลับในหน้านี้', result.data.filter((job) => job.status === 'ADMIN_REJECTED').length],
+          ].map(([label, count]) => (
+            <div key={label} className="rounded-xl bg-surface-muted p-4">
+              <dt className="text-sm text-ink-soft">{label}</dt>
+              <dd className="mt-1 text-3xl font-semibold tabular-nums">{count}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
       <div role="group" aria-label="กรองตามสถานะ" className="mt-6 flex flex-wrap gap-2">
         {QUICK.map(([label, value]) => (
           <button key={label} type="button" onClick={() => { if ((status ?? '') !== value) navigate(value, 1); }} aria-pressed={(status ?? '') === value}
@@ -89,11 +103,11 @@ export function HrJobList() {
           </nav>
         )}
         {result && result.data.length > 0 && (
-          <ul className="space-y-3">
+          <ul className="space-y-3 md:hidden">
             {result.data.map((job) => (
-              <li key={job.id} className="rounded-xl border border-border bg-surface p-5">
+              <li key={job.id} className={`rounded-xl border border-border bg-surface p-5 ${job.status === 'ADMIN_REJECTED' ? 'border-l-4 border-l-danger' : ''}`}>
                 <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+                  <div className="min-w-0 [overflow-wrap:anywhere]">
                     <h2 className="text-lg font-semibold">{jobTitleOf(job)}</h2>
                     <p className="text-sm text-ink-soft">
                       {[job.work_mode ? WORK_MODE_LABEL[job.work_mode] : null, job.location].filter(Boolean).join(' · ') || 'ยังไม่ระบุสถานที่'}
@@ -110,6 +124,38 @@ export function HrJobList() {
               </li>
             ))}
           </ul>
+        )}
+        {!!result?.data.length && (
+          <div className="hidden overflow-x-auto rounded-xl border border-border md:block">
+            <table className="w-full min-w-[650px] text-left text-sm">
+              <thead className="bg-surface-muted">
+                <tr>
+                  <th scope="col" className="p-4">ประกาศ</th>
+                  <th scope="col" className="p-4">สถานะ</th>
+                  <th scope="col" className="p-4">ตำแหน่ง</th>
+                  <th scope="col" className="p-4">ปิดรับสมัคร</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {result.data.map((job) => (
+                  <tr key={job.id}>
+                    <th scope="row" className={`border-l-4 p-4 font-medium ${job.status === 'ADMIN_REJECTED' ? 'border-l-danger' : 'border-l-transparent'}`}>
+                      <Link href={`/hr/jobs/item?id=${job.id}`} className="text-primary hover:underline">{jobTitleOf(job)}</Link>
+                      {job.location && <span className="mt-1 block text-xs text-ink-soft">{job.location}</span>}
+                    </th>
+                    <td className="p-4"><JobStatusBadge status={job.status} /></td>
+                    <td className="p-4">
+                      {job.quota === null || job.quota_available === null ? '–' : <>
+                        <span>{job.quota_available} / {job.quota} ว่าง</span>
+                        {job.quota > 0 && <meter className="mt-1 block h-2 w-20" min={0} max={job.quota} value={job.quota_available} aria-label="ตำแหน่งว่าง" />}
+                      </>}
+                    </td>
+                    <td className="p-4">{job.application_deadline ? formatDay(job.application_deadline) : '–'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </main>

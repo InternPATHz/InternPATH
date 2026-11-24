@@ -22,6 +22,24 @@ const FIELD_LABEL: Record<string, string> = {
 
 const inputClass = 'mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-base font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft disabled:cursor-not-allowed disabled:bg-surface-muted disabled:text-ink-soft';
 
+function JobOptions({ label, name, value, options, disabled, onChange }: {
+  label: string; name: string; value: string; options: Array<[string, string]>; disabled: boolean; onChange: (value: string) => void;
+}) {
+  return (
+    <fieldset disabled={disabled} className="min-w-0">
+      <legend className="text-sm font-medium">{label}</legend>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {options.map(([option, text]) => (
+          <label key={option} className={`rounded-full border px-3 py-2 text-sm focus-within:ring-2 focus-within:ring-primary ${option === value ? 'border-primary bg-primary-soft text-primary' : 'border-border'} ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
+            <input type="radio" name={name} checked={option === value} onChange={() => onChange(option)} className="sr-only" />
+            {text}
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 interface FormState {
   category: string; job_title: string; description: string; responsibilities: string; qualifications: string; location: string;
   contact_notes: string; work_mode: string; hours: string; allowanceType: string; allowanceAmount: string; allowanceText: string;
@@ -128,6 +146,13 @@ export function HrJobForm() {
   const set = (key: keyof FormState) => (event: { target: { value: string } }) => setForm((current) => ({ ...current, [key]: event.target.value }));
 
   const fields = toFields(form);
+  const missing = new Set(missingRequired(fields as Record<string, unknown>));
+  const groups = [
+    { id: 'position', name: 'ตำแหน่ง', fields: ['category', 'job_title'] },
+    { id: 'description', name: 'รายละเอียดงาน', fields: ['description', 'responsibilities', 'qualifications'] },
+    { id: 'conditions', name: 'เงื่อนไข', fields: ['location', 'work_mode', 'hours_per_week', 'allowance', 'target_majors', 'tag_ids'] },
+    { id: 'schedule', name: 'ช่วงเวลาและการรับ', fields: ['period', 'quota', 'application_deadline'] },
+  ];
   const previous = loaded ? toFields(fromJob(loaded)) : null;
   const diff = previous ? changedFields(fields, previous) : fields;
   if (previous?.contact_notes && !fields.contact_notes) diff.contact_notes = '';
@@ -196,7 +221,7 @@ export function HrJobForm() {
 
   const submittable = !loaded || ['DRAFT', 'ADMIN_REJECTED'].includes(status);
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
       <Link href={id ? `/hr/jobs/item?id=${id}` : '/hr/jobs'} className="text-sm font-medium text-primary hover:underline">กลับ</Link>
       <div className="mt-3 flex flex-wrap items-center gap-3">
         <h1 className="text-3xl font-semibold">{id ? 'แก้ไขประกาศ' : 'สร้างประกาศใหม่'}</h1>
@@ -207,117 +232,129 @@ export function HrJobForm() {
       {!editable && <div className="mt-4"><Notice tone="error">ประกาศในสถานะนี้แก้ไขไม่ได้</Notice></div>}
       {status === 'CLOSED' && <div className="mt-4"><Notice tone="success">ประกาศที่ปิดแล้วแก้ได้เฉพาะจำนวนที่รับ วันปิดรับสมัคร สาขา และช่วงเวลาฝึก</Notice></div>}
 
-      <form onSubmit={(event) => void run(false, event)} noValidate className="mt-6 space-y-5">
-        <label className="block text-sm font-medium">สายงาน
-          <select value={form.category} onChange={set('category')} disabled={lockedField('category')} className={inputClass}>
-            <option value="">เลือกสายงาน</option>
-            {CATEGORIES.map((entry) => <option key={entry.id} value={entry.id}>{entry.label}</option>)}
-          </select>
-          {status !== 'DRAFT' && <span className="mt-1 block text-xs font-normal text-ink-soft">หากต้องการเปลี่ยนสายงาน ให้ปิดประกาศนี้แล้วสร้างประกาศใหม่</span>}
-        </label>
-        <label className="block text-sm font-medium">ชื่อตำแหน่ง
-          <input value={form.job_title} onChange={set('job_title')} disabled={lockedField('job_title')} className={inputClass} placeholder="เช่น Software Engineer Intern" />
-        </label>
-        <label className="block text-sm font-medium">รายละเอียดงาน
-          <textarea value={form.description} onChange={set('description')} disabled={lockedField('description')} rows={4} className={inputClass} />
-        </label>
-        <label className="block text-sm font-medium">หน้าที่ความรับผิดชอบ
-          <textarea value={form.responsibilities} onChange={set('responsibilities')} disabled={lockedField('responsibilities')} rows={4} className={inputClass} />
-        </label>
-        <label className="block text-sm font-medium">คุณสมบัติผู้สมัคร
-          <textarea value={form.qualifications} onChange={set('qualifications')} disabled={lockedField('qualifications')} rows={3} className={inputClass} />
-        </label>
+      <div className="mt-6 grid gap-5 lg:grid-cols-[11rem_minmax(0,1fr)]">
+        <nav aria-label="ส่วนของประกาศ" className="min-w-0 self-start rounded-xl bg-surface-muted p-3 lg:sticky lg:top-20">
+          <ol className="flex gap-3 overflow-x-auto p-1 lg:grid">
+            {groups.map((group) => (
+              <li key={group.id} className="shrink-0">
+                <a className="text-sm font-medium text-primary hover:underline" href={`#${group.id}`}>
+                  {group.name}{group.fields.every((field) => !missing.has(field)) && <span className="ml-1 text-success-text" aria-label="กรอกครบ">✓</span>}
+                </a>
+              </li>
+            ))}
+          </ol>
+        </nav>
+        <form onSubmit={(event) => void run(false, event)} noValidate className="min-w-0 space-y-5">
+          <h2 id="position" className="scroll-mt-24 text-xl font-semibold">ตำแหน่ง</h2>
+          <JobOptions label="สายงาน" name="category" value={form.category} disabled={lockedField('category')}
+            options={[[ '', 'ยังไม่ระบุ' ], ...CATEGORIES.map(({ id, label }): [string, string] => [id, label])]}
+            onChange={(value) => set('category')({ target: { value } })} />
+          {status !== 'DRAFT' && <p className="text-xs text-ink-soft">หากต้องการเปลี่ยนสายงาน ให้ปิดประกาศนี้แล้วสร้างประกาศใหม่</p>}
+          <label className="block text-sm font-medium">ชื่อตำแหน่ง
+            <input value={form.job_title} onChange={set('job_title')} disabled={lockedField('job_title')} className={inputClass} placeholder="เช่น Software Engineer Intern" />
+          </label>
+          <h2 id="description" className="scroll-mt-24 border-t border-border pt-5 text-xl font-semibold">รายละเอียดงาน</h2>
+          <label className="block text-sm font-medium">รายละเอียดงาน
+            <textarea value={form.description} onChange={set('description')} disabled={lockedField('description')} rows={4} className={inputClass} />
+          </label>
+          <label className="block text-sm font-medium">หน้าที่ความรับผิดชอบ
+            <textarea value={form.responsibilities} onChange={set('responsibilities')} disabled={lockedField('responsibilities')} rows={4} className={inputClass} />
+          </label>
+          <label className="block text-sm font-medium">คุณสมบัติผู้สมัคร
+            <textarea value={form.qualifications} onChange={set('qualifications')} disabled={lockedField('qualifications')} rows={3} className={inputClass} />
+          </label>
 
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium">สถานที่ฝึกงาน
-            <input value={form.location} onChange={set('location')} disabled={lockedField('location')} className={inputClass} />
-          </label>
-          <label className="block text-sm font-medium">รูปแบบการทำงาน
-            <select value={form.work_mode} onChange={set('work_mode')} disabled={lockedField('work_mode')} className={inputClass}>
-              <option value="">เลือกรูปแบบ</option><option value="ONSITE">On-Site</option><option value="HYBRID">Hybrid</option><option value="REMOTE">Remote</option>
-            </select>
-          </label>
-          <label className="block text-sm font-medium">ชั่วโมงต่อสัปดาห์
-            <input type="number" min={1} max={168} value={form.hours} onChange={set('hours')} disabled={lockedField('hours_per_week')} className={inputClass} />
-          </label>
-          <label className="block text-sm font-medium">จำนวนที่รับ (ตำแหน่ง)
-            <input type="number" min={1} value={form.quota} onChange={set('quota')} disabled={lockedField('quota')} className={inputClass} />
-          </label>
-        </div>
-
-        <fieldset className="rounded-xl border border-border p-4">
-          <legend className="px-1 text-sm font-medium">เบี้ยเลี้ยง</legend>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <label className="block text-sm font-medium">ประเภท
-              <select value={form.allowanceType} onChange={set('allowanceType')} disabled={lockedField('allowance')} className={inputClass}>
-                <option value="">เลือก</option><option value="AMOUNT">มีเบี้ยเลี้ยง</option><option value="NONE">ไม่มีเบี้ยเลี้ยง</option>
-              </select>
+          <h2 id="conditions" className="scroll-mt-24 border-t border-border pt-5 text-xl font-semibold">เงื่อนไข</h2>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-medium">สถานที่ฝึกงาน
+              <input value={form.location} onChange={set('location')} disabled={lockedField('location')} className={inputClass} />
             </label>
-            {form.allowanceType === 'AMOUNT' && (
-              <>
-                <label className="block text-sm font-medium">จำนวน (บาท)
-                  <input type="number" min={1} value={form.allowanceAmount} onChange={set('allowanceAmount')} disabled={lockedField('allowance')} className={inputClass} />
-                </label>
-                <label className="block text-sm font-medium">ข้อความอธิบาย (ไม่บังคับ)
-                  <input value={form.allowanceText} onChange={set('allowanceText')} disabled={lockedField('allowance')} className={inputClass} placeholder="เช่น 300 บาท/วัน" />
-                </label>
-              </>
+            <JobOptions label="รูปแบบการทำงาน" name="work-mode" value={form.work_mode} disabled={lockedField('work_mode')}
+              options={[['', 'ยังไม่ระบุ'], ['ONSITE', 'On-Site'], ['HYBRID', 'Hybrid'], ['REMOTE', 'Remote']]}
+              onChange={(value) => set('work_mode')({ target: { value } })} />
+            <label className="block text-sm font-medium">ชั่วโมงต่อสัปดาห์
+              <input type="number" min={1} max={168} value={form.hours} onChange={set('hours')} disabled={lockedField('hours_per_week')} className={inputClass} />
+            </label>
+          </div>
+
+          <fieldset className="rounded-xl border border-border p-4">
+            <legend className="px-1 text-sm font-medium">เบี้ยเลี้ยง</legend>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <JobOptions label="ประเภท" name="allowance-type" value={form.allowanceType} disabled={lockedField('allowance')}
+                options={[['', 'ยังไม่ระบุ'], ['AMOUNT', 'มีเบี้ยเลี้ยง'], ['NONE', 'ไม่มีเบี้ยเลี้ยง']]}
+                onChange={(value) => set('allowanceType')({ target: { value } })} />
+              {form.allowanceType === 'AMOUNT' && (
+                <>
+                  <label className="block text-sm font-medium">จำนวน (บาท)
+                    <input type="number" min={1} value={form.allowanceAmount} onChange={set('allowanceAmount')} disabled={lockedField('allowance')} className={inputClass} />
+                  </label>
+                  <label className="block text-sm font-medium">ข้อความอธิบาย (ไม่บังคับ)
+                    <input value={form.allowanceText} onChange={set('allowanceText')} disabled={lockedField('allowance')} className={inputClass} placeholder="เช่น 300 บาท/วัน" />
+                  </label>
+                </>
+              )}
+            </div>
+          </fieldset>
+
+          <label className="block text-sm font-medium">สาขาที่เปิดรับ
+            <input value={form.majors} onChange={set('majors')} disabled={lockedField('target_majors')} className={inputClass} placeholder="คั่นด้วยเครื่องหมายจุลภาค เช่น วิทยาการคอมพิวเตอร์, สถิติ" />
+            <span className="mt-1 block text-xs font-normal text-ink-soft">{parseMajors(form.majors).length} สาขา (อย่างน้อย 1 สาขาก่อนเผยแพร่)</span>
+          </label>
+          <fieldset className="min-w-0 rounded-xl border border-border p-4">
+            <legend className="px-1 text-sm font-medium">Tag ทักษะ (1–{TAG_MAX} รายการ)</legend>
+            {tagOptions?.length === 0 && <p className="text-xs text-ink-soft">ยังไม่มี Tag ให้เลือก</p>}
+            <div className="flex flex-wrap gap-2">
+              {[...(tagOptions ?? []), ...previousTags].map((tag) => {
+                const checked = form.tagIds.includes(tag.id);
+                return (
+                  <label key={tag.id} className={`max-w-full cursor-pointer rounded-full border px-3 py-1 text-sm [overflow-wrap:anywhere] ${checked ? 'border-primary bg-primary-soft text-primary' : 'border-border'} ${lockedField('tag_ids') ? 'opacity-60' : ''}`}>
+                    <input type="checkbox" className="sr-only" checked={checked} disabled={lockedField('tag_ids')}
+                      onChange={() => setForm((current) => ({ ...current, tagIds: checked ? current.tagIds.filter((tagId) => tagId !== tag.id) : [...current.tagIds, tag.id] }))} />
+                    {tag.name}{tagOptions && !activeTagIds.has(tag.id) ? ' (ปิดใช้งาน)' : ''}
+                  </label>
+                );
+              })}
+            </div>
+            <span className="mt-2 block text-xs text-ink-soft">เลือกแล้ว {form.tagIds.length} รายการ</span>
+          </fieldset>
+          <label className="block text-sm font-medium">หมายเหตุสำหรับทีมตรวจสอบ (ไม่บังคับ — ไม่แสดงต่อสาธารณะ)
+            <textarea value={form.contact_notes} onChange={set('contact_notes')} disabled={lockedField('contact_notes')} rows={2} className={inputClass} />
+          </label>
+
+          <h2 id="schedule" className="scroll-mt-24 border-t border-border pt-5 text-xl font-semibold">ช่วงเวลาและการรับ</h2>
+          <fieldset className="rounded-xl border border-border p-4">
+            <legend className="px-1 text-sm font-medium">ช่วงเวลาและการรับสมัคร</legend>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <label className="block text-sm font-medium">เริ่มฝึก
+                <input type="date" value={form.periodStart} onChange={set('periodStart')} disabled={lockedField('period')} className={inputClass} />
+              </label>
+              <label className="block text-sm font-medium">สิ้นสุดการฝึก
+                <input type="date" value={form.periodEnd} onChange={set('periodEnd')} disabled={lockedField('period')} className={inputClass} />
+              </label>
+              <label className="block text-sm font-medium">ปิดรับสมัคร
+                <input type="date" value={form.deadline} onChange={set('deadline')} disabled={lockedField('application_deadline')} className={inputClass} />
+              </label>
+            </div>
+          </fieldset>
+
+            <label className="block text-sm font-medium">จำนวนที่รับ (ตำแหน่ง)
+              <input type="number" min={1} value={form.quota} onChange={set('quota')} disabled={lockedField('quota')} className={inputClass} />
+            </label>
+
+          {message && <Notice tone={message.tone}>{message.text}</Notice>}
+          <div className="frosted sticky bottom-0 z-10 flex flex-wrap items-center gap-3 rounded-xl border border-border p-3">
+            <p className="mr-auto text-sm text-ink-soft">เหลือ {missing.size} รายการที่ต้องกรอกก่อนเผยแพร่</p>
+            <button type="submit" disabled={busy || !editable} className="rounded-full border border-border px-6 py-2.5 font-semibold hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60">
+              {busy ? 'กำลังบันทึก…' : status === 'DRAFT' ? 'บันทึกร่าง' : 'บันทึก'}
+            </button>
+            {submittable && editable && (
+              <button type="button" disabled={busy} onClick={() => void run(true)} className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
+                บันทึกและเผยแพร่
+              </button>
             )}
           </div>
-        </fieldset>
-
-        <fieldset className="rounded-xl border border-border p-4">
-          <legend className="px-1 text-sm font-medium">ช่วงเวลาและการรับสมัคร</legend>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <label className="block text-sm font-medium">เริ่มฝึก
-              <input type="date" value={form.periodStart} onChange={set('periodStart')} disabled={lockedField('period')} className={inputClass} />
-            </label>
-            <label className="block text-sm font-medium">สิ้นสุดการฝึก
-              <input type="date" value={form.periodEnd} onChange={set('periodEnd')} disabled={lockedField('period')} className={inputClass} />
-            </label>
-            <label className="block text-sm font-medium">ปิดรับสมัคร
-              <input type="date" value={form.deadline} onChange={set('deadline')} disabled={lockedField('application_deadline')} className={inputClass} />
-            </label>
-          </div>
-        </fieldset>
-
-        <label className="block text-sm font-medium">สาขาที่เปิดรับ
-          <input value={form.majors} onChange={set('majors')} disabled={lockedField('target_majors')} className={inputClass} placeholder="คั่นด้วยเครื่องหมายจุลภาค เช่น วิทยาการคอมพิวเตอร์, สถิติ" />
-          <span className="mt-1 block text-xs font-normal text-ink-soft">{parseMajors(form.majors).length} สาขา (อย่างน้อย 1 สาขาก่อนเผยแพร่)</span>
-        </label>
-        <fieldset className="rounded-xl border border-border p-4">
-          <legend className="px-1 text-sm font-medium">Tag ทักษะ (1–{TAG_MAX} รายการ)</legend>
-          {tagOptions?.length === 0 && <p className="text-xs text-ink-soft">ยังไม่มี Tag ให้เลือก</p>}
-          <div className="flex flex-wrap gap-2">
-            {[...(tagOptions ?? []), ...previousTags].map((tag) => {
-              const checked = form.tagIds.includes(tag.id);
-              return (
-                <label key={tag.id} className={`cursor-pointer rounded-full border px-3 py-1 text-sm ${checked ? 'border-primary bg-primary-soft text-primary' : 'border-border'} ${lockedField('tag_ids') ? 'opacity-60' : ''}`}>
-                  <input type="checkbox" className="sr-only" checked={checked} disabled={lockedField('tag_ids')}
-                    onChange={() => setForm((current) => ({ ...current, tagIds: checked ? current.tagIds.filter((tagId) => tagId !== tag.id) : [...current.tagIds, tag.id] }))} />
-                  {tag.name}{tagOptions && !activeTagIds.has(tag.id) ? ' (ปิดใช้งาน)' : ''}
-                </label>
-              );
-            })}
-          </div>
-          <span className="mt-2 block text-xs text-ink-soft">เลือกแล้ว {form.tagIds.length} รายการ</span>
-        </fieldset>
-        <label className="block text-sm font-medium">หมายเหตุสำหรับทีมตรวจสอบ (ไม่บังคับ — ไม่แสดงต่อสาธารณะ)
-          <textarea value={form.contact_notes} onChange={set('contact_notes')} disabled={lockedField('contact_notes')} rows={2} className={inputClass} />
-        </label>
-
-        {message && <Notice tone={message.tone}>{message.text}</Notice>}
-        <div className="flex flex-wrap gap-3">
-          <button type="submit" disabled={busy || !editable} className="rounded-full border border-border px-6 py-2.5 font-semibold hover:bg-surface-muted disabled:cursor-not-allowed disabled:opacity-60">
-            {busy ? 'กำลังบันทึก…' : 'บันทึก'}
-          </button>
-          {submittable && editable && (
-            <button type="button" disabled={busy} onClick={() => void run(true)} className="rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
-              บันทึกและเผยแพร่
-            </button>
-          )}
-        </div>
-      </form>
+        </form>
+      </div>
     </main>
   );
 }
