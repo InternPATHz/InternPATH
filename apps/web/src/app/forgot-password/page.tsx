@@ -47,8 +47,13 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthShell title={sentEmail ? 'ตรวจอีเมลของคุณ' : 'ลืมรหัสผ่าน?'} icon={sentEmail ? <Mail size={34} /> : <KeyRound size={34} />}
-      subtitle={sentEmail ? 'หากอีเมลนี้มีบัญชีอยู่ คุณจะได้รับลิงก์ตั้งรหัสผ่านใหม่ที่ใช้ได้ครั้งเดียวภายใน 30 นาที'
-        : 'หากอีเมลนี้มีบัญชีอยู่ เราจะส่งลิงก์รีเซ็ตรหัสผ่านให้'}>
+      subtitle={sentEmail ? (
+        <>
+          หาก<span className="lg:hidden">อีเมลนี้</span>
+          <bdi className="hidden font-medium text-ink [overflow-wrap:anywhere] lg:inline"> {sentEmail} </bdi>
+          มีบัญชีอยู่ คุณจะได้รับลิงก์ตั้งรหัสผ่านใหม่ที่ใช้ได้ครั้งเดียวภายใน 30 นาที
+        </>
+      ) : 'หากอีเมลนี้มีบัญชีอยู่ เราจะส่งลิงก์รีเซ็ตรหัสผ่านให้'}>
       {sentEmail ? (
         <div className="space-y-3 text-center">
           {error && <Notice error>{error}</Notice>}

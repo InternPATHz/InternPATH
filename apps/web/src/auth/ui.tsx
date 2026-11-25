@@ -7,7 +7,7 @@ import { SiteHeader } from '@/components/layout/site-header';
 import { SiteFooter } from '@/components/layout/site-footer';
 
 export function AuthShell({ title, subtitle, icon, children }: {
-  title: string; subtitle?: string; icon?: ReactNode; children: ReactNode;
+  title: string; subtitle?: ReactNode; icon?: ReactNode; children: ReactNode;
 }) {
   return (
     <div className="flex min-h-screen flex-col bg-surface">
