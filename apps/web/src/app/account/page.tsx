@@ -9,6 +9,7 @@ import { Notice } from '@/auth/ui';
 import { SiteHeader } from '@/components/layout/site-header';
 import { SiteFooter } from '@/components/layout/site-footer';
 import { Avatar } from '@/components/ui/avatar';
+import { CopyButton } from '@/components/ui/copy-button';
 import { RequireAuth } from '@/components/layout/require-auth';
 import { ROLE_HOME } from '@/components/layout/site-nav';
 import { ADVISOR_LINK_LABEL, ROLE_LABEL, USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
@@ -65,17 +66,26 @@ function AccountContent() {
             <section aria-labelledby="account-info">
               <h2 id="account-info" className="text-lg font-semibold">ข้อมูลบัญชี</h2>
               <dl className="mt-2 divide-y divide-border rounded-xl bg-surface-muted px-4 text-sm">
-                {[
+                {([
                   ['ชื่อ', profile.full_name],
                   ['อีเมล', profile.email],
+                  ...(profile.student ? [['รหัสนักศึกษา', profile.student.student_code]] : []),
                   ['บทบาท', labelOf(ROLE_LABEL, profile.role)],
                   ['สถานะบัญชี', labelOf(USER_STATUS_LABEL, profile.status)],
-                ].map(([label, value]) => (
+                ] as Array<[string, string]>).map(([label, value]) => (
                   <div key={label} className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-3">
                     <dt className="text-ink-soft">{label}</dt>
                     <dd className="break-all font-medium">{value}</dd>
                   </div>
                 ))}
+                {/* รหัสบัญชี (UUID) คือรหัสที่ Admin ใช้ในฟอร์มย้ายอาจารย์ที่ปรึกษา — แจ้ง Admin ได้โดยไม่ต้องค้นเอง */}
+                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3">
+                  <dt className="text-ink-soft">รหัสบัญชี</dt>
+                  <dd className="flex min-w-0 items-center gap-2">
+                    <span className="break-all font-mono text-xs">{profile.id}</span>
+                    <CopyButton value={profile.id} label="คัดลอกรหัสบัญชี" />
+                  </dd>
+                </div>
               </dl>
             </section>
           )}
