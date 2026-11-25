@@ -12,8 +12,6 @@ import { PrismaClient, type Prisma } from '../../generated/client';
 import { applicationChannels } from '../../src/events/consumers/application-recipients';
 import { NotificationEvents } from '../../src/events/consumers/notification-events';
 import type { IdentityClient } from '../../src/internal/identity-client';
-import { NotificationMailService } from '../../src/modules/mail/notification-mail.service';
-import type { PrismaService } from '../../src/prisma.service';
 
 describe('Notification E08 recipient matrix', () => {
   const channels = (
@@ -243,27 +241,6 @@ describe('Notification event consumption (PostgreSQL)', function () {
     );
     expect(reminder.map((notification) => notification.userId)).to.deep.equal([admin]);
     expect(reminder[0].deliveries[0]).to.include({ status: 'PENDING', toUserId: admin });
-    // อาจารย์ได้ลิงก์ไปหน้าที่ต้องทำตามชนิดการเตือน (UAT รอบ 5 — เดิม link ว่าง)
-    for (const [reminderType, link] of [
-      ['EVALUATE_ESCALATE_D14', '/advisor/evaluations'],
-      ['ADVISOR_APPROVE_D3', '/advisor/approvals'],
-      ['COMPANY_SUSPENDED_DECISION', '/advisor/students'],
-    ] as const) {
-      const toAdvisor = await deliver(
-        envelope(
-          'ReminderDue',
-          {
-            audience: [{ role: 'ADVISOR', user_id: advisor }],
-            context: { application_id: randomUUID() },
-            due_date: '2026-11-21',
-            reminder_type: reminderType,
-          },
-          'lifecycle',
-        ),
-      );
-      const forAdvisor = toAdvisor.find((notification) => notification.userId === advisor);
-      expect(forAdvisor?.link, reminderType).to.equal(link);
-    }
     const rejected = await deliver(
       envelope(
         'JobStatusChanged',
@@ -410,57 +387,5 @@ describe('Notification event consumption (PostgreSQL)', function () {
       await db!.deliveryLog.findUnique({ where: { id: queued[0].deliveries[0].id } }),
     ).to.equal(null);
     expect(await deliver(envelope('ApplicationStatusChanged', app, 'lifecycle'))).to.deep.equal([]);
-  });
-  it('ส่งอีเมลที่ค้างเป็นชุด เรียงเก่าก่อน (FIFO) และหยุดชุดเมื่อส่งไม่สำเร็จ (UAT รอบ 5 NT-25)', async () => {
-    // ผู้รับใหม่ — `student` ของเทสต์ก่อนหน้าอาจถูกระงับ/ลบแล้ว
-    const mailUser = randomUUID();
-    await db!.deliveryLog.deleteMany({ where: { channel: 'EMAIL' } });
-    const base = Date.now() - 60_000;
-    const titles = ['mail-1', 'mail-2', 'mail-3'];
-    // สร้างกลับลำดับ เพื่อให้ลำดับ insert/UUID ไม่ตรงกับเวลา created_at
-    for (const [index, title] of [...titles.entries()].reverse()) {
-      await db!.notification.create({
-        data: {
-          userId: mailUser,
-          type: 'MailOrder',
-          title,
-          body: 'body',
-          sourceEventId: randomUUID(),
-          createdAt: new Date(base + index * 1000),
-          deliveries: { create: { channel: 'EMAIL', toUserId: mailUser, status: 'PENDING' } },
-        },
-      });
-    }
-    const identity = { contact: async (id: string) => contact(id) } as unknown as IdentityClient;
-    const mail = new NotificationMailService(db as unknown as PrismaService, identity, {} as never);
-    const sent: string[] = [];
-    let fail = false;
-    (mail as unknown as { send: (email: string, n: { title: string }) => Promise<void> }).send =
-      async (_email, n) => {
-        if (fail) throw new Error('smtp down');
-        sent.push(n.title);
-      };
-    expect(await mail.deliverBatch()).to.equal(3);
-    expect(sent).to.deep.equal(titles);
-    expect(await db!.deliveryLog.count({ where: { channel: 'EMAIL', status: 'SENT' } })).to.equal(
-      3,
-    );
-
-    await db!.notification.create({
-      data: {
-        userId: mailUser,
-        type: 'MailOrder',
-        title: 'mail-4',
-        body: 'body',
-        sourceEventId: randomUUID(),
-        deliveries: { create: { channel: 'EMAIL', toUserId: mailUser, status: 'PENDING' } },
-      },
-    });
-    fail = true;
-    expect(await mail.deliverBatch()).to.equal(0);
-    const failed = await db!.deliveryLog.findFirstOrThrow({
-      where: { channel: 'EMAIL', status: 'FAILED' },
-    });
-    expect(failed.attempts, 'ไม่ลองซ้ำในรอบเดียวกัน').to.equal(1);
   });
 });

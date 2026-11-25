@@ -54,17 +54,6 @@ export type DeliveryOutcome =
   | { kind: 'retry'; nextCount: number }
   | { kind: 'dead-letter'; reason: DeadLetterInfo['reason']; eventId?: string; type?: string };
 
-/** ดึง id ของ envelope เพื่อ log (ข้อความผ่าน processDelivery แล้วจึงเป็น JSON ที่ถูกต้อง) — ค่าที่ไม่ปลอดภัยถูกแทนด้วย undefined กัน log injection */
-function envelopeMeta(raw: Buffer): { eventId?: string; type?: string; correlationId?: string } {
-  const safe = (v: unknown) => (typeof v === 'string' && /^[\w.:-]{1,128}$/.test(v) ? v : undefined);
-  try {
-    const o = JSON.parse(raw.toString('utf8')) as Record<string, unknown>;
-    return { eventId: safe(o.event_id), type: safe(o.type), correlationId: safe(o.correlation_id) };
-  } catch {
-    return {};
-  }
-}
-
 /** A handler can explicitly reject malformed input after its transaction rolls back. */
 export class InvalidMessageError extends Error {}
 
@@ -284,9 +273,6 @@ export class EventConsumer<Tx extends ProcessedEventsTx> {
   ): Promise<void> {
     if (outcome.kind === 'ack') {
       this.safeAck(ch, msg);
-      // ไล่คำขอเดียวข้าม Service ได้ (README UAT-46 ข้อ 3) — log เฉพาะ id/type ไม่ log payload (กันข้อมูลส่วนบุคคล)
-      const meta = envelopeMeta(msg.content);
-      this.log.log(`consumed on ${queue}: type=${meta.type ?? '-'} event=${meta.eventId ?? '-'} correlation_id=${meta.correlationId ?? '-'}`);
       return;
     }
     if (outcome.kind === 'dead-letter') {

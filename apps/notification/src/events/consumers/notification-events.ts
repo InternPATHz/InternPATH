@@ -81,32 +81,7 @@ const applicationStatusMessages: Partial<
  */
 function advisorLink(status: ApplicationStatusChangedPayload['to_status']): string {
   if (status === 'ADVISOR_PENDING') return '/advisor/approvals';
-  if (
-    [
-      'EVALUATED_PASS',
-      'EVALUATED_FAIL',
-      'FAIL_DISPUTED',
-      'COMPLETED',
-      'NO_EVALUATION',
-      'TERMINATED',
-    ].includes(status)
-  )
-    return '/advisor/evaluations';
-  return '/advisor/students';
-}
-
-/** หน้าของอาจารย์ตามชนิดการเตือน (README UAT-18/21/22/27/34) — เดิมอาจารย์ได้แจ้งเตือนแบบไม่มีลิงก์ */
-function advisorReminderLink(type: ReminderType): string {
-  if (type === 'ADVISOR_APPROVE_D3' || type === 'ADVISOR_APPROVE_ESCALATE_ADMIN_D7')
-    return '/advisor/approvals';
-  if (
-    [
-      'EVALUATE_ESCALATE_D14',
-      'ISSUE_CERT_ESCALATE_D14',
-      'ADVISOR_DISPUTE_D3',
-      'DISPUTE_ESCALATE_D7',
-    ].includes(type)
-  )
+  if (['EVALUATED_PASS', 'EVALUATED_FAIL', 'FAIL_DISPUTED', 'COMPLETED', 'NO_EVALUATION', 'TERMINATED'].includes(status))
     return '/advisor/evaluations';
   return '/advisor/students';
 }
@@ -368,12 +343,9 @@ export class NotificationEvents implements OnModuleInit {
         const recipients: Recipient[] = p.audience.map(({ user_id: id, role }) => ({
           id,
           email: true,
-          link:
-            role === 'ADVISOR'
-              ? advisorReminderLink(p.reminder_type)
-              : p.context.application_id
-                ? this.applicationLink(role, p.context.application_id)
-                : undefined,
+          link: p.context.application_id
+            ? this.applicationLink(role, p.context.application_id)
+            : undefined,
         }));
         if (escalations.has(p.reminder_type)) {
           recipients.push(...(await admins()).map((recipient) => ({ ...recipient, email: true })));

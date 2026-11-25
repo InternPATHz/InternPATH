@@ -136,19 +136,6 @@ describe('EventConsumer hardening (ผลรีวิว)', () => {
     await b.consumer.close();
   });
 
-  it('ack: log type/event/correlation_id (ไล่คำขอข้าม Service ได้ — UAT-46 ข้อ 3) และไม่มี payload', async () => {
-    const infoLog = sinon.stub(Logger.prototype, 'log');
-    const b = await build();
-    await b.consumer.subscribe(sub(async () => undefined));
-    const secret = 'SECRET-PAYLOAD-abc';
-    const e = envelope({ payload: { text: secret } });
-    await b.channels[0].consumeCb!(delivery(e));
-    const text = infoLog.getCalls().map((c) => String(c.args[0])).join('\n');
-    expect(text).to.include(`event=${e.event_id}`).and.include(`correlation_id=${e.correlation_id}`).and.include('type=JobVerified');
-    expect(text).to.not.include(secret);
-    await b.consumer.close();
-  });
-
   it('handler ที่ล้ม: log ไม่มีข้อความ error (Prisma error ฝังค่าที่ query ได้) มีแค่ชื่อ/รหัส', async () => {
     const warn = sinon.stub(Logger.prototype, 'warn');
     const b = await build();

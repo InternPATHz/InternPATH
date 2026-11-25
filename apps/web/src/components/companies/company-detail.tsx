@@ -12,7 +12,6 @@ import { RatingSummary, Stars } from '@/components/ui/rating';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { ApiError, apiRequest } from '@/lib/api';
 import { allowanceLabel } from '@/lib/allowance';
-import { externalHref } from '@/lib/external-url';
 
 const PAGE_SIZE = 10;
 
@@ -112,7 +111,7 @@ export function CompanyDetail() {
 
       <div className="flex flex-wrap items-center justify-center gap-4 pb-10 text-sm">
         <Link href={`/jobs?company_id=${company.id}`} className="rounded-full bg-primary px-5 py-2.5 font-semibold text-white hover:bg-primary-hover">ดูประกาศงานของบริษัท</Link>
-        {externalHref(company.website) && <a href={externalHref(company.website)} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">เว็บไซต์บริษัท</a>}
+        {company.website && <a href={company.website} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">เว็บไซต์บริษัท</a>}
       </div>
 
       <section aria-label="สรุปคะแนนรีวิว" className="rounded-xl bg-surface-muted p-6">

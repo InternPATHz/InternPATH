@@ -447,17 +447,17 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 | `PENDING` | `EXPIRED` | SYSTEM | 14 วันหลังเข้า `PENDING` (ไม่นับช่วง Freeze) | — |
 | `PENDING` | `WITHDRAWN` | SYSTEM | นักศึกษาถูกอาจารย์อนุมัติใบอื่น | — |
 | `PENDING` | `CANCELLED` | SYSTEM | ประกาศ `ADMIN_REJECTED`/`REMOVED` | — |
-| `HR_ACCEPTED` | `ADVISOR_PENDING` | STUDENT | ไม่มีใบ confirm อื่น, ประกาศไม่ถูก Freeze (`409 STATE_CONFLICT` `JOB_FROZEN` — UAT-26) | ใบอื่นที่ `HR_ACCEPTED` ของนักศึกษา → `STUDENT_DECLINED` + release |
+| `HR_ACCEPTED` | `ADVISOR_PENDING` | STUDENT | ไม่มีใบ confirm อื่น | ใบอื่นที่ `HR_ACCEPTED` ของนักศึกษา → `STUDENT_DECLINED` + release |
 | `HR_ACCEPTED` | `STUDENT_DECLINED` | STUDENT / SYSTEM | — | release |
 | `HR_ACCEPTED` | `EXPIRED` | SYSTEM | 5 วัน | release |
 | `HR_ACCEPTED` | `OFFER_RESCINDED` | HR | ต้องมีเหตุผล | release |
 | `HR_ACCEPTED` | `CANCELLED` | SYSTEM | ประกาศถูกตีกลับ/ลบ | release |
-| `ADVISOR_PENDING` | `ADVISOR_APPROVED` | ADVISOR | อาจารย์ของนักศึกษา, ประกาศไม่ถูก Freeze (`JOB_FROZEN`) | ใบอื่นที่ `PENDING` → `WITHDRAWN` |
+| `ADVISOR_PENDING` | `ADVISOR_APPROVED` | ADVISOR | อาจารย์ของนักศึกษา | ใบอื่นที่ `PENDING` → `WITHDRAWN` |
 | `ADVISOR_PENDING` | `ADVISOR_REJECTED` | ADVISOR | **ต้องมีเหตุผล** | release |
 | `ADVISOR_PENDING` | `WITHDRAWN` | STUDENT | — | release |
 | `ADVISOR_PENDING` | `OFFER_RESCINDED` | HR | ต้องมีเหตุผล | release |
 | `ADVISOR_PENDING` | `CANCELLED` | SYSTEM | ประกาศถูกตีกลับ/ลบ หรือนักศึกษาลบบัญชี (E15 มาถึงหลังยืนยันข้อเสนอระหว่างตรวจสิทธิ์ลบ — PM ตัดสิน 2026-11-25) | release |
-| `ADVISOR_APPROVED` | `IN_PROGRESS` | HR | ประกาศไม่ถูก Freeze (`JOB_FROZEN`); บันทึก `actual_start_date` (ปรับ start/end ได้) **ไม่ก่อนวันที่อาจารย์อนุมัติ** (`400 VALIDATION_FAILED` `BEFORE_ADVISOR_APPROVAL` — PM ตัดสิน 2026-11-25) **และไม่เกินวันนี้** (`IN_FUTURE`); เตือนถ้า `end − actual_start < 30` | confirm quota |
+| `ADVISOR_APPROVED` | `IN_PROGRESS` | HR | บันทึก `actual_start_date` (ปรับ start/end ได้) **ไม่ก่อนวันที่อาจารย์อนุมัติ** (`400 VALIDATION_FAILED` `BEFORE_ADVISOR_APPROVAL` — PM ตัดสิน 2026-11-25) **และไม่เกินวันนี้** (`IN_FUTURE`); เตือนถ้า `end − actual_start < 30` | confirm quota |
 | `ADVISOR_APPROVED` | `WITHDRAWN` | STUDENT | — | release |
 | `ADVISOR_APPROVED` | `OFFER_RESCINDED` | HR | ต้องมีเหตุผล | release |
 | `ADVISOR_APPROVED` | `EXPIRED` | SYSTEM | เกิน 14 วันหลัง `start_date` | release |

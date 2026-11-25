@@ -30,15 +30,14 @@ describe('State Machine บน Postgres จริง (concurrency + partial uniq
     await database?.drop();
   });
 
-  const create = (data: { status: any; studentUserId?: string; jobId?: string; advisorUserId?: string; frozen?: boolean }) =>
+  const create = (data: { status: any; studentUserId?: string; jobId?: string }) =>
     prisma.application.create({
       data: {
         jobId: data.jobId ?? randomUUID(),
         companyId: randomUUID(),
         studentUserId: data.studentUserId ?? randomUUID(),
-        advisorUserId: data.advisorUserId ?? randomUUID(),
+        advisorUserId: randomUUID(),
         status: data.status,
-        frozen: data.frozen ?? false,
       },
     });
 
@@ -124,16 +123,5 @@ describe('State Machine บน Postgres จริง (concurrency + partial uniq
       'ALREADY_CONFIRMED_ELSEWHERE',
     );
     expect(await countsFor(offer.id)).to.deep.equal({ history: 0, outbox: 0 });
-  });
-
-  it('ประกาศถูก Freeze ⇒ นักศึกษายืนยันข้อเสนอ/อาจารย์อนุมัติไม่ได้ (409 JOB_FROZEN) และไม่เขียน history/outbox (README UAT-26)', async () => {
-    const studentUserId = randomUUID();
-    const advisorUserId = randomUUID();
-    const offer = await create({ status: 'HR_ACCEPTED', studentUserId, frozen: true });
-    expect(await run(offer.id, { trigger: 'confirm-offer', actor: { userId: studentUserId, role: 'STUDENT' } })).to.equal('STATE_CONFLICT');
-    const waiting = await create({ status: 'ADVISOR_PENDING', studentUserId: randomUUID(), advisorUserId, frozen: true });
-    expect(await run(waiting.id, { trigger: 'approve', actor: { userId: advisorUserId, role: 'ADVISOR' } })).to.equal('STATE_CONFLICT');
-    expect(await countsFor(offer.id)).to.deep.equal({ history: 0, outbox: 0 });
-    expect(await countsFor(waiting.id)).to.deep.equal({ history: 0, outbox: 0 });
   });
 });

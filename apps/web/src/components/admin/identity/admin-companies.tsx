@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 import type { AdminCompanyDetail, AdminCompanyListItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
-import { externalHref } from '@/lib/external-url';
 
 type Action = 'verify' | 'need-more-info' | 'reject' | 'suspend' | 'unsuspend';
 const statusOptions: Array<[string, string]> = [['PENDING', 'รอตรวจ'], ['NEED_MORE_INFO', 'รอเอกสารเพิ่ม'], ['VERIFIED', 'ผ่านการตรวจ'], ['REJECTED', 'ปฏิเสธ'], ['SUSPENDED', 'ระงับ'], ['', 'ทั้งหมด']];
@@ -97,7 +96,7 @@ export function AdminCompanies() {
         {!selectedId ? <p className="text-sm text-ink-soft">เลือกบริษัทเพื่อดูรายละเอียดและดำเนินการ</p> : !detail ? <p className="text-sm text-ink-soft">กำลังโหลดรายละเอียด…</p> : <div className="space-y-5">
           <div><h2 className="text-xl font-semibold">{detail.name}</h2><p className="mt-1 text-sm text-ink-soft">{detail.status} · เลขทะเบียน {detail.registration_no} · {detail.email_domain}</p>
             {detail.review_note && <p className="mt-2 text-sm">หมายเหตุ: {detail.review_note}</p>}
-            <p className="mt-2 text-sm">{externalHref(detail.website) && <a href={externalHref(detail.website)} target="_blank" rel="noreferrer" className="text-primary underline">เว็บไซต์บริษัท</a>}{detail.phone && ` · โทร ${detail.phone}`}</p></div>
+            <p className="mt-2 text-sm">{detail.website && <a href={detail.website} target="_blank" rel="noreferrer" className="text-primary underline">เว็บไซต์บริษัท</a>}{detail.phone && ` · โทร ${detail.phone}`}</p></div>
           <div><h3 className="font-semibold">เอกสาร</h3>{detail.documents.length ? <ul className="mt-2 space-y-1 text-sm">{detail.documents.map((doc) => <li key={doc.id}><a href={doc.url} target="_blank" rel="noreferrer" className="text-primary underline">{doc.doc_type}</a> <span className="text-ink-soft">({Math.ceil(doc.size_bytes / 1024)} KB)</span></li>)}</ul> : <p className="mt-1 text-sm text-ink-soft">ยังไม่มีเอกสาร</p>}</div>
           <div><h3 className="font-semibold">สมาชิก HR</h3>{detail.members.length ? <ul className="mt-2 space-y-2 text-sm">{detail.members.map((member) => <li key={member.user_id}>
             <span>{member.full_name} · {member.email} · {member.member_role}</span>

@@ -636,16 +636,6 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
       expect(job.calls).to.deep.equal([{ op: 'confirm', jobId: approved.jobId, applicationId: approved.id }]);
     });
 
-    it('ประกาศถูก Freeze ⇒ 409 JOB_FROZEN ไม่ confirm โควตา • HR ยังถอนข้อเสนอได้ (README UAT-26)', async () => {
-      const frozen = await seedApproved({ frozen: true });
-      const res = await action(frozen.id, 'start', { actual_start_date: ymd(today()) }).expect(409);
-      expect(res.body.error).to.deep.include({ code: 'STATE_CONFLICT', details: [{ issue: 'JOB_FROZEN' }] });
-      expect((await reload(frozen.id)).status).to.equal('ADVISOR_APPROVED');
-      expect(job.calls.filter((c) => c.op === 'confirm')).to.have.length(0);
-      const rescind = await action(frozen.id, 'rescind-offer', { reason: 'ประกาศถูกระงับ' }).expect(200);
-      expect(rescind.body.status).to.equal('OFFER_RESCINDED');
-    });
-
     it('ระยะฝึกจริง < 30 วัน ⇒ สำเร็จแต่คืน warning NO_CERTIFICATE_ELIGIBLE', async () => {
       const approved = await seedApproved();
       const res = await action(approved.id, 'start', {

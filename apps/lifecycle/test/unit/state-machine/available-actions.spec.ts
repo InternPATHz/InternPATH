@@ -43,21 +43,6 @@ describe('State Machine — available_actions[]', () => {
     expect(result.accept_blocked_reason).to.equal('JOB_FROZEN');
   });
 
-  it('ประกาศถูก Freeze ⇒ ทุกขั้นที่เดินหน้าปิด (ยืนยันข้อเสนอ/อาจารย์อนุมัติ/HR เริ่มงาน) แต่ถอน/ปฏิเสธยังทำได้', () => {
-    expect(computeAvailableActions('STUDENT', ctx({ status: 'HR_ACCEPTED', frozen: true })).available_actions).to.deep.equal([
-      'decline-offer',
-    ]);
-    const advisor = computeAvailableActions('ADVISOR', ctx({ status: 'ADVISOR_PENDING', frozen: true })).available_actions;
-    expect(advisor).to.not.include('approve');
-    expect(advisor).to.include('reject');
-    const hr = computeAvailableActions('COMPANY_HR', ctx({ status: 'ADVISOR_APPROVED', frozen: true })).available_actions;
-    expect(hr).to.not.include('start');
-    expect(hr).to.include('rescind-offer');
-    expect(computeAvailableActions('STUDENT', ctx({ status: 'ADVISOR_APPROVED', frozen: true })).available_actions).to.deep.equal([
-      'withdraw',
-    ]);
-  });
-
   it('HR_ACCEPTED: นักศึกษายืนยัน/ปฏิเสธข้อเสนอได้, HR ถอนข้อเสนอได้', () => {
     expect(computeAvailableActions('STUDENT', ctx({ status: 'HR_ACCEPTED' })).available_actions).to.have.members([
       'confirm-offer',

@@ -19,7 +19,7 @@ export class RegisterAdvisorDto {
 class CompanyInput {
   @IsString() @IsNotEmpty() name!: string;
   @IsString() @Matches(/^[0-9]{13}$/, { message: 'เลขทะเบียนนิติบุคคลต้องเป็นตัวเลข 13 หลัก' }) registration_no!: string;
-  @IsOptional() @IsUrl({ require_tld: true, require_protocol: true, protocols: ['http', 'https'] }) website?: string;
+  @IsOptional() @IsUrl({ require_tld: true }) website?: string;
   @IsOptional() @IsString() phone?: string;
 }
 
