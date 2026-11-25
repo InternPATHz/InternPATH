@@ -2,6 +2,7 @@ import { timingSafeEqual } from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
 import { isIP } from 'node:net';
+import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { normalizePemKey, type JwtClaims } from '@internpath/common';
 import type { Request, Response } from 'express';
@@ -21,10 +22,12 @@ const HOP_HEADERS = ['connection', 'keep-alive', 'proxy-authenticate', 'proxy-au
 
 export class GatewayMiddleware {
   private readonly rateLimiter = new RateLimiter();
+  private readonly log = new Logger('GatewayAccess');
 
   constructor(private readonly config: ConfigService, private readonly denylist: DenylistService) {}
 
   handle = async (req: Request, res: Response): Promise<void> => {
+    this.accessLog(req, res);
     const raw = req.originalUrl.slice('/api/v1'.length);
     const path = raw.split('?')[0];
     if (!path.startsWith('/') || /%|\\|\/\/|(?:^|\/)\.{1,2}(?:\/|$)/i.test(path))
@@ -125,6 +128,26 @@ export class GatewayMiddleware {
     req.on('aborted', () => upstream.destroy());
     if (body) upstream.end(body);
     else req.pipe(upstream);
+  }
+
+  /**
+   * Access log ของ Gateway (pino-http ของ Nest ไม่เห็นคำขอที่ middleware นี้ตอบเอง) — ไล่ correlation_id ข้าม Service ได้
+   * (README UAT-46 ข้อ 3) • log เฉพาะ path ไม่รวม query string (อาจมีอีเมล/คำค้น) และไม่ log header ใด ๆ
+   */
+  private accessLog(req: Request, res: Response): void {
+    const started = Date.now();
+    res.once('finish', () => {
+      const correlation = req.headers['x-correlation-id'];
+      this.log.log({
+        msg: 'request completed',
+        correlation_id: typeof correlation === 'string' ? correlation : undefined,
+        // ไม่ใช้ key `req`/`res` — serializer ของ pino-http จะอ่านเป็น object ของ http แล้วได้ statusCode = null
+        method: req.method,
+        path: req.originalUrl.split('?')[0],
+        status_code: res.statusCode,
+        response_time_ms: Date.now() - started,
+      });
+    });
   }
 
   private equal(a: string, b: string): boolean {
