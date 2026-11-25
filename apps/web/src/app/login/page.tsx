@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/auth/session';
 import { ActionButton, AuthShell, Field, Notice, PasswordField } from '@/auth/ui';
-import { ROLE_HOME } from '@/components/layout/site-nav';
+import { pathAllowedFor, ROLE_HOME } from '@/components/layout/site-nav';
 import { ApiError } from '@/lib/api';
 
 const recoveryLinks = new Map([
@@ -41,8 +41,9 @@ export default function LoginPage() {
     try {
       const user = await login(String(form.get('email')), String(form.get('password')));
       // `next` ใช้ได้เฉพาะเส้นทางภายในเว็บ กัน open redirect • ไม่มี/ไม่ปลอดภัย ⇒ หน้าแรกของบทบาท
+      // และต้องเป็นหน้าของบทบาทนี้ — `next` อาจค้างจากผู้ใช้คนก่อน (เช่น HR ออกจาก /hr/jobs แล้ว Admin ล็อกอินต่อ)
       const next = safeNextPath(new URLSearchParams(window.location.search).get('next'));
-      router.replace(next ?? ROLE_HOME[user.role] ?? '/account');
+      router.replace(next && pathAllowedFor(next, user.role) ? next : ROLE_HOME[user.role] ?? '/account');
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error('เข้าสู่ระบบไม่สำเร็จ'));
     } finally { setBusy(false); }

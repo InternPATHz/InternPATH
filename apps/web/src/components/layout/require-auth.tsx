@@ -2,34 +2,33 @@
 
 import { useEffect } from 'react';
 import type { ReactNode } from 'react';
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import type { Role } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
+import { ROLE_HOME } from './site-nav';
 
 /**
- * ครอบหน้าที่ต้องล็อกอิน (และจำกัดบทบาทได้): ยังไม่ล็อกอิน ⇒ ส่งไป /login?next=<หน้านี้>;
- * ล็อกอินแล้วแต่บทบาทไม่ตรง ⇒ แสดงหน้า "ไม่มีสิทธิ์" ไม่ redirect (กันวนซ้ำ)
+ * ครอบหน้าที่ต้องล็อกอิน (และจำกัดบทบาทได้)
+ * - ยังไม่ล็อกอิน ⇒ /login?next=<หน้านี้ พร้อม query/hash> • ถ้าเพิ่งกดออกจากระบบเอง ⇒ /login (ไม่จำหน้า คนถัดไปอาจเป็นบทบาทอื่น)
+ * - ล็อกอินแล้วแต่บทบาทไม่ตรง ⇒ ไปหน้าแรกของบทบาทตัวเอง (ROLE_HOME เป็นหน้าของบทบาทนั้นเสมอ จึงไม่วนซ้ำ) และไม่ render เนื้อหาของหน้านี้
  * เป็นการตรวจฝั่งหน้าจอเท่านั้น — สิทธิ์จริงตรวจที่ Gateway และทุก Service
  */
 export function RequireAuth({ roles, children }: { roles?: Role[]; children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { ready, user } = useAuth();
+  const { ready, user, signedOut } = useAuth();
+  const allowed = !!user && (!roles || roles.includes(user.role));
 
   useEffect(() => {
-    if (ready && !user) router.replace(`/login?next=${encodeURIComponent(pathname)}`);
-  }, [ready, user, pathname, router]);
+    if (!ready) return;
+    if (!user) {
+      const { search, hash } = window.location;
+      router.replace(signedOut ? '/login' : `/login?next=${encodeURIComponent(pathname + search + hash)}`);
+    } else if (!allowed) {
+      router.replace(ROLE_HOME[user.role] ?? '/account');
+    }
+  }, [ready, user, allowed, signedOut, pathname, router]);
 
-  if (!ready || !user) return <p className="p-8 text-sm text-ink-soft">กำลังตรวจสอบสิทธิ์…</p>;
-  if (roles && !roles.includes(user.role)) {
-    return (
-      <main className="mx-auto max-w-md p-8 text-center">
-        <h1 className="text-xl font-semibold">ไม่มีสิทธิ์เข้าหน้านี้</h1>
-        <p className="mt-2 text-sm text-ink-soft">หน้านี้สำหรับบทบาทอื่น หากคิดว่าเป็นข้อผิดพลาด กรุณาติดต่อผู้ดูแลระบบ</p>
-        <Link href="/" className="mt-4 inline-block text-sm text-primary hover:underline">กลับหน้าแรก</Link>
-      </main>
-    );
-  }
+  if (!ready || !allowed) return <p className="p-8 text-sm text-ink-soft">กำลังตรวจสอบสิทธิ์…</p>;
   return <>{children}</>;
 }
