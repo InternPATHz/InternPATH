@@ -5,6 +5,7 @@ build/
 coverage/
 .nyc_output/
 *.log
+/.internpath-dev/
 .claude/
 AGENTS.md
 design.md

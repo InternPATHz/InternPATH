@@ -32,6 +32,22 @@ pnpm keys:generate            # พิมพ์ JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
 
 ## 3. รัน
 
+### เปิดและปิดทั้งระบบบน Windows
+
+เปิด PowerShell ที่ราก repo หลังตั้งค่า `.env` และติดตั้ง dependencies ตามข้อ 2 ใช้ Docker Desktop ที่เปิด WSL 2 backend และอยู่ในโหมด Linux containers ดูวิธีตั้งค่าใน [คู่มือ Docker Desktop บน Windows](https://docs.docker.com/desktop/features/wsl/)
+
+ถ้ายังไม่มีไฟล์ `.env` ให้สร้างจากตัวอย่างด้วย `Copy-Item .env.example .env` แล้วตั้งค่า keys และ secrets ตามข้อ 2
+
+| คำสั่ง | ใช้เมื่อ |
+| :--- | :--- |
+| `pnpm dev:up` | เปิดระบบจาก branch `main` ดึงโค้ดด้วย `git pull --ff-only origin main` ติดตั้ง dependencies และเปิด Docker, Backend และเว็บที่ http://localhost:3100 คำสั่งคืน Terminal เมื่อเว็บพร้อม |
+| `pnpm dev:down` | หยุดแอปที่คำสั่งเปิดไว้และ containers ของ InternPATH เก็บ Docker volumes ไว้ และปิด Docker Desktop เมื่อไม่มี container อื่นทำงาน |
+| `pnpm dev:migrate` | ใช้กับฐานข้อมูลใหม่ครั้งแรกหรือหลังอัปเดตโค้ดแล้วมี migration ค้าง ถ้าระบบรันอยู่ให้ใช้ `dev:down` ก่อน คำสั่งเปิด Postgres แล้วรัน migrations จากโค้ดที่ checkout อยู่ |
+
+`dev:up` เตรียมคิว RabbitMQ และ Prisma Client ให้ การรัน migration ต้องสั่ง `dev:migrate` แยก หลังเปิดระบบครั้งแรกให้รัน `pnpm infra:init-buckets` เพื่อสร้าง bucket สำหรับไฟล์ อ่าน log ด้วย `Get-Content .internpath-dev/stack.log -Tail 40` หากมีไฟล์ `.env.internpath-current` ในเครื่อง ค่าจากไฟล์นี้จะใช้กับทั้งการเปิดแอปและ migration
+
+### รันทีละส่วน
+
 ```bash
 pnpm infra:up                                   # Postgres, RabbitMQ, RustFS (S3), Mailpit
 pnpm infra:init-buckets                         # ครั้งแรกเท่านั้น: สร้าง bucket ใน RustFS (ไฟล์เรซูเม่/โลโก้)
