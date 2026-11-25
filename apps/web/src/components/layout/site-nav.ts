@@ -44,6 +44,21 @@ export const ROLE_HOME: Record<Role, string> = {
   PLATFORM_ADMIN: '/admin/queue',
 };
 
+/** พื้นที่ของแต่ละบทบาท — หน้าใต้ path เหล่านี้ใช้ได้เฉพาะบทบาทนั้น (ตรงกับ RequireAuth ของแต่ละหน้า) */
+const ROLE_AREAS: [prefix: string, role: Role][] = [
+  ['/student', 'STUDENT'],
+  ['/hr', 'COMPANY_HR'],
+  ['/advisor', 'ADVISOR'],
+  ['/admin', 'PLATFORM_ADMIN'],
+];
+
+/** `path` เปิดได้ด้วยบทบาทนี้หรือไม่ • หน้าที่ไม่อยู่ในพื้นที่ของบทบาทใด (เช่น /jobs, /account) ⇒ ได้ทุกบทบาท */
+export function pathAllowedFor(path: string, role: Role): boolean {
+  const pathname = path.split(/[?#]/, 1)[0];
+  const area = ROLE_AREAS.find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+  return !area || area[1] === role;
+}
+
 export const FOOTER_LINKS: NavItem[] = [
   { label: 'ตรวจสอบใบรับรอง', href: '/public/certificates', ready: true },
   { label: 'นโยบายความเป็นส่วนตัว', href: '/privacy', ready: true },
