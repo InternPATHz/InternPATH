@@ -84,6 +84,10 @@ export function ApplicationDetail() {
     dialog.current?.showModal();
   }
 
+  function declineOffer() {
+    confirmAndAct('ปฏิเสธข้อเสนอนี้?', 'decline-offer', 'ปฏิเสธข้อเสนอแล้ว');
+  }
+
   function submitForm(event: FormEvent) {
     event.preventDefault();
     const value = text.trim();
@@ -115,6 +119,9 @@ export function ApplicationDetail() {
   if (!app) return <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6"><p className="text-sm text-ink-soft">กำลังโหลด…</p></main>;
 
   const can = (action: string) => app.available_actions.includes(action);
+  const canConfirmOffer = can('confirm-offer');
+  const canDeclineOffer = can('decline-offer');
+  const hasOtherActions = can('withdraw') || can('request-termination') || can('dispute-fail') || app.status === 'IN_PROGRESS';
   const formTitle = { terminate: 'ขอยุติการฝึกงาน', dispute: 'โต้แย้งผลประเมิน', problem: 'รายงานปัญหาระหว่างฝึกงาน' }[form ?? 'terminate'];
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -129,13 +136,21 @@ export function ApplicationDetail() {
       </header>
 
       <div className="mt-5 rounded-xl bg-surface-muted p-4 empty:hidden"><ApplicationProgress status={app.status} timeline={app.timeline} /></div>
-      {can('confirm-offer') && (
-        <section className="mt-5 rounded-xl bg-tile p-5 text-white">
+      {(canConfirmOffer || canDeclineOffer) && (
+        <section className={`mt-5 rounded-xl bg-tile p-5 text-white ${canConfirmOffer ? '' : 'hidden lg:block'}`}>
           <p className="text-sm text-white/75">ถึงตาคุณ</p>
           <h2 className="mt-1 text-xl font-semibold">บริษัทตอบรับคุณแล้ว</h2>
-          <p className="mt-2 text-sm text-white/75">การยืนยันข้อเสนอนี้จะปฏิเสธข้อเสนออื่นที่คุณได้รับอัตโนมัติ</p>
-          <button type="button" disabled={busy} onClick={() => confirmAndAct('ยืนยันรับข้อเสนอนี้? ข้อเสนออื่นของคุณจะถูกปฏิเสธอัตโนมัติ', 'confirm-offer', 'ยืนยันข้อเสนอแล้ว รออาจารย์ที่ปรึกษาอนุมัติ')}
-            className="mt-4 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ยืนยันรับข้อเสนอ</button>
+          {canConfirmOffer && <p className="mt-2 text-sm text-white/75">การยืนยันข้อเสนอนี้จะปฏิเสธข้อเสนออื่นที่คุณได้รับอัตโนมัติ</p>}
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            {canConfirmOffer && (
+              <button type="button" disabled={busy} onClick={() => confirmAndAct('ยืนยันรับข้อเสนอนี้? ข้อเสนออื่นของคุณจะถูกปฏิเสธอัตโนมัติ', 'confirm-offer', 'ยืนยันข้อเสนอแล้ว รออาจารย์ที่ปรึกษาอนุมัติ')}
+                className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover disabled:opacity-60">ยืนยันรับข้อเสนอ</button>
+            )}
+            {canDeclineOffer && (
+              <button type="button" disabled={busy} onClick={declineOffer}
+                className="hidden rounded-full border border-primary-on-dark px-5 py-2.5 text-sm font-semibold text-primary-on-dark hover:bg-white/10 disabled:opacity-60 lg:inline-flex">ปฏิเสธข้อเสนอ</button>
+            )}
+          </div>
         </section>
       )}
 
@@ -171,13 +186,13 @@ export function ApplicationDetail() {
             </section>
           )}
 
-          {(app.available_actions.some((action) => action !== 'confirm-offer') || app.status === 'IN_PROGRESS') && (
-            <section aria-labelledby="actions-title" className="mt-8">
+          {(hasOtherActions || canDeclineOffer) && (
+            <section aria-labelledby="actions-title" className={`mt-8 ${hasOtherActions ? '' : 'lg:hidden'}`}>
               <h2 id="actions-title" className="text-lg font-semibold">ตัวเลือกอื่น</h2>
               <div className="mt-3 flex flex-wrap gap-3">
-                {can('decline-offer') && (
-                  <button type="button" disabled={busy} onClick={() => confirmAndAct('ปฏิเสธข้อเสนอนี้?', 'decline-offer', 'ปฏิเสธข้อเสนอแล้ว')}
-                    className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">ปฏิเสธข้อเสนอ</button>
+                {canDeclineOffer && (
+                  <button type="button" disabled={busy} onClick={declineOffer}
+                    className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60 lg:hidden">ปฏิเสธข้อเสนอ</button>
                 )}
                 {can('withdraw') && (
                   <button type="button" disabled={busy} onClick={() => confirmAndAct('ถอนใบสมัครนี้? ทำย้อนกลับไม่ได้', 'withdraw', 'ถอนใบสมัครแล้ว')}
