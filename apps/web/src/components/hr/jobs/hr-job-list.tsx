@@ -19,6 +19,11 @@ type PageState = { key: string } & (
   { result: Paginated<HrJobObject>; error?: never } | { error: string; result?: never }
 );
 
+function jobLocationSummary(job: HrJobObject) {
+  const mode = job.work_mode && WORK_MODE_LABEL[job.work_mode];
+  return [mode, job.location].filter(Boolean).join(' · ') || 'ยังไม่ระบุสถานที่';
+}
+
 export function HrJobList() {
   const router = useRouter();
   const pathname = usePathname();
@@ -110,7 +115,7 @@ export function HrJobList() {
                   <div className="min-w-0 [overflow-wrap:anywhere]">
                     <h2 className="text-lg font-semibold">{jobTitleOf(job)}</h2>
                     <p className="text-sm text-ink-soft">
-                      {[job.work_mode ? WORK_MODE_LABEL[job.work_mode] : null, job.location].filter(Boolean).join(' · ') || 'ยังไม่ระบุสถานที่'}
+                      {jobLocationSummary(job)}
                     </p>
                   </div>
                   <JobStatusBadge status={job.status} />
@@ -141,7 +146,10 @@ export function HrJobList() {
                   <tr key={job.id}>
                     <th scope="row" className={`border-l-4 p-4 font-medium ${job.status === 'ADMIN_REJECTED' ? 'border-l-danger' : 'border-l-transparent'}`}>
                       <Link href={`/hr/jobs/item?id=${job.id}`} className="text-primary hover:underline">{jobTitleOf(job)}</Link>
-                      {job.location && <span className="mt-1 block text-xs text-ink-soft">{job.location}</span>}
+                      {job.location && <span className="mt-1 block text-xs text-ink-soft lg:hidden">{job.location}</span>}
+                      <span className="mt-1 hidden text-[0.8125rem] font-normal text-ink-soft [overflow-wrap:anywhere] lg:block">
+                        {jobLocationSummary(job)}
+                      </span>
                     </th>
                     <td className="p-4"><JobStatusBadge status={job.status} /></td>
                     <td className="p-4">
