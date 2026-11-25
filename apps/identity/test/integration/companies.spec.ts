@@ -181,4 +181,15 @@ describe('Identity company onboarding (Postgres จริง)', function () {
       .send({ website: 'https://updated.company.test' }).expect(200);
     expect((await db.company.findUniqueOrThrow({ where: { id: company.id } })).status).to.equal('PENDING');
   });
+
+  it('accepts only http(s) company websites so the public link never resolves inside the web app', async () => {
+    const { ownerToken } = await fixture();
+    for (const website of ['company.test', 'ftp://company.test', 'javascript:alert(1)']) {
+      const res = await request(app.getHttpServer()).patch('/v1/companies/me').set('Authorization', ownerToken)
+        .send({ website }).expect(400);
+      expect(res.body.error.code).to.equal('VALIDATION_FAILED');
+    }
+    await request(app.getHttpServer()).patch('/v1/companies/me').set('Authorization', ownerToken)
+      .send({ website: 'http://company.test' }).expect(200);
+  });
 });

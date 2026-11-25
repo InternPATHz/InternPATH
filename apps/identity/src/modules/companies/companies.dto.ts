@@ -4,7 +4,7 @@ import type { CompanyDocType } from '@internpath/contracts';
 
 export class UpdateCompanyDto {
   @IsOptional() @IsString() @MinLength(2) @MaxLength(200) name?: string;
-  @IsOptional() @IsUrl({ require_tld: true }) website?: string;
+  @IsOptional() @IsUrl({ require_tld: true, require_protocol: true, protocols: ['http', 'https'] }) website?: string;
   @IsOptional() @IsString() @MinLength(8) @MaxLength(30) phone?: string;
 }
 

@@ -14,6 +14,18 @@ const recoveryLinks = new Map([
   ['ACCOUNT_LOCKED', { href: '/unlock-login', label: 'ขอลิงก์ปลดล็อกบัญชี' }],
 ]);
 
+/**
+ * คืนเส้นทางภายในเว็บจาก `?next=` หรือ null • เบราว์เซอร์อ่าน `\` เป็น `/` ⇒ `/\evil.com` = `//evil.com`
+ * จึงแปลงเป็น URL เทียบ origin ปัจจุบันแทนการเช็กแค่ตัวอักษรขึ้นต้น
+ */
+function safeNextPath(next: string | null): string | null {
+  if (!next || !next.startsWith('/') || next.startsWith('//') || /[\\\s]/.test(next)) return null;
+  try {
+    const url = new URL(next, window.location.origin);
+    return url.origin === window.location.origin ? url.pathname + url.search + url.hash : null;
+  } catch { return null; }
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { login } = useAuth();
@@ -28,9 +40,9 @@ export default function LoginPage() {
     const form = new FormData(event.currentTarget);
     try {
       const user = await login(String(form.get('email')), String(form.get('password')));
-      // `next` ใช้ได้เฉพาะเส้นทางภายในเว็บ (ขึ้นต้น / และไม่ใช่ //) กัน open redirect • ไม่มี ⇒ หน้าแรกของบทบาท
-      const next = new URLSearchParams(window.location.search).get('next');
-      router.replace(next && next.startsWith('/') && !next.startsWith('//') ? next : ROLE_HOME[user.role] ?? '/account');
+      // `next` ใช้ได้เฉพาะเส้นทางภายในเว็บ กัน open redirect • ไม่มี/ไม่ปลอดภัย ⇒ หน้าแรกของบทบาท
+      const next = safeNextPath(new URLSearchParams(window.location.search).get('next'));
+      router.replace(next ?? ROLE_HOME[user.role] ?? '/account');
     } catch (cause) {
       setError(cause instanceof Error ? cause : new Error('เข้าสู่ระบบไม่สำเร็จ'));
     } finally { setBusy(false); }
