@@ -30,3 +30,6 @@ Thumbs.db
 # Prisma
 *.db
 apps/*/generated/
+
+# Local demo fixture ownership and seed lock
+/.internpath-demo/
