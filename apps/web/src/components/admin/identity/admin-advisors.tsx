@@ -13,7 +13,7 @@ const statusOptions: Array<[string, string]> = [['PENDING_APPROVAL', 'รออ�
 export function AdminAdvisors() {
   const { request } = useAuth();
   const params = useSearchParams();
-  const [status, setStatus] = useState('PENDING_APPROVAL');
+  const [status, setStatus] = useState(params.get('student') ? 'ACTIVE' : 'PENDING_APPROVAL');
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<Paginated<AdminAdvisorListItem> | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,7 +51,7 @@ export function AdminAdvisors() {
 
   async function moveStudent(event: React.FormEvent) {
     event.preventDefault();
-    if (!UUID.test(studentId.trim()) || !UUID.test(advisorId.trim())) { setError('รหัสนักศึกษาและอาจารย์ต้องเป็น UUID'); return; }
+    if (!UUID.test(studentId.trim()) || !UUID.test(advisorId.trim())) { setError('รหัสบัญชีนักศึกษาและอาจารย์ต้องเป็น UUID (ไม่ใช่รหัสนักศึกษา)'); return; }
     if (studentId.trim() === advisorId.trim()) { setError('กรุณาเลือกบัญชีคนละรายการ'); return; }
     setBusy(true); setError(''); setNotice('');
     try {
@@ -74,7 +74,10 @@ export function AdminAdvisors() {
         <div className="mt-4 divide-y divide-border">{result.data.map((item) => <div key={item.id} className="py-4 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="font-medium">{item.full_name}</p>
             <p className="text-sm text-ink-soft">{item.email}{item.department ? ` · ${item.department}` : ''}</p>
-            <p className="mt-1 text-xs text-ink-soft">{labelOf(USER_STATUS_LABEL, item.status)} · สมัครเมื่อ {new Date(item.created_at).toLocaleDateString('th-TH')}</p></div>
+            <p className="mt-1 text-xs text-ink-soft">{labelOf(USER_STATUS_LABEL, item.status)} · สมัครเมื่อ {new Date(item.created_at).toLocaleDateString('th-TH')}</p>
+            <p className="mt-1 break-all text-xs text-ink-soft">รหัสบัญชี <span className="font-mono">{item.id}</span></p></div>
+            {item.status === 'ACTIVE' && <button type="button" onClick={() => { setAdvisorId(item.id); setError(''); document.getElementById('move-student')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }}
+              aria-pressed={advisorId.trim() === item.id} className="rounded-lg border border-border px-3 py-2 text-sm aria-pressed:border-primary aria-pressed:text-primary">{advisorId.trim() === item.id ? 'เลือกเป็นอาจารย์ปลายทางแล้ว' : 'เลือกเป็นอาจารย์ปลายทาง'}</button>}
             {item.status === 'PENDING_APPROVAL' && <div className="flex gap-2">
               <button disabled={busy} onClick={() => void decide(item.id, 'approve')} className="rounded-lg bg-primary px-3 py-2 text-sm font-medium text-white disabled:opacity-50">อนุมัติ</button>
               <button disabled={busy} onClick={() => { setRejectId(item.id); setReason(''); }} className="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-50">ปฏิเสธ</button>
@@ -85,11 +88,11 @@ export function AdminAdvisors() {
         </div>)}</div>}
       <div className="mt-4 flex items-center justify-end gap-3 text-sm"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="disabled:opacity-40">ก่อนหน้า</button><span>{page} / {lastPage}</span><button disabled={page >= lastPage} onClick={() => setPage(page + 1)} className="disabled:opacity-40">ถัดไป</button></div>
     </section>
-    <section className="rounded-xl border border-border bg-surface p-4"><h2 className="text-lg font-semibold">ย้ายอาจารย์ของนักศึกษา</h2>
-      <p className="mt-1 text-sm text-ink-soft">ค้นหารหัสบัญชีจากหน้า <a className="text-primary underline" href="/admin/users">ผู้ใช้</a> ระบบรับเฉพาะอาจารย์ที่ใช้งานอยู่ในมหาวิทยาลัยเดียวกัน</p>
+    <section id="move-student" className="scroll-mt-4 rounded-xl border border-border bg-surface p-4"><h2 className="text-lg font-semibold">ย้ายอาจารย์ของนักศึกษา</h2>
+      <p className="mt-1 text-sm text-ink-soft">ใช้รหัสบัญชี (UUID) ไม่ใช่รหัสนักศึกษา — ค้นนักศึกษาด้วยชื่อ อีเมล หรือรหัสนักศึกษาที่หน้า <a className="text-primary underline" href="/admin/users">ผู้ใช้</a> แล้วกด &quot;ย้ายอาจารย์&quot; ระบบจะเติมรหัสให้ • อาจารย์ปลายทางกด &quot;เลือกเป็นอาจารย์ปลายทาง&quot; ในรายการด้านบน (ตัวกรอง &quot;ใช้งานอยู่&quot;) • เจ้าของบัญชีดูรหัสบัญชีของตนได้ที่หน้าบัญชี • ระบบรับเฉพาะอาจารย์ที่ใช้งานอยู่ในมหาวิทยาลัยเดียวกัน</p>
       <form onSubmit={(event) => void moveStudent(event)} className="mt-4 flex flex-wrap items-end gap-3">
-        <label className="min-w-64 flex-1 text-sm">รหัสนักศึกษา<input value={studentId} onChange={(event) => setStudentId(event.target.value)} required className="mt-1 w-full rounded-lg border border-border px-3 py-2 font-mono text-xs" /></label>
-        <label className="min-w-64 flex-1 text-sm">รหัสอาจารย์คนใหม่<input value={advisorId} onChange={(event) => setAdvisorId(event.target.value)} required className="mt-1 w-full rounded-lg border border-border px-3 py-2 font-mono text-xs" /></label>
+        <label className="min-w-64 flex-1 text-sm">รหัสบัญชีนักศึกษา<input value={studentId} onChange={(event) => setStudentId(event.target.value)} required placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="mt-1 w-full rounded-lg border border-border px-3 py-2 font-mono text-xs" /></label>
+        <label className="min-w-64 flex-1 text-sm">รหัสบัญชีอาจารย์คนใหม่<input value={advisorId} onChange={(event) => setAdvisorId(event.target.value)} required placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" className="mt-1 w-full rounded-lg border border-border px-3 py-2 font-mono text-xs" /></label>
         <button disabled={busy} className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white disabled:opacity-50">ย้ายนักศึกษา</button>
       </form>
     </section>
