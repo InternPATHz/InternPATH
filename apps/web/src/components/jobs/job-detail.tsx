@@ -163,7 +163,21 @@ export function JobDetail() {
 
         <aside id="apply" className="h-fit scroll-mt-28 rounded-xl border border-border bg-surface p-5 md:sticky md:top-28">
           <h2 className="mb-2 text-xl font-semibold">สมัครงานนี้</h2>
-          <p className="text-sm text-ink-soft">เปิดรับอีก {job.quota_available} จาก {job.quota} ตำแหน่ง</p>
+          <p className="text-sm text-ink-soft lg:hidden">เปิดรับอีก {job.quota_available} จาก {job.quota} ตำแหน่ง</p>
+          <div className="hidden space-y-2 lg:block">
+            <p className="flex flex-wrap justify-between gap-x-2 text-sm text-ink-soft">
+              <span>ตำแหน่งที่เหลือ</span>
+              <strong className="font-semibold tabular-nums text-ink">{job.quota_available} จาก {job.quota}</strong>
+            </p>
+            {job.quota > 0 && (
+              <div role="meter" aria-label="ตำแหน่งที่เหลือ" aria-valuemin={0} aria-valuemax={job.quota}
+                aria-valuenow={job.quota_available} aria-valuetext={`${job.quota_available} จาก ${job.quota} ตำแหน่ง`}
+                className="h-1 overflow-hidden rounded-full bg-border forced-colors:bg-[Canvas] forced-colors:outline">
+                <span className="block h-full bg-ink forced-colors:bg-[CanvasText] forced-colors:forced-color-adjust-none"
+                  style={{ width: `${(job.quota_available / job.quota) * 100}%` }} />
+              </div>
+            )}
+          </div>
           <div className="mt-4"><ApplyBox closed={closed} job={job} /></div>
           {/* รายงานได้เฉพาะประกาศ PUBLISHED/CLOSED (หน้านี้แสดงเฉพาะสองสถานะนี้) — ผู้เยี่ยมชมเห็นลิงก์เข้าสู่ระบบ */}
           <div className="mt-5 border-t border-border pt-4">
