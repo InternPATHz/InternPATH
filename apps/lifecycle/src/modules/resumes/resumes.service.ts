@@ -157,11 +157,19 @@ export class ResumesService {
 
   /**
    * GET /advisor/applications/{id}/resume — เฉพาะอาจารย์ที่ผูกกับใบสมัคร (`advisor_user_id`)
-   * นักศึกษานอกความดูแล ⇒ 403 NOT_OWNER_OF_RESOURCE (UAT-29)
+   * **และยังเป็นอาจารย์ที่ปรึกษาคนปัจจุบันของนักศึกษา** — ใบที่จบแล้วไม่ย้ายตามตอน Admin ย้ายอาจารย์ (E07)
+   * อาจารย์เดิมจึงต้องไม่ขอลิงก์เรซูเม่ได้อีก (PDPA) • นักศึกษานอกความดูแล ⇒ 403 NOT_OWNER_OF_RESOURCE (UAT-29)
    */
   async forAdvisor(user: JwtClaims, applicationId: string): Promise<ResumeUrlResponse> {
     const application = await this.findApplication(applicationId);
     assertAdvisorOwnership(user, application.advisorUserId);
+    if (user.role !== 'PLATFORM_ADMIN') {
+      const link = await this.db.studentAdvisorLink.findUnique({
+        where: { studentUserId: application.studentUserId },
+        select: { advisorUserId: true, linkStatus: true },
+      });
+      assertAdvisorOwnership(user, link?.linkStatus === 'LINKED' ? link.advisorUserId : null);
+    }
     const resume = await this.activeResume(application.resumeId, application.studentUserId);
     return this.signedUrl(resume);
   }

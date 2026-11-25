@@ -550,6 +550,17 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
       const held = await prisma.review.create({
         data: { ...reviewBase, applicationId: terminatedApp.id, title: 'หัวข้อ', body: 'เนื้อหาที่รอตรวจ', status: 'HELD', outcomeLabel: 'TERMINATED' },
       });
+      storage.objects.set(cert.pdfObjectKey, Buffer.from('%PDF สมชาย ใจดี'));
+      // สำเนาเนื้อหารีวิวใน Outbox (E09) — ส่งแล้ว 1 แถว ยังไม่ส่ง 1 แถว และของผู้ใช้อื่นที่ต้องไม่ถูกแตะ
+      const e09 = (studentUserId: string, reviewId: string, publishedAt: Date | null) => prisma.outboxEvent.create({
+        data: {
+          type: 'ReviewSubmitted', aggregateId: reviewId, correlationId: randomUUID(), publishedAt,
+          payload: { review_id: reviewId, student_user_id: studentUserId, content: { body: 'เนื้อหาที่รอตรวจ' } },
+        },
+      });
+      await e09(student, published.id, new Date());
+      await e09(student, held.id, null);
+      const otherOutbox = await e09(randomUUID(), randomUUID(), null);
       await prisma.statusHistory.create({
         data: {
           entity: 'APPLICATION',
@@ -560,14 +571,16 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
           correlationId: randomUUID(),
         },
       });
-      return { student, hr, pending, accepted, completed, terminatedApp, resumeKey, photoKey, cert, published, held };
+      return { student, hr, pending, accepted, completed, terminatedApp, resumeKey, photoKey, cert, published, held, otherOutbox };
     }
 
     it('นักศึกษาลบบัญชี: ยกเลิกใบก่อนขั้นอาจารย์ + คืนโควตา, ลบไฟล์/PII, รีวิว/ใบรับรองไม่ระบุตัวตน, id ⇒ anonymous_actor_id', async () => {
       const s = await seedStudent();
       const anon = randomUUID();
       const outcome = await handle(e15(s.student, anon));
-      expect(outcome).to.include({ cancelled: 2, resumesDeleted: 1, reviewsRemoved: 1, certificatesAnonymized: 1 });
+      expect(outcome).to.include({
+        cancelled: 2, resumesDeleted: 1, reviewsRemoved: 1, certificatesAnonymized: 1, certificateFilesDeleted: 1, reviewEventsPurged: 2,
+      });
 
       // 1. ใบสมัคร
       for (const id of [s.pending.id, s.accepted.id]) expect(await reload(id)).to.include({ status: 'CANCELLED', studentUserId: anon });
@@ -579,7 +592,9 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
 
       // 2. ไฟล์ + PII
       // ไฟล์รูปโปรไฟล์ถูกลบด้วย (B4 — PM 18 พ.ย.)
-      expect(storage.deleted).to.deep.equal([s.resumeKey, s.photoKey]);
+      // + PDF ใบรับรองที่พิมพ์ชื่อจริง (ข้อค้นพบรีวิวความปลอดภัย 2026-11-25)
+      expect(storage.deleted).to.deep.equal([s.resumeKey, s.photoKey, s.cert.pdfObjectKey]);
+      expect(storage.objects.has(s.cert.pdfObjectKey)).to.equal(false);
       expect(await prisma.resume.count({ where: { studentUserId: { in: [s.student, anon] } } })).to.equal(0);
       expect(await prisma.studentProfile.count({ where: { userId: s.student } })).to.equal(0);
       expect(await prisma.studentAdvisorLink.count({ where: { studentUserId: s.student } })).to.equal(0);
@@ -592,6 +607,9 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
         body: 'ดีมาก',
         studentUserId: anon,
       });
+      // ไม่เหลือสำเนาเนื้อหารีวิวคู่กับ id ของผู้ใช้ใน Outbox — แถวของผู้ใช้อื่นยังอยู่
+      expect(await prisma.outboxEvent.count({ where: { type: 'ReviewSubmitted', aggregateId: { in: [s.published.id, s.held.id] } } })).to.equal(0);
+      expect(await prisma.outboxEvent.count({ where: { id: s.otherOutbox.id } })).to.equal(1);
 
       // 4. ใบรับรอง
       expect(await prisma.certificate.findUniqueOrThrow({ where: { id: s.cert.id } })).to.include({
@@ -608,6 +626,30 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
       expect((await prisma.evaluation.findFirstOrThrow({ where: { applicationId: s.completed.id } })).evaluatedBy).to.equal(s.hr);
     });
 
+    it('ใบที่เข้าขั้นอาจารย์ระหว่างตรวจสิทธิ์ลบ (ADVISOR_PENDING/ADVISOR_APPROVED) ⇒ CANCELLED + คืนโควตา; ใบที่เริ่มฝึกแล้วไม่ยกเลิก', async () => {
+      // ยืนยันได้ทีละ 1 ที่ (partial unique index) ⇒ แยกนักศึกษาคนละคนต่อสถานะ
+      const cases = [
+        { status: 'ADVISOR_PENDING' as const, expected: 'CANCELLED', release: true },
+        { status: 'ADVISOR_APPROVED' as const, expected: 'CANCELLED', release: true },
+        { status: 'IN_PROGRESS' as const, expected: 'IN_PROGRESS', release: false },
+      ];
+      for (const item of cases) {
+        job.reset();
+        const student = randomUUID();
+        const app = await seed(item.status, {
+          studentUserId: student,
+          jobId: randomUUID(),
+          quotaReserved: item.status !== 'IN_PROGRESS',
+          ...(item.status === 'IN_PROGRESS' ? { actualStartDate: addDays(today(), -5) } : {}),
+        });
+        const anon = randomUUID();
+        const outcome = await handle(e15(student, anon));
+        expect(outcome.cancelled, item.status).to.equal(item.release ? 1 : 0);
+        expect(await reload(app.id), item.status).to.include({ status: item.expected, studentUserId: anon });
+        expect(job.calls.filter((c) => c.op === 'release').map((c) => c.applicationId), item.status).to.deep.equal(item.release ? [app.id] : []);
+      }
+    });
+
     it('รับซ้ำ (event_id ใหม่) ⇒ สำเร็จโดยไม่มีอะไรเปลี่ยน', async () => {
       const s = await seedStudent();
       const anon = randomUUID();
@@ -620,6 +662,8 @@ describe('Lifecycle 1.11 — Consumer และการลบข้อมูล
         resumesDeleted: 0,
         reviewsRemoved: 0,
         certificatesAnonymized: 0,
+        certificateFilesDeleted: 0,
+        reviewEventsPurged: 0,
         historyAnonymized: 0,
         auditAnonymized: 0,
       });

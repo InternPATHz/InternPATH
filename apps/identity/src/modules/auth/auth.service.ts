@@ -195,14 +195,14 @@ export class AuthService {
     return jwt.sign({ role: user.role, ...(companyId ? { company_id: companyId, company_role: companyRole } : {}), ...(companyRole === 'MEMBER' ? { company_categories: companyCategories ?? [] } : {}), ...(advisorId ? { advisor_id: advisorId } : {}), ...(user.universityId ? { university_id: user.universityId } : {}) }, privateKey, { algorithm: 'RS256', subject: user.id, jwtid: randomUUID(), expiresIn: this.accessTtl() });
   }
 
-  private async issueSession(user: User, familyId: string = randomUUID()): Promise<LoginResponse> {
+  private async issueSession(user: User, familyId: string = randomUUID(), db: Prisma.TransactionClient = this.db): Promise<LoginResponse> {
     const [member, student] = await Promise.all([
-      user.role === 'COMPANY_HR' ? this.db.companyMember.findUnique({ where: { userId: user.id } }) : null,
-      user.role === 'STUDENT' ? this.db.studentProfileIdentity.findUnique({ where: { userId: user.id } }) : null,
+      user.role === 'COMPANY_HR' ? db.companyMember.findUnique({ where: { userId: user.id } }) : null,
+      user.role === 'STUDENT' ? db.studentProfileIdentity.findUnique({ where: { userId: user.id } }) : null,
     ]);
     const access_token = this.accessToken(user, member?.companyId, member?.memberRole, student?.advisorId ?? undefined, member?.categories);
     const refresh_token = newToken();
-    await this.db.refreshToken.create({ data: { userId: user.id, tokenHash: hashToken(refresh_token), familyId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) } });
+    await db.refreshToken.create({ data: { userId: user.id, tokenHash: hashToken(refresh_token), familyId, expiresAt: new Date(Date.now() + REFRESH_TTL_MS) } });
     return { access_token, refresh_token, expires_in: this.accessTtl(), user: this.authUser(user) };
   }
 
@@ -275,16 +275,26 @@ export class AuthService {
   }
 
   async refresh(token: string): Promise<LoginResponse> {
-    const record = await this.db.refreshToken.findUnique({ where: { tokenHash: hashToken(token) }, include: { user: true } });
-    if (!record || record.expiresAt <= new Date() || record.revokedAt) throw new AppException('INVALID_REFRESH_TOKEN', 'Refresh Token ไม่ถูกต้อง', 401);
-    if (record.rotatedAt) {
-      await this.db.refreshToken.updateMany({ where: { familyId: record.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
+    const tokenHash = hashToken(token);
+    const found = await this.db.refreshToken.findUnique({ where: { tokenHash } });
+    if (!found || found.expiresAt <= new Date() || found.revokedAt) throw new AppException('INVALID_REFRESH_TOKEN', 'Refresh Token ไม่ถูกต้อง', 401);
+    if (found.rotatedAt) {
+      await this.db.refreshToken.updateMany({ where: { familyId: found.familyId, revokedAt: null }, data: { revokedAt: new Date() } });
       throw new AppException('REFRESH_TOKEN_REUSED', 'Refresh Token นี้ถูกใช้ซ้ำ', 401);
     }
-    this.assertUsable(record.user);
-    const updated = await this.db.refreshToken.updateMany({ where: { id: record.id, rotatedAt: null, revokedAt: null }, data: { rotatedAt: new Date() } });
-    if (updated.count !== 1) throw new AppException('INVALID_REFRESH_TOKEN', 'Refresh Token ไม่ถูกต้อง', 401);
-    return this.issueSession(record.user, record.familyId);
+    // ล็อกแถวผู้ใช้ก่อนหมุน token: การรีเซ็ตรหัสผ่าน/ระงับบัญชีที่ทำพร้อมกันจะรอกันเป็นลำดับ
+    // ถ้าอีกฝั่งเพิกถอนไปก่อน ตรงนี้จะเห็น `revokedAt`; ถ้าตรงนี้ไปก่อน token ใหม่จะถูกเพิกถอนตามด้วย ไม่หลุดรอด
+    return this.db.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${found.userId}::uuid FOR UPDATE`;
+      const record = await tx.refreshToken.findUnique({ where: { tokenHash }, include: { user: true } });
+      if (!record || record.expiresAt <= new Date() || record.revokedAt || record.rotatedAt) {
+        throw new AppException('INVALID_REFRESH_TOKEN', 'Refresh Token ไม่ถูกต้อง', 401);
+      }
+      this.assertUsable(record.user);
+      const updated = await tx.refreshToken.updateMany({ where: { id: record.id, rotatedAt: null, revokedAt: null }, data: { rotatedAt: new Date() } });
+      if (updated.count !== 1) throw new AppException('INVALID_REFRESH_TOKEN', 'Refresh Token ไม่ถูกต้อง', 401);
+      return this.issueSession(record.user, record.familyId, tx);
+    });
   }
 
   async logout(userId: string, token: string): Promise<void> {
@@ -307,10 +317,14 @@ export class AuthService {
     await this.db.$transaction(async (tx) => {
       const record = await tx.emailToken.findUnique({ where: { tokenHash: hashToken(token) } });
       if (!record || record.purpose !== 'RESET_PASSWORD' || record.usedAt || record.expiresAt <= new Date()) throw new AppException('INVALID_TOKEN', 'ลิงก์รีเซ็ตรหัสผ่านไม่ถูกต้องหรือหมดอายุ', 400);
-      const consumed = await tx.emailToken.updateMany({ where: { id: record.id, usedAt: null, expiresAt: { gt: new Date() } }, data: { usedAt: new Date() } });
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${record.userId}::uuid FOR UPDATE`;
+      const now = new Date();
+      const consumed = await tx.emailToken.updateMany({ where: { id: record.id, usedAt: null, expiresAt: { gt: now } }, data: { usedAt: now } });
       if (consumed.count !== 1) throw new AppException('INVALID_TOKEN', 'ลิงก์นี้ถูกใช้แล้ว', 400);
+      // ลิงก์รีเซ็ตใบอื่นที่ออกไว้ก่อนหน้าและยังไม่หมดอายุต้องใช้ไม่ได้อีก (กันคนที่ได้อีเมลเก่าไปเปลี่ยนรหัสทับ)
+      await tx.emailToken.updateMany({ where: { userId: record.userId, purpose: 'RESET_PASSWORD', usedAt: null }, data: { usedAt: now } });
       await tx.user.update({ where: { id: record.userId }, data: { passwordHash, failedLoginCount: 0, lockedUntil: null, version: { increment: 1 } } });
-      await tx.refreshToken.updateMany({ where: { userId: record.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+      await tx.refreshToken.updateMany({ where: { userId: record.userId, revokedAt: null }, data: { revokedAt: now } });
     });
   }
 }

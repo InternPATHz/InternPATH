@@ -167,6 +167,16 @@ export class HrApplicationsService {
     const endDate = body.end_date ? toDateOnly(body.end_date) : app.endDate;
 
     if (daysBetween(bangkokToday(now), actualStart) > 0) throw validationFailed('actual_start_date', 'IN_FUTURE');
+    // ห้ามย้อนวันเริ่มจริงไปก่อนวันที่อาจารย์อนุมัติ — ไม่งั้นระยะฝึก (เกณฑ์ใบรับรอง ≥ 30 วัน) นับช่วงที่ระบบไม่มีหลักฐาน
+    // (PM ตัดสิน 2026-11-25) • ใช้วันที่ตามเวลาไทยของการเข้า ADVISOR_APPROVED ครั้งล่าสุดใน status_history
+    const approval = await this.db.statusHistory.findFirst({
+      where: { entity: 'APPLICATION', entityId: applicationId, toStatus: 'ADVISOR_APPROVED' },
+      orderBy: { occurredAt: 'desc' },
+      select: { occurredAt: true },
+    });
+    if (approval && daysBetween(bangkokToday(approval.occurredAt), actualStart) < 0) {
+      throw validationFailed('actual_start_date', 'BEFORE_ADVISOR_APPROVAL');
+    }
     if (startDate && endDate && daysBetween(startDate, endDate) <= 0) {
       throw validationFailed('end_date', 'NOT_AFTER_START_DATE');
     }

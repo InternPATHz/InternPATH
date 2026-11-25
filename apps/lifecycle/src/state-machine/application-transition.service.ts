@@ -1,4 +1,4 @@
-import { OutboxWriter, asUuid } from '@internpath/common';
+import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { AcademicResult, ApplicationStatus } from '@internpath/contracts';
 import { Injectable } from '@nestjs/common';
 import type { Application, Prisma } from '../../generated/client';
@@ -40,6 +40,11 @@ export interface TransitionCommand {
   input?: Omit<GuardInput, 'reason'>;
   patch?: ApplicationPatch;
   hrUserIds?: string[];
+  /**
+   * อาจารย์ที่ต้องยังเป็นเจ้าของใบสมัครตอนเขียน — ใส่ใน `WHERE` ของคำสั่งเดียวกัน
+   * กันกรณี Admin ย้ายนักศึกษา (E07) ระหว่างตรวจสิทธิ์กับตอนเขียน แล้วคำสั่งของอาจารย์เดิมเขียนผลทับ
+   */
+  expectedAdvisorUserId?: string;
   /**
    * เขียนแถวที่เกี่ยวข้อง (เช่น evaluations, fail_disputes, admin_audit_log) ใน Transaction เดียวกัน หลังเปลี่ยนสถานะสำเร็จ
    * `before` = แถวที่อ่านใน Transaction ก่อนเปลี่ยน (ค่า "ก่อน" ของ audit log)
@@ -106,14 +111,21 @@ export class ApplicationTransitionService {
     let count: number;
     try {
       ({ count } = await tx.application.updateMany({
-        where: { id: before.id, status: before.status },
+        where: {
+          id: before.id,
+          status: before.status,
+          ...(command.expectedAdvisorUserId ? { advisorUserId: command.expectedAdvisorUserId } : {}),
+        },
         data: this.buildUpdateData(before, rule, command, reason, now),
       }));
     } catch (error) {
       throw mapApplicationUniqueViolation(error) ?? error;
     }
-    // อีกคำสั่งเปลี่ยนสถานะไปก่อนแล้ว (ผู้ชนะ 1 ราย)
-    if (count === 0) throw stateConflict('STALE_STATUS');
+    if (count === 0) {
+      if (command.expectedAdvisorUserId) await assertStillAdvisor(tx, before.id, command.expectedAdvisorUserId);
+      // อีกคำสั่งเปลี่ยนสถานะไปก่อนแล้ว (ผู้ชนะ 1 ราย)
+      throw stateConflict('STALE_STATUS');
+    }
 
     let after = await tx.application.findUniqueOrThrow({ where: { id: before.id } });
     if (after.frozen) {
@@ -165,13 +177,19 @@ export class ApplicationTransitionService {
     academicResult: AcademicResult,
     note: string | null,
     now: Date,
+    expectedAdvisorUserId?: string,
   ): Promise<Application> {
     if (!ACADEMIC_RESULT_WITHOUT_TRANSITION.includes(before.status)) throw stateConflict();
     if (!allowedAcademicResults(before.status).includes(academicResult)) {
       throw validationFailed('academic_result', 'NOT_ALLOWED');
     }
     const { count } = await tx.application.updateMany({
-      where: { id: before.id, status: before.status, academicResult: null },
+      where: {
+        id: before.id,
+        status: before.status,
+        academicResult: null,
+        ...(expectedAdvisorUserId ? { advisorUserId: expectedAdvisorUserId } : {}),
+      },
       data: {
         academicResult,
         academicNote: note,
@@ -179,7 +197,10 @@ export class ApplicationTransitionService {
         version: { increment: 1 },
       },
     });
-    if (count === 0) throw stateConflict('ACADEMIC_RESULT_ALREADY_RECORDED');
+    if (count === 0) {
+      if (expectedAdvisorUserId) await assertStillAdvisor(tx, before.id, expectedAdvisorUserId);
+      throw stateConflict('ACADEMIC_RESULT_ALREADY_RECORDED');
+    }
     return tx.application.findUniqueOrThrow({ where: { id: before.id } });
   }
 
@@ -295,6 +316,14 @@ export class ApplicationTransitionService {
       );
     }
     return outcomes;
+  }
+}
+
+/** เขียนไม่สำเร็จเพราะใบสมัครถูกย้ายไปอาจารย์คนอื่นแล้ว ⇒ 403 เหมือนตอนตรวจสิทธิ์ (ไม่ใช่ 409) */
+async function assertStillAdvisor(tx: Tx, applicationId: string, advisorUserId: string): Promise<void> {
+  const current = await tx.application.findUnique({ where: { id: applicationId }, select: { advisorUserId: true } });
+  if (current && current.advisorUserId !== advisorUserId) {
+    throw new AppException('NOT_OWNER_OF_RESOURCE', 'ไม่มีสิทธิ์เข้าถึงข้อมูลของนักศึกษาที่ไม่ได้อยู่ในความดูแล', 403);
   }
 }
 

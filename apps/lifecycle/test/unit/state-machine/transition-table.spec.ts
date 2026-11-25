@@ -58,6 +58,7 @@ const DOC_TABLE: Array<[ApplicationStatus, ApplicationStatus, ActorRole[]]> = [
   ['ADVISOR_APPROVED', 'WITHDRAWN', ['STUDENT']],
   ['ADVISOR_APPROVED', 'OFFER_RESCINDED', ['COMPANY_HR']],
   ['ADVISOR_APPROVED', 'EXPIRED', ['SYSTEM']],
+  ['ADVISOR_APPROVED', 'CANCELLED', ['SYSTEM']],
   ['IN_PROGRESS', 'TERMINATED', ['COMPANY_HR', 'STUDENT', 'ADVISOR', 'PLATFORM_ADMIN']],
   ['IN_PROGRESS', 'EVALUATED_PASS', ['COMPANY_HR']],
   ['IN_PROGRESS', 'EVALUATED_FAIL', ['COMPANY_HR']],
@@ -200,10 +201,14 @@ describe('State Machine — Transition Table (data-schema §8.1)', () => {
       'REEVALUATION_REQUESTED',
     ]);
     const cancellable = TRANSITIONS.filter((r) => r.trigger === 'cancel-by-deletion');
-    expect(cancellable.map((r) => r.from)).to.have.members(['PENDING', 'HR_ACCEPTED']);
+    // ADVISOR_PENDING/ADVISOR_APPROVED: เฉพาะกรณี E15 มาถึงหลังสถานะเปลี่ยนระหว่างตรวจสิทธิ์ลบ (PM ตัดสิน 2026-11-25)
+    expect(cancellable.map((r) => r.from)).to.have.members(['PENDING', 'HR_ACCEPTED', 'ADVISOR_PENDING', 'ADVISOR_APPROVED']);
     expect(cancellable.every((r) => r.to === 'CANCELLED')).to.equal(true);
-    expect(cancellable.find((r) => r.from === 'HR_ACCEPTED')?.quota).to.equal('RELEASE');
-    for (const status of DELETION_BLOCKING_STATUSES) {
+    for (const from of ['HR_ACCEPTED', 'ADVISOR_PENDING', 'ADVISOR_APPROVED']) {
+      expect(cancellable.find((r) => r.from === from)?.quota, from).to.equal('RELEASE');
+    }
+    // หลังเริ่มฝึกแล้วไม่ยกเลิกเอง (โควตายืนยันแล้ว/มีผลประเมิน) — ยังบล็อกที่ deletion-eligibility
+    for (const status of ['IN_PROGRESS', 'FAIL_DISPUTED', 'REEVALUATION_REQUESTED'] as const) {
       expect(findTransition(status, 'cancel-by-deletion', 'SYSTEM'), status).to.equal(undefined);
     }
   });

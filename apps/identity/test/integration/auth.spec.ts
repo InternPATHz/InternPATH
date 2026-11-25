@@ -212,6 +212,45 @@ describe('Identity Auth API (Postgres จริง)', function () {
     await request(app.getHttpServer()).post('/v1/auth/login').send({ email: 'student@test.ac.th', password: 'new password 12345' }).expect(200);
   });
 
+  it('a completed reset also voids older reset links that have not expired', async () => {
+    const email = 'two-links@test.ac.th';
+    const user = await db.user.create({ data: { email, passwordHash: await hashPassword('first password 12345'),
+      fullName: 'Two Links', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date() } });
+    const resetTokens = () => emails.filter((item) => item.email === email && item.purpose === 'reset-password').map((item) => item.token);
+    await request(app.getHttpServer()).post('/v1/auth/password/forgot').send({ email }).expect(204);
+    // ข้ามตัวกันขอซ้ำใน 60 วินาที เพื่อให้มีลิงก์ที่ยังใช้ได้สองใบพร้อมกัน
+    await db.emailToken.updateMany({ where: { userId: user.id, purpose: 'RESET_PASSWORD' }, data: { createdAt: new Date(Date.now() - 120_000) } });
+    await request(app.getHttpServer()).post('/v1/auth/password/forgot').send({ email }).expect(204);
+    const [older, newer] = resetTokens();
+    expect(older).to.be.a('string');
+    expect(newer).to.be.a('string').and.not.equal(older);
+    await request(app.getHttpServer()).post('/v1/auth/password/reset').send({ token: newer, new_password: 'second password 12345' }).expect(204);
+    await request(app.getHttpServer()).post('/v1/auth/password/reset').send({ token: older, new_password: 'attacker password 12345' }).expect(400);
+    await request(app.getHttpServer()).post('/v1/auth/login').send({ email, password: 'second password 12345' }).expect(200);
+  });
+
+  it('a refresh racing a password reset never leaves a usable refresh token', async () => {
+    const email = 'race-refresh@test.ac.th';
+    const user = await db.user.create({ data: { email, passwordHash: await hashPassword('race password 12345'),
+      fullName: 'Race Refresh', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date() } });
+    for (let round = 0; round < 5; round++) {
+      const login = await request(app.getHttpServer()).post('/v1/auth/login').send({ email, password: 'race password 12345' }).expect(200);
+      await db.emailToken.deleteMany({ where: { userId: user.id } });
+      await request(app.getHttpServer()).post('/v1/auth/password/forgot').send({ email }).expect(204);
+      const token = emails.filter((item) => item.email === email && item.purpose === 'reset-password').at(-1)?.token;
+      const [refresh] = await Promise.all([
+        request(app.getHttpServer()).post('/v1/auth/refresh').send({ refresh_token: login.body.refresh_token }),
+        request(app.getHttpServer()).post('/v1/auth/password/reset').send({ token, new_password: 'race password 12345' }).expect(204),
+      ]);
+      if (refresh.status === 200) {
+        await request(app.getHttpServer()).post('/v1/auth/refresh').send({ refresh_token: refresh.body.refresh_token }).expect(401);
+      } else {
+        expect(refresh.status).to.equal(401);
+      }
+      expect(await db.refreshToken.count({ where: { userId: user.id, revokedAt: null } })).to.equal(0);
+    }
+  });
+
   it('lets the owner use a one-time email link and password despite an attacker-triggered lock', async () => {
     const email = 'locked-user@test.ac.th';
     const password = 'correct horse battery';
