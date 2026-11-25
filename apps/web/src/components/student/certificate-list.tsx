@@ -9,7 +9,7 @@ import { Notice } from '@/components/admin/filter-fields';
 import { formatDate } from '@/components/student/application-ui';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { ApiError } from '@/lib/api';
-import { asList } from '@/lib/list';
+import { allPages } from '@/lib/list';
 
 const failure = (cause: unknown) => (cause instanceof ApiError ? cause.message : 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่');
 
@@ -44,12 +44,13 @@ export function CertificateList() {
   const [items, setItems] = useState<CertificateItem[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
+  const [messageCode, setMessageCode] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const result = await request<Paginated<CertificateItem> | CertificateItem[]>('/me/certificates?page=1&page_size=50');
-      setItems(asList(result));
+      const result = await allPages<CertificateItem>((page) => request<Paginated<CertificateItem> | CertificateItem[]>(`/me/certificates?page=${page}&page_size=50`));
+      setItems(result.sort((a,b) => Number(b.status === 'VALID') - Number(a.status === 'VALID')));
       setLoadError(null);
     } catch (cause) { setLoadError(failure(cause)); }
   }, [request]);
@@ -57,6 +58,7 @@ export function CertificateList() {
   useEffect(() => { void load(); }, [load]);
 
   async function download(item: CertificateItem) {
+    setMessageCode(item.certificate_code);
     setBusyId(item.id);
     setMessage(null);
     try {
@@ -71,6 +73,7 @@ export function CertificateList() {
   }
 
   async function copyVerificationLink(code: string) {
+    setMessageCode(code);
     const url = new URL(verificationPath(code), window.location.origin);
     try {
       await navigator.clipboard.writeText(url.href);
@@ -84,7 +87,7 @@ export function CertificateList() {
       <p className="mt-2 text-sm text-ink-soft">E-Certificate ที่บริษัทออกให้หลังฝึกงานเสร็จ บุคคลภายนอกตรวจสอบความถูกต้องได้ด้วยรหัสใบรับรองหรือ QR บนไฟล์</p>
 
       {loadError && <div className="mt-6"><Notice tone="error">{loadError}</Notice></div>}
-      {message && <div className="mt-6"><Notice tone={message.tone}>{message.text}</Notice></div>}
+
       {!items && !loadError && <p className="mt-6 text-sm text-ink-soft">กำลังโหลด…</p>}
       {items && items.length === 0 && (
         <div className="mt-6 rounded-xl border border-dashed border-border p-10 text-center">
@@ -94,12 +97,14 @@ export function CertificateList() {
         </div>
       )}
       {items && items.length > 0 && (
-        <ul className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-2">
-          {items.map((item) => (
+        <div>{(['VALID', 'REVOKED'] as const).map((status) => items.some((item) => item.status === status) && <section key={status} className="mt-6">
+          <h2 className="text-lg font-semibold">{status === 'VALID' ? 'ใบรับรองที่ใช้ได้' : 'ใบรับรองที่ถูกเพิกถอน'}</h2>
+          <ul className="mt-3 grid gap-4">
+          {items.filter((item) => item.status === status).map((item) => (
             <li key={item.id} className={`rounded-xl p-6 ${item.status === 'VALID' ? 'bg-tile text-white' : 'bg-surface-muted text-ink'}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 [overflow-wrap:anywhere]">
-                  <h2 className={`text-2xl font-semibold ${item.status === 'VALID' ? '' : 'line-through'}`}>{item.job_title}</h2>
+                  <h2 className={`text-2xl font-semibold ${item.status === 'VALID' ? '' : 'text-ink'}`}>{item.job_title}</h2>
                   <p className={`text-sm ${item.status === 'VALID' ? 'text-white/75' : 'text-ink-soft'}`}>{item.company_name}</p>
                 </div>
                 {item.status === 'VALID'
@@ -113,7 +118,7 @@ export function CertificateList() {
                 <div><dt className="text-xs opacity-75">ออกเมื่อ</dt><dd className="mt-0.5 font-medium">{formatDate(item.issued_at)}</dd></div>
               </dl>
               <div className="mt-5 flex flex-wrap items-center gap-3">
-                <CertificateQr code={item.certificate_code} />
+                {item.status === 'VALID' && <CertificateQr code={item.certificate_code} />}
                 {item.status === 'VALID' ? (
                   <button type="button" disabled={busyId === item.id} onClick={() => void download(item)}
                     className="rounded-full bg-primary px-5 py-2 text-sm font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">
@@ -127,9 +132,10 @@ export function CertificateList() {
                 <button type="button" onClick={() => void copyVerificationLink(item.certificate_code)}
                   className={`rounded-full border px-4 py-2 text-sm ${item.status === 'VALID' ? 'border-white/25' : 'border-border'}`}>คัดลอกลิงก์ตรวจสอบ</button>
               </div>
+              {message && messageCode === item.certificate_code && <div className="mt-6"><Notice tone={message.tone}>{message.text}</Notice></div>}
             </li>
           ))}
-        </ul>
+        </ul></section>)}</div>
       )}
       {items?.some((item) => item.status === 'VALID') && <Link href="/student/reviews" className="mt-6 inline-block text-sm font-medium text-primary hover:underline">เขียนรีวิวบริษัท ›</Link>}
     </main>

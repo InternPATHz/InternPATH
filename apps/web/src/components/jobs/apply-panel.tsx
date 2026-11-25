@@ -100,6 +100,7 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
     return (
       <div className="flex flex-col gap-2">
         <Notice tone="error">{BLOCKED[reason] ?? 'ยังสมัครงานไม่ได้ในขณะนี้'}</Notice>
+        {reason === 'ADVISOR_NOT_LINKED' && <Link href="/account#advisor" className="text-sm font-medium text-primary">ดูสถานะอาจารย์ที่ปรึกษา</Link>}
       </div>
     );
   }

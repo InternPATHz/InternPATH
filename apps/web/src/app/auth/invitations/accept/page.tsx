@@ -5,12 +5,13 @@ import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { Building2, CircleCheck } from 'lucide-react';
 import { ActionButton, AuthShell, Field, NewPasswordFields, Notice } from '@/auth/ui';
-import { apiRequest } from '@/lib/api';
+import { ApiError, apiRequest } from '@/lib/api';
 
 // ลิงก์ในอีเมลเชิญสมาชิก HR (Identity ส่ง `/auth/invitations/accept?token=`) — token ใช้ได้ครั้งเดียว
 export default function AcceptInvitationPage() {
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [invalid, setInvalid] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
 
@@ -26,7 +27,9 @@ export default function AcceptInvitationPage() {
     try {
       await apiRequest<void>('/auth/invitations/accept', { token, password, full_name: String(form.get('full_name')).trim() });
       setDone(true);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'ตอบรับคำเชิญไม่สำเร็จ'); }
+    } catch (cause) {
+      if (cause instanceof ApiError && ['INVALID_TOKEN', 'STATE_CONFLICT'].includes(cause.code)) setInvalid(true);
+      setError(cause instanceof Error ? cause.message : 'ตอบรับคำเชิญไม่สำเร็จ'); }
     finally { setBusy(false); }
   }
 
@@ -37,9 +40,8 @@ export default function AcceptInvitationPage() {
           <Notice>เปิดบัญชีสำเร็จแล้ว เข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญได้เลย</Notice>
           <Link href="/login" className="block rounded-full bg-primary px-4 py-3 text-center font-semibold text-white hover:bg-primary-hover">เข้าสู่ระบบ</Link>
         </div>
-      ) : (
+      ) : !token || invalid ? <div className="space-y-3"><Notice error>ลิงก์คำเชิญใช้ไม่ได้ กรุณาติดต่อ Owner ของบริษัทเพื่อขอลิงก์ใหม่</Notice><Link href="/login" className="text-sm text-primary">เข้าสู่ระบบหากเปิดบัญชีแล้ว</Link></div> : (
         <form onSubmit={submit} className="space-y-4">
-          {!token && <Notice error>ไม่พบ token ในลิงก์ กรุณาเปิดลิงก์จากอีเมลคำเชิญอีกครั้ง</Notice>}
           {error && <Notice error>{error}</Notice>}
           <Field label="ชื่อ-นามสกุล" name="full_name" autoComplete="name" required />
           <NewPasswordFields />

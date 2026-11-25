@@ -11,9 +11,9 @@ import { ItemBadges, STATUS_LABEL, TYPE_LABEL, formatDateTime } from './queue-ui
 
 const PAGE_SIZE = 20;
 const summaryCards = [
+  { label: 'ยังไม่ปิดทั้งหมด', query: '', danger: false },
   { label: 'เกินกำหนด', query: 'overdue=true', danger: true },
   { label: 'Fast-Track', query: 'priority=FAST_TRACK', danger: false },
-  { label: 'ยังไม่ปิดทั้งหมด', query: '', danger: false },
 ];
 
 function remainingTime(dueAt: string, overdue: boolean) {
@@ -29,12 +29,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * ตัวกรองเก็บใน URL เพื่อแชร์ลิงก์/รีเฟรชแล้วคงค่าเดิม; `status` ไม่ระบุ = เฉพาะที่ยังไม่ปิด (ตรงกับ API)
  * `target_id` = ดูคิวทุกชนิดของเป้าหมายเดียว (เช่นลิงก์จากหน้า Admin Jobs) — ค่าที่ไม่ใช่ UUID ไม่ส่งต่อ (API ตอบ 400)
  */
-type Filters = { type: string; status: string; overdue: string; target_id: string; page: number };
+type Filters = { type: string; status: string; overdue: string; priority: string; target_id: string; page: number };
 
 function readFilters(params: URLSearchParams): Filters {
   const page = Number(params.get('page'));
   const target = params.get('target_id') ?? '';
   return {
+    priority: params.get('priority') === 'FAST_TRACK' ? 'FAST_TRACK' : '',
     type: params.get('type') ?? '',
     status: params.get('status') ?? '', overdue: params.get('overdue') ?? '',
     target_id: UUID.test(target) ? target.toLowerCase() : '',
@@ -44,7 +45,7 @@ function readFilters(params: URLSearchParams): Filters {
 
 function toQuery(filters: Filters): string {
   const query = new URLSearchParams();
-  for (const key of ['type', 'status', 'overdue', 'target_id'] as const) if (filters[key]) query.set(key, filters[key]);
+  for (const key of ['type', 'status', 'overdue', 'priority', 'target_id'] as const) if (filters[key]) query.set(key, filters[key]);
   if (filters.page > 1) query.set('page', String(filters.page));
   return query.toString();
 }
@@ -101,31 +102,33 @@ export function QueueList() {
   return (
     <div>
       <h1 className="text-2xl font-semibold">คิวตรวจ</h1>
-      <p className="mt-1 text-sm text-ink-soft">ประกาศของบริษัทที่ติดธงรอตรวจ รายงานประกาศ รายงานรีวิว และธงบริษัท เรียงตามกำหนดเวลา</p>
+      <p className="mt-1 text-sm text-ink-soft">Fast-Track มาก่อน จากนั้นเรียงตามกำหนดเวลา</p>
 
-      <dl className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="ภาพรวมคิวตรวจ">
-        {summaryCards.map(({ label, danger }, index) => (
-          <div key={label} className="rounded-xl bg-surface-muted p-4">
-            <dt className="text-sm text-ink-soft">{label}</dt>
-            <dd className={`mt-1 text-3xl font-semibold tabular-nums ${danger && (summary?.[index] ?? 0) > 0 ? 'text-danger-text' : ''}`}>
-              {summary ? summary[index] ?? '–' : '…'}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <section aria-label="ตัวกรองคิวตรวจ" className="mt-5 rounded-xl border border-border">
+      <div role="group" aria-label="กรองคิวด่วน" className="flex flex-wrap gap-2 border-b border-border p-3">
+        {summaryCards.map(({ label, query }, index) => {
+          const quick = new URLSearchParams(query);
+          const priority = quick.get('priority') ?? '';
+          const overdue = quick.get('overdue') ?? '';
+          return <button key={label} aria-pressed={!filters.status && filters.priority === priority && filters.overdue === overdue}
+            className="rounded-full border border-border px-4 py-2 text-sm aria-pressed:border-primary aria-pressed:text-primary"
+            onClick={() => update({ priority, overdue, status: '', type: '', target_id: '' })}>{label} <span className="ml-1 rounded-full bg-surface-muted px-2 font-semibold">{summary ? summary[index] ?? '–' : '…'}</span></button>;
+        })}
+      </div>
 
-      <div className="mt-5 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
+      <div className="flex flex-wrap items-end gap-3 p-3">
         <FilterSelect label="ประเภท" value={filters.type} onChange={(type) => update({ type })}
           options={[['', 'ทั้งหมด'], ...(Object.keys(TYPE_LABEL) as QueueItemType[]).map((key): [string, string] => [key, TYPE_LABEL[key]])]} />
         <FilterSelect label="สถานะ" value={filters.status} onChange={(status) => update({ status })}
           options={[['', 'ที่ยังไม่ปิด'], ...(Object.keys(STATUS_LABEL) as QueueItemStatus[]).map((key): [string, string] => [key, STATUS_LABEL[key]])]} />
-        <label className="flex items-center gap-2 pb-2 text-sm">
+        <label className="flex items-center gap-2 pb-2 text-sm lg:hidden">
           <input type="checkbox" checked={filters.overdue === 'true'} onChange={(event) => update({ overdue: event.target.checked ? 'true' : '' })}
             className="accent-primary" />
           เฉพาะเกินกำหนด
         </label>
       </div>
 
+      </section>
       {filters.target_id && (
         <div role="status" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-primary-soft px-4 py-3 text-sm">
           <span>
@@ -138,7 +141,8 @@ export function QueueList() {
 
       {error && <div className="mt-4"><Notice tone="error">{error}</Notice></div>}
 
-      <div className="mt-4 overflow-x-auto rounded-xl border border-border bg-surface">
+      {result && <p className="mt-4 text-sm text-ink-soft">พบ {total} รายการ</p>}
+      <div className="mt-2 overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full min-w-[720px] text-left text-sm">
           <thead className="border-b border-border bg-surface-muted text-xs text-ink-soft">
             <tr>
@@ -156,11 +160,11 @@ export function QueueList() {
             {result?.data.map((item) => (
               <tr key={item.id} className="border-t border-border hover:bg-surface-muted">
                 <td className={`border-l-4 px-4 py-3 ${item.overdue ? 'border-l-danger' : 'border-l-transparent'}`}>
-                  <Link href={`/admin/queue/item?id=${item.id}`} className="font-semibold text-primary hover:underline">{TYPE_LABEL[item.type]}</Link>
+                  <Link href={`/admin/queue/item?id=${item.id}`} className="font-semibold text-primary hover:underline">{TYPE_LABEL[item.type]}</Link><span className="mt-1 block text-xs text-ink-soft">รหัสเคส {item.id.slice(0, 8).toUpperCase()}</span>
                   <div className="mt-1"><ItemBadges item={item} /></div>
                 </td>
                 <td className="px-4 py-3">{item.company_name ?? <span className="text-ink-soft">—</span>}</td>
-                <td className="px-4 py-3">{STATUS_LABEL[item.status]}</td>
+                <td className="px-4 py-3"><span className="rounded-full bg-surface-muted px-2 py-1 text-xs font-semibold">{STATUS_LABEL[item.status]}</span></td>
                 <td className="whitespace-nowrap px-4 py-3"><time dateTime={item.due_at} title={formatDateTime(item.due_at)} className={item.overdue ? 'font-semibold text-danger-text' : undefined}>{item.status === 'RESOLVED' ? formatDateTime(item.due_at) : remainingTime(item.due_at, item.overdue)}</time></td>
               </tr>
             ))}
@@ -168,15 +172,15 @@ export function QueueList() {
         </table>
       </div>
 
-      {result && total > 0 && (
+      {result && lastPage > 1 && (
         <div className="mt-4 flex items-center justify-between text-sm text-ink-soft">
           <span>ทั้งหมด {total} รายการ · หน้า {filters.page} จาก {lastPage}</span>
-          <span className="flex gap-2">
+          {lastPage > 1 && <span className="flex gap-2">
             <button type="button" disabled={filters.page <= 1} onClick={() => update({ page: filters.page - 1 })}
               className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40">ก่อนหน้า</button>
             <button type="button" disabled={filters.page >= lastPage} onClick={() => update({ page: filters.page + 1 })}
               className="rounded-lg border border-border px-3 py-1.5 disabled:opacity-40">ถัดไป</button>
-          </span>
+          </span>}
         </div>
       )}
     </div>

@@ -5,7 +5,7 @@ import { useState } from 'react';
 import type { AdvisorDisputeAction, AdvisorDisputeItem, ApplicationBase, ApplicationStatus } from '@internpath/contracts';
 import { ApplicationStatusBadge, formatDate, formatDateTime } from '@/components/student/application-ui';
 import { APPLICATION_STATUS, statusView } from '@/lib/status-map';
-import { inputClass, NOTE_MAX, primaryButton, secondaryButton } from './advisor-ui';
+import { inputClass, primaryButton, secondaryButton } from './advisor-ui';
 
 const steps = ['สมัคร', 'อาจารย์อนุมัติ', 'ฝึกงาน', 'บริษัทประเมิน', 'อาจารย์ตัดสิน', 'เสร็จสิ้น'];
 const stage: Partial<Record<ApplicationStatus, number>> = {
@@ -13,7 +13,8 @@ const stage: Partial<Record<ApplicationStatus, number>> = {
   EVALUATED_PASS: 3, EVALUATED_FAIL: 3, FAIL_DISPUTED: 4, REEVALUATION_REQUESTED: 4, COMPLETED: 5, NO_EVALUATION: 3,
 };
 
-export function AdvisorStudentApplication({ app, dispute, loadingDispute, disputesFailed, busy, onDecide }: {
+export function AdvisorStudentApplication({ selected, app, dispute, loadingDispute, disputesFailed, busy, onDecide }: {
+  selected: boolean;
   app: ApplicationBase;
   dispute?: AdvisorDisputeItem;
   loadingDispute: boolean;
@@ -36,7 +37,7 @@ export function AdvisorStudentApplication({ app, dispute, loadingDispute, disput
   history.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
 
   return (
-    <li className="rounded-xl border border-border bg-surface p-4 sm:p-5">
+    <li className={`rounded-xl border border-border bg-surface p-4 sm:p-5 ${selected ? '' : 'lg:hidden'}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 [overflow-wrap:anywhere]">
           <h3 className="text-lg font-semibold">{app.job_title}</h3>
@@ -69,7 +70,7 @@ export function AdvisorStudentApplication({ app, dispute, loadingDispute, disput
                 <p className="mt-2 text-sm text-white/80">ขอให้บริษัทประเมินใหม่ได้หนึ่งรอบ หรือยืนตามผลเดิม</p>
                 <label className="mt-4 block text-sm font-medium">
                   หมายเหตุถึงบริษัทและนักศึกษา (ไม่บังคับ)
-                  <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={NOTE_MAX} rows={2} className={`${inputClass} text-ink`} />
+                  <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={2000} rows={2} className={`${inputClass} text-ink`} />
                 </label>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {dispute.evaluation?.round === 1 && (

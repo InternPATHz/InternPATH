@@ -4,11 +4,12 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { CircleAlert, CircleCheck, Mail } from 'lucide-react';
 import { AuthShell, Notice } from '@/auth/ui';
-import { apiRequest } from '@/lib/api';
+import { ApiError, apiRequest } from '@/lib/api';
 
 export default function VerifyEmailPage() {
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [invalid, setInvalid] = useState(false);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState('');
 
@@ -21,7 +22,7 @@ export default function VerifyEmailPage() {
     try {
       await apiRequest<void>('/auth/verify-email', { token });
       setVerified(true);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'ยืนยันอีเมลไม่สำเร็จ'); }
+    } catch (cause) { setInvalid(cause instanceof ApiError && ['INVALID_TOKEN','STATE_CONFLICT'].includes(cause.code)); setError(cause instanceof Error ? cause.message : 'ยืนยันอีเมลไม่สำเร็จ'); }
     finally { setBusy(false); }
   }
 
@@ -31,12 +32,12 @@ export default function VerifyEmailPage() {
         <p className="rounded-lg bg-surface-muted p-4 text-sm text-ink-soft">หากสมัครเป็นอาจารย์ โปรดรอผู้ดูแลระบบอนุมัติบัญชี</p>
         <Link href="/login" className="block rounded-full bg-primary px-4 py-3 text-center font-semibold text-white hover:bg-primary-hover">เข้าสู่ระบบ</Link>
       </> : <>
-        {!token && <Notice error>ไม่พบ token ในลิงก์ กรุณาเปิดลิงก์จากอีเมลอีกครั้ง</Notice>}
+        {!token && <Notice error>ลิงก์ยืนยันอีเมลไม่ครบ กรุณาขอลิงก์ใหม่</Notice>}
         {error && <Notice error>{error}</Notice>}
-        <button type="button" disabled={!token || busy} onClick={verify}
+        {token && !invalid && <button type="button" disabled={busy} onClick={verify}
           className="w-full rounded-full bg-primary px-4 py-3 font-semibold text-white hover:bg-primary-hover disabled:opacity-50">
           {busy ? 'กำลังยืนยัน…' : 'ยืนยันอีเมล'}
-        </button>
+        </button>}
       </>}
       {!verified && <div className="flex flex-wrap justify-center gap-4 text-sm">
         <Link href="/login" className="text-primary hover:underline">เข้าสู่ระบบ</Link>

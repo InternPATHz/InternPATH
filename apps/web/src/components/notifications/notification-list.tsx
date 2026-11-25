@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { Bell, ChevronRight, ClipboardList, Clock, FileCheck, Shield } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { NotificationItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
@@ -35,10 +35,24 @@ export function NotificationList() {
   const [busy, setBusy] = useState(false);
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
 
+  const sequence = useRef(0);
   const load = useCallback(async () => {
-    try { setResult(await api.list(page, PAGE_SIZE, unreadOnly)); setError(null); }
-    catch (cause) { setError(cause instanceof ApiError ? cause.message : 'โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่'); }
-    void api.unreadCount().then(setUnreadCount, () => setUnreadCount(null));
+    const version = ++sequence.current;
+    try {
+      const next = await api.list(page, PAGE_SIZE, unreadOnly);
+      if (version !== sequence.current) return;
+      const last = Math.max(1, Math.ceil(next.meta.total / PAGE_SIZE));
+      if (page > last) { setPage(last); return; }
+      setResult(next);
+      setError(null);
+    } catch (cause) {
+      if (version !== sequence.current) return;
+      setError(cause instanceof ApiError ? cause.message : 'โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่');
+    }
+    api.unreadCount().then(
+      (count) => { if (version === sequence.current) setUnreadCount(count); },
+      () => { if (version === sequence.current) setUnreadCount(null); },
+    );
   }, [api, page, unreadOnly]);
 
   useEffect(() => {
@@ -46,14 +60,14 @@ export function NotificationList() {
     void load();
     const refresh = () => { void load(); };
     window.addEventListener('internpath:notifications-changed', refresh);
-    return () => window.removeEventListener('internpath:notifications-changed', refresh);
+    return () => { sequence.current++; window.removeEventListener('internpath:notifications-changed', refresh); };
   }, [load]);
 
   const changed = () => window.dispatchEvent(new Event('internpath:notifications-changed'));
 
   async function open(item: NotificationItem) {
     if (!item.read) {
-      try { await api.markRead(item.id); changed(); } catch { /* เปิดลิงก์ต่อได้แม้ทำเครื่องหมายไม่สำเร็จ */ }
+      try { await api.markRead(item.id); changed(); } catch { setError('ทำเครื่องหมายว่าอ่านแล้วไม่สำเร็จ'); }
     }
     const target = notificationTarget(item.link);
     if (target) router.push(target);
@@ -102,7 +116,7 @@ export function NotificationList() {
         </div>
 
         <section aria-busy={!result && !error} className="mt-5">
-          {error && <Notice tone="error">{error}</Notice>}
+          {error && <Notice tone="error">{error} <button type="button" onClick={() => void load()} className="underline">โหลดอีกครั้ง</button></Notice>}
           {!result && !error && <p className="text-sm text-ink-soft">กำลังโหลด…</p>}
           {result && result.data.length === 0 && (
             <div className="rounded-xl border border-dashed border-border p-10 text-center">
@@ -115,22 +129,25 @@ export function NotificationList() {
               <ul className="divide-y divide-border rounded-xl border border-border bg-surface">
                 {items.map((item) => {
                   const Icon = iconFor(item.type);
+                  const target = notificationTarget(item.link);
+                  const Row = target ? 'button' : 'div';
                   return (
                     <li key={item.id}>
-                      <button type="button" onClick={() => void open(item)} className="flex w-full items-start gap-3 rounded-lg p-4 text-left hover:bg-surface-muted">
+                      <Row onClick={target ? () => void open(item) : undefined} className={`flex w-full items-start gap-3 rounded-lg p-4 text-left [overflow-wrap:anywhere] ${target ? 'hover:bg-surface-muted' : ''}`}>
                         <span aria-hidden="true" className={`mt-2 h-2 w-2 shrink-0 rounded-full ${item.read ? 'bg-transparent' : 'bg-primary'}`} />
                         <Icon size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-ink-soft" />
                         <span className="min-w-0 flex-1">
                           <span className="flex flex-wrap items-baseline justify-between gap-2">
                             <span className={`text-sm ${item.read ? 'font-medium' : 'font-semibold'}`}>{item.title}{!item.read && <span className="sr-only"> (ยังไม่อ่าน)</span>}</span>
                             <time dateTime={item.created_at} className="text-xs text-ink-soft">
-                              {(index === 0 ? timeFormat : dateFormat).format(new Date(item.created_at))}
+                              {index !== 0 && dateFormat.format(new Date(item.created_at)) + ' · '}{timeFormat.format(new Date(item.created_at))}
                             </time>
                           </span>
                           <span className="mt-1 block text-sm text-ink-soft">{item.body}</span>
                         </span>
-                        {notificationTarget(item.link) && <ChevronRight size={16} aria-hidden="true" className="mt-1 shrink-0 text-ink-soft" />}
-                      </button>
+                        {!target && !item.read && <button type="button" className="text-xs font-medium text-primary" onClick={() => void open(item)}>ทำเครื่องหมายว่าอ่านแล้ว</button>}
+                        {target && <ChevronRight size={16} aria-hidden="true" className="mt-1 shrink-0 text-ink-soft" />}
+                      </Row>
                     </li>
                   );
                 })}

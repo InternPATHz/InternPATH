@@ -7,6 +7,7 @@ import type { FormEvent } from 'react';
 import type {
   ApplicationStatus, CreateReviewRequest, MyReviewItem, Paginated, ReviewStatus, StudentApplicationItem,
 } from '@internpath/contracts';
+import { allPages } from '@/lib/list';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { Stars } from '@/components/ui/rating';
@@ -24,9 +25,9 @@ const BODY_MAX = 5000;
 
 const inputClass = 'mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-base font-normal outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft';
 
-/** รีวิวเผยแพร่ทันทีหลังส่ง (ปรับ 2026-11-21 — ไม่มีขั้นรอตรวจ) `SUBMITTED` จึงแสดงเป็น "เผยแพร่แล้ว" เช่นกัน */
+/** Only PUBLISHED reviews have a public destination. */
 const REVIEW_STATUS: Record<ReviewStatus, { label: string; tone: StatusTone; icon: typeof Clock5 }> = {
-  SUBMITTED: { label: 'เผยแพร่แล้ว', tone: 'success', icon: CircleCheck },
+  SUBMITTED: { label: 'ส่งแล้ว · กำลังเผยแพร่', tone: 'info', icon: Clock5 },
   PUBLISHED: { label: 'เผยแพร่แล้ว', tone: 'success', icon: CircleCheck },
   HELD: { label: 'ผู้ดูแลระบบกำลังตรวจ', tone: 'warning', icon: Clock5 },
   REMOVED: { label: 'ถูกถอดออก', tone: 'neutral', icon: CircleX },
@@ -58,11 +59,11 @@ export function ReviewPage() {
   const load = useCallback(async () => {
     try {
       const [myApps, myReviews] = await Promise.all([
-        request<Paginated<StudentApplicationItem>>('/me/applications?page=1&page_size=100'),
-        request<Paginated<MyReviewItem>>('/me/reviews?page=1&page_size=100'),
+        allPages<StudentApplicationItem>((page) => request<Paginated<StudentApplicationItem>>(`/me/applications?page=${page}&page_size=100`)),
+        allPages<MyReviewItem>((page) => request<Paginated<MyReviewItem>>(`/me/reviews?page=${page}&page_size=100`)),
       ]);
-      setApps(myApps.data);
-      setReviews(myReviews.data);
+      setApps(myApps);
+      setReviews(myReviews);
       setLoadError('');
     } catch (cause) {
       setLoadError(cause instanceof ApiError ? cause.message : 'โหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่');
@@ -76,7 +77,7 @@ export function ReviewPage() {
   const appById = new Map((apps ?? []).map((app) => [app.id, app]));
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-6xl px-4 py-10 [overflow-wrap:anywhere] sm:px-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-8 lg:[&>h1]:col-span-2 lg:[&>p]:col-span-2 lg:[&>div]:col-span-2">
       <h1 className="text-3xl font-semibold">รีวิวบริษัท</h1>
       <p className="mt-2 text-sm text-ink-soft">
         เล่าประสบการณ์ฝึกงานเพื่อช่วยรุ่นน้องเลือกบริษัท รีวิวได้ 1 ครั้งต่อการฝึกงาน 1 แห่ง หลังบริษัทประเมินผลหรือการฝึกสิ้นสุด
@@ -109,12 +110,13 @@ export function ReviewPage() {
                   {writing === app.id && (
                     <ReviewForm
                       app={app}
+                      onConflict={load}
                       onCancel={() => setWriting(null)}
                       onDone={async () => {
                         setWriting(null);
                         setMessage({
                           tone: 'success',
-                          text: `เผยแพร่รีวิว ${app.company_name} แล้ว ถ้ามีผู้รายงานว่ารีวิวไม่เหมาะสม ผู้ดูแลระบบอาจพิจารณาถอดรีวิวออก`,
+                          text: `ส่งรีวิว ${app.company_name} แล้ว ถ้ามีผู้รายงานว่ารีวิวไม่เหมาะสม ผู้ดูแลระบบอาจพิจารณาถอดรีวิวออก`,
                         });
                         await load();
                       }}
@@ -148,7 +150,7 @@ export function ReviewPage() {
                   {review.title && <p className="mt-3 font-medium">{review.title}</p>}
                   <p className="mt-1 whitespace-pre-line text-sm">{review.body}</p>
                   {review.status === 'REMOVED' && <p className="mt-2 text-xs text-ink-soft">ผู้ดูแลระบบถอดรีวิวนี้ออกหลังมีผู้รายงาน รีวิวนี้จึงไม่แสดงในหน้าบริษัทแล้ว</p>}
-                  {review.status !== 'REMOVED' && (
+                  {review.status === 'PUBLISHED' && (
                     <Link href={`/companies/item?id=${encodeURIComponent(review.company_id)}`} className="mt-2 inline-block text-sm font-medium text-primary hover:underline">
                       ดูในหน้าบริษัท
                     </Link>
@@ -163,7 +165,7 @@ export function ReviewPage() {
   );
 }
 
-function ReviewForm({ app, onCancel, onDone }: { app: StudentApplicationItem; onCancel: () => void; onDone: () => Promise<void> }) {
+function ReviewForm({ app, onCancel, onDone, onConflict }: { onConflict: () => Promise<void>; app: StudentApplicationItem; onCancel: () => void; onDone: () => Promise<void> }) {
   const { request } = useAuth();
   const fieldId = useId();
   const [rating, setRating] = useState(0);
@@ -188,6 +190,7 @@ function ReviewForm({ app, onCancel, onDone }: { app: StudentApplicationItem; on
       await onDone();
     } catch (cause) {
       setError(failure(cause));
+      if (cause instanceof ApiError && cause.code === 'ALREADY_REVIEWED') await onConflict();
     } finally { setBusy(false); }
   }
 

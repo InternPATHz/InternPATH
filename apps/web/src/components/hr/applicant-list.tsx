@@ -5,6 +5,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ApplicantDetail } from './applicant-detail';
 import type { ApplicationStatus, HrApplicationItem, Paginated } from '@internpath/contracts';
+import type { HrJobObject } from '@internpath/contracts';
+import { jobTitleOf } from '@/components/hr/jobs/job-ui';
+import { allPages } from '@/lib/list';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { ApplicationStatusBadge, formatDate } from '@/components/student/application-ui';
@@ -28,8 +31,19 @@ export function ApplicantList() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { request } = useAuth();
+  const [jobs, setJobs] = useState<HrJobObject[]>([]);
+  const [jobsError, setJobsError] = useState(false);
+  const [retryJobs, setRetryJobs] = useState(0);
+  useEffect(() => {
+    let active = true;
+    allPages((page) => request<Paginated<HrJobObject>>(`/hr/jobs?page=${page}&page_size=100`)).then(
+      (all) => { if (active) { setJobs(all); setJobsError(false); } },
+      () => { if (active) setJobsError(true); },
+    );
+    return () => { active = false; };
+  }, [request, retryJobs]);
   const statusParam = searchParams.get('status') ?? '';
-  const status = statusParam in APPLICATION_STATUS ? (statusParam as ApplicationStatus) : undefined;
+  const status = Object.hasOwn(APPLICATION_STATUS, statusParam) ? (statusParam as ApplicationStatus) : undefined;
   const jobParam = searchParams.get('job_id') ?? '';
   const jobId = UUID.test(jobParam) ? jobParam : undefined;
   const pageParam = Number(searchParams.get('page'));
@@ -93,11 +107,9 @@ export function ApplicantList() {
           label="สถานะอื่น" value={status ?? ''} onChange={(value) => update({ status: value || undefined })}
           options={[['', 'ทุกสถานะ'], ...Object.entries(APPLICATION_STATUS).map(([value, view]): [string, string] => [value, view.label])]}
         />
-        {jobId && (
-          <p className="pb-2 text-sm">
-            เฉพาะประกาศเดียว <button type="button" onClick={() => update({ job_id: undefined })} className="font-medium text-primary hover:underline">ดูทุกประกาศ</button>
-          </p>
-        )}
+        <FilterSelect label="ประกาศ" value={jobId ?? ''} onChange={(value) => update({ job_id: value || undefined })}
+          options={[['', 'ทุกประกาศ'], ...(jobId && !jobs.some((job) => job.id === jobId) ? [[jobId, 'ประกาศที่เลือก'] as [string,string]] : []), ...jobs.map((job): [string,string] => [job.id, jobTitleOf(job)])]} />
+        {jobsError && <button className="text-sm text-primary" onClick={() => setRetryJobs((n) => n + 1)}>โหลดรายชื่อประกาศอีกครั้ง</button>}
       </div>
 
       <section aria-busy={!result && !error} className="mt-6">
@@ -112,7 +124,7 @@ export function ApplicantList() {
           <div className="grid gap-4 lg:grid-cols-[minmax(16rem,1fr)_minmax(0,2fr)]">
             <ul className="min-w-0 divide-y divide-border self-start overflow-hidden [overflow-wrap:anywhere] rounded-xl border border-border bg-surface">
               {result.data.map((app) => {
-                const name = app.student_name || `ผู้สมัคร #${app.student_user_id.slice(0, 8)}`;
+                const name = app.student_name || 'ไม่พบข้อมูลชื่อ';
                 const summary = (
                   <>
                     <span className="block break-words text-base font-semibold">{name}</span>

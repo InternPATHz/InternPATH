@@ -147,6 +147,7 @@ export function ProfileForm() {
   </>;
 
   const previewSkills = parseSkills([...skills, skillInput].join(','));
+  const dirty = headline !== (saved.headline ?? '') || bio !== (saved.bio ?? '') || portfolio !== (saved.portfolio_url ?? '') || JSON.stringify(previewSkills) !== JSON.stringify(saved.skills);
   const completed = [saved.photo_url, headline.trim(), bio.trim(), previewSkills.length, portfolio.trim()].filter(Boolean).length;
 
   function addSkills() {
@@ -161,6 +162,8 @@ export function ProfileForm() {
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
       <aside className="self-start rounded-xl bg-surface-muted p-5 lg:sticky lg:top-20" aria-label="ตัวอย่างโปรไฟล์">
+        <nav aria-label="แก้ไขโปรไฟล์" className="mb-3 flex gap-3 text-sm text-primary"><a href="#profile-fields">โปรไฟล์</a><a href="#resume-title">เรซูเม่</a></nav>
+        {dirty && <p role="status" className="mb-2 text-sm text-warning-text">ยังไม่ได้บันทึก</p>}
         <h2 className="mb-4 text-sm font-semibold text-ink-soft">บริษัทเห็นโปรไฟล์ของคุณแบบนี้</h2>
         <Avatar name={user?.full_name} src={saved.photo_url} size="lg" />
         <input ref={photoInput} type="file" accept="image/jpeg,image/png,image/webp" className="sr-only" onChange={(event) => void changePhoto(event)} aria-label="เลือกรูปโปรไฟล์" />
@@ -185,7 +188,7 @@ export function ProfileForm() {
       </aside>
       <div className="min-w-0">
         <form onSubmit={submit} className="space-y-5 rounded-xl border border-border p-5" noValidate>
-          <h2 className="text-xl font-semibold">แก้ไขโปรไฟล์</h2>
+          <h2 id="profile-fields" className="scroll-mt-20 text-xl font-semibold">แก้ไขโปรไฟล์</h2>
             {major && (
               <dl className="grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 text-sm">
                 <div><dt className="text-xs text-ink-soft">สาขา</dt><dd className="font-medium">{major.major}</dd></div>

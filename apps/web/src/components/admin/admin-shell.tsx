@@ -34,6 +34,8 @@ function AdminFrame({ children }: { children: ReactNode }) {
     .map((group) => ({ ...group, items: group.items.filter((item): item is { label: string; href: string } => item.href !== null) }))
     .filter((group) => group.items.length > 0);
 
+  const audit = ['/admin/audit','/admin/identity-audit','/admin/lifecycle-audit'];
+  const onAudit = audit.includes(pathname);
   const nav = (
     <nav aria-label="เมนู Admin" className="space-y-6">
       {groups.map((group) => (
@@ -41,7 +43,7 @@ function AdminFrame({ children }: { children: ReactNode }) {
           <p className="px-3 text-xs font-semibold text-ink-soft">{group.title}</p>
           <ul className="mt-2 space-y-0.5">
             {group.items.map((item) => {
-              const active = (pathname === item.href || pathname.startsWith(`${item.href}/`));
+              const active = (pathname === item.href || pathname.startsWith(`${item.href}/`) || (item.href === '/admin/audit' && onAudit));
               const Icon = ADMIN_NAV_ICONS[item.label];
               return (
                 <li key={item.label}>
@@ -76,7 +78,7 @@ function AdminFrame({ children }: { children: ReactNode }) {
       </header>
       <nav aria-label="ทางลัด Admin บนมือถือ" className="flex gap-2 overflow-x-auto border-b border-border bg-surface px-4 py-2 lg:hidden">
         {groups.flatMap((group) => group.items).map((item) => {
-          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`) || (item.href === '/admin/audit' && onAudit);
           return (
             <Link key={item.href} href={item.href} aria-current={active ? 'page' : undefined}
               className={`shrink-0 rounded-full border px-3 py-1.5 text-sm ${active ? 'border-ink bg-ink text-white' : 'border-border'}`}>{item.label}</Link>
@@ -93,7 +95,9 @@ function AdminFrame({ children }: { children: ReactNode }) {
               className="mt-2 text-primary hover:underline">ออกจากระบบ</button>
           </div>
         </aside>
-        <main className="min-w-0 flex-1 bg-surface p-4 sm:p-6 lg:p-8">{children}</main>
+        <main className="min-w-0 flex-1 bg-surface p-4 sm:p-6 lg:p-8">{onAudit && <nav aria-label="แหล่งบันทึกการดำเนินการ" className="mb-5 flex flex-wrap gap-2">
+          {audit.map((href,index) => <Link key={href} href={href} aria-current={pathname === href ? 'page' : undefined} className="rounded-full border border-border px-3 py-2 text-sm aria-[current=page]:bg-primary-soft aria-[current=page]:text-primary">{['คิวตรวจและธงบริษัท','บัญชีและองค์กร','การฝึกงาน'][index]}</Link>)}
+        </nav>}{children}</main>
       </div>
     </div>
   );

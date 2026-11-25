@@ -5,11 +5,12 @@ import type { FormEvent } from 'react';
 import Link from 'next/link';
 import { CircleCheck, KeyRound } from 'lucide-react';
 import { ActionButton, AuthShell, NewPasswordFields, Notice } from '@/auth/ui';
-import { apiRequest } from '@/lib/api';
+import { ApiError, apiRequest } from '@/lib/api';
 
 export default function ResetPasswordPage() {
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
+  const [invalid, setInvalid] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState('');
 
@@ -25,13 +26,13 @@ export default function ResetPasswordPage() {
     try {
       await apiRequest<void>('/auth/password/reset', { token, new_password: password });
       setDone(true);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : 'ตั้งรหัสผ่านใหม่ไม่สำเร็จ'); }
+    } catch (cause) { setInvalid(cause instanceof ApiError && cause.code === 'INVALID_TOKEN'); setError(cause instanceof Error ? cause.message : 'ตั้งรหัสผ่านใหม่ไม่สำเร็จ'); }
     finally { setBusy(false); }
   }
 
   return <AuthShell title={done ? 'ตั้งรหัสผ่านใหม่แล้ว' : 'ตั้งรหัสผ่านใหม่'} subtitle={done ? undefined : 'ลิงก์ใช้ได้ครั้งเดียวภายใน 30 นาที'} icon={done ? <CircleCheck size={34} /> : <KeyRound size={34} />}>
-    {done ? <Notice>ตั้งรหัสผ่านใหม่สำเร็จแล้ว กรุณาเข้าสู่ระบบ</Notice> : !token ?
-      <Notice error>ไม่พบ token ในลิงก์ กรุณาขอลิงก์รีเซ็ตใหม่</Notice> :
+    {done ? <Notice>ตั้งรหัสผ่านใหม่สำเร็จแล้ว กรุณาเข้าสู่ระบบ</Notice> : !token || invalid ?
+      <Notice error>ลิงก์ตั้งรหัสผ่านใช้ไม่ได้ กรุณาขอลิงก์รีเซ็ตใหม่</Notice> :
       <form onSubmit={submit} className="space-y-4">
         <NewPasswordFields name="new_password" />
         {error && <Notice error>{error}</Notice>}

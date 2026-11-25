@@ -35,7 +35,11 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
 }
 
 export function ApplicationDetail() {
-  const id = useSearchParams().get('id') ?? '';
+  const params = useSearchParams();
+  const id = params.get('id') ?? '';
+  const back = new URLSearchParams();
+  for (const key of ['group','status','page']) { const value = params.get(key); if (value) back.set(key, value); }
+  const backHref = back.size ? `/student/applications?${back}` : '/student/applications';
   const { request } = useAuth();
   const [app, setApp] = useState<StudentApplicationDetail | null>(null);
   const [loadError, setLoadError] = useState<{ missing: boolean; text: string } | null>(null);
@@ -112,7 +116,7 @@ export function ApplicationDetail() {
       <main className="mx-auto max-w-md px-4 py-16 text-center">
         <h1 className="text-xl font-semibold">{loadError.missing ? 'ไม่พบใบสมัครนี้' : 'โหลดใบสมัครไม่สำเร็จ'}</h1>
         {!loadError.missing && <p className="mt-2 text-sm text-ink-soft">{loadError.text}</p>}
-        <Link href="/student/applications" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปใบสมัครของฉัน</Link>
+        <Link href={backHref} className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปใบสมัครของฉัน</Link>
       </main>
     );
   }
@@ -125,7 +129,7 @@ export function ApplicationDetail() {
   const formTitle = { terminate: 'ขอยุติการฝึกงาน', dispute: 'โต้แย้งผลประเมิน', problem: 'รายงานปัญหาระหว่างฝึกงาน' }[form ?? 'terminate'];
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
-      <Link href="/student/applications" className="text-sm font-medium text-primary hover:underline">← ใบสมัครของฉัน</Link>
+      <Link href={backHref} className="text-sm font-medium text-primary hover:underline">← ใบสมัครของฉัน</Link>
 
       <header className="mt-3 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 [overflow-wrap:anywhere]">
@@ -274,7 +278,7 @@ export function ApplicationDetail() {
               if (!confirmation) return;
               dialog.current?.close();
               void act(`/actions/${confirmation.action}`, undefined, confirmation.success);
-            }}>ยืนยัน</button>
+            }}>{confirmation?.action === 'decline-offer' ? 'ปฏิเสธข้อเสนอ' : confirmation?.action === 'withdraw' ? 'ถอนใบสมัคร' : 'ยืนยันข้อเสนอ'}</button>
         </form>
       </dialog>
     </main>

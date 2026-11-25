@@ -53,7 +53,7 @@ export function CompanyPage() {
   const [phone, setPhone] = useState('');
   const [docType, setDocType] = useState<CompanyDocType>('REGISTRATION_CERT');
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (resetInfo = true) => {
     try {
       const [me, mine, docs] = await Promise.all([
         request<UserMeResponse>('/users/me'),
@@ -63,19 +63,21 @@ export function CompanyPage() {
       setCompany(mine);
       setIsOwner(me.company?.member_role === 'OWNER');
       setDocuments(asList(docs as never));
-      setName(mine.name);
-      setWebsite(mine.website ?? '');
-      setPhone(mine.phone ?? '');
+      if (resetInfo) {
+        setName(mine.name);
+        setWebsite(mine.website ?? '');
+        setPhone(mine.phone ?? '');
+      }
       setLoadError(null);
     } catch (cause) { setLoadError(failure(cause)); }
   }, [request]);
 
   useEffect(() => { void load(); }, [load]);
 
-  async function run(action: () => Promise<unknown>, success: string) {
+  async function run(action: () => Promise<unknown>, success: string, resetInfo = false) {
     setBusy(true);
     setMessage(null);
-    try { await action(); await load(); setMessage({ tone: 'success', text: success }); }
+    try { await action(); await load(resetInfo); setMessage({ tone: 'success', text: success }); }
     catch (cause) { setMessage({ tone: 'error', text: failure(cause) }); }
     finally { setBusy(false); }
   }
@@ -87,7 +89,7 @@ export function CompanyPage() {
     void run(() => request('/companies/me', {
       method: 'PATCH',
       body: { name: name.trim(), ...(website.trim() ? { website: website.trim() } : {}), ...(phone.trim() ? { phone: phone.trim() } : {}) },
-    }), 'บันทึกข้อมูลบริษัทแล้ว');
+    }), 'บันทึกข้อมูลบริษัทแล้ว', true);
   }
 
   function pickFile(event: ChangeEvent<HTMLInputElement>, kind: 'logo' | 'doc') {

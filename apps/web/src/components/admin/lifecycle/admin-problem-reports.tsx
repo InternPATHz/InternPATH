@@ -46,6 +46,7 @@ export function AdminProblemReports() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { request } = useAuth();
+  const [selectedId, setSelectedId] = useState('');
   const filters = readFilters(new URLSearchParams(searchParams.toString()));
   const queryString = toQuery(filters);
 
@@ -55,7 +56,7 @@ export function AdminProblemReports() {
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
+    setLoading(true); setResult(null);
     setError('');
     const current = readFilters(new URLSearchParams(queryString));
     const apiQuery = new URLSearchParams({ page: String(current.page), page_size: String(PAGE_SIZE) });
@@ -75,6 +76,8 @@ export function AdminProblemReports() {
 
   const total = result?.meta.total ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  const selected = result?.data.find((item) => item.id === selectedId) ?? result?.data[0];
 
   return (
     <div className="space-y-5">
@@ -98,11 +101,16 @@ export function AdminProblemReports() {
         <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-ink-soft">ไม่มีรายงานตามตัวกรองนี้</p>
       )}
 
-      <ul className="space-y-4">
+      <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
+        <ul aria-label="เลือกรายงาน" className="hidden min-w-0 divide-y divide-border lg:block">
+          {result?.data.map((report) => <li key={report.id}><button aria-pressed={report.id === selected?.id} className="w-full rounded-lg p-3 text-left text-sm aria-pressed:bg-primary-soft" onClick={() => { setSelectedId(report.id);  }}>
+            <strong className="block">{PROBLEM_CATEGORY_LABEL[report.category]}</strong>{PROBLEM_STATUS_VIEW[report.status].label} · {formatDateTime(report.due_at)} {report.overdue && '· เกินกำหนด'}
+          </button></li>)}</ul>
+        <ul className="min-w-0 space-y-4 [overflow-wrap:anywhere]">
         {result?.data.map((report) => {
           const view = PROBLEM_STATUS_VIEW[report.status];
           return (
-            <li key={report.id} className="rounded-xl border border-border bg-surface p-5">
+            <li key={report.id} className={`rounded-xl border border-border bg-surface p-5 ${selected?.id === report.id ? '' : 'lg:hidden'}`}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <h2 className="font-semibold">{PROBLEM_CATEGORY_LABEL[report.category]}</h2>
@@ -120,10 +128,10 @@ export function AdminProblemReports() {
                   {report.follow_up_action && <span className="text-ink-soft"> ({PROBLEM_FOLLOW_UP_LABEL[report.follow_up_action]})</span>}
                 </p>
               )}
-              <dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-ink-soft sm:grid-cols-2">
+              <details className="mt-3 text-xs"><summary className="cursor-pointer">รหัสอ้างอิงระบบ</summary><dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-ink-soft sm:grid-cols-2">
                 <div><dt className="inline">ใบสมัคร: </dt><dd className="inline break-all font-mono">{report.application_id}</dd></div>
                 <div><dt className="inline">นักศึกษา: </dt><dd className="inline break-all font-mono">{report.student_user_id}</dd></div>
-              </dl>
+              </dl></details>
               <div className="mt-4 flex flex-wrap gap-3 text-sm">
                 <Link href={`/admin/applications?terminate=${encodeURIComponent(report.application_id)}`}
                   className="rounded-full border border-danger px-4 py-1.5 font-semibold text-danger-text hover:bg-danger-soft">
@@ -137,7 +145,7 @@ export function AdminProblemReports() {
             </li>
           );
         })}
-      </ul>
+      </ul></div>
 
       {result && total > 0 && (
         <div className="flex items-center justify-between text-sm text-ink-soft">

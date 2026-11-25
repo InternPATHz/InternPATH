@@ -19,6 +19,7 @@ export function AdvisorStudentDetail() {
 
 function StudentDetail({ id }: { id: string }) {
   const { request } = useAuth();
+  const [selected, setSelected] = useState('');
   const [overview, setOverview] = useState<AdvisorStudentOverview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
@@ -90,9 +91,13 @@ function StudentDetail({ id }: { id: string }) {
           <section className="mt-6" aria-labelledby="student-applications">
             <h2 id="student-applications" className="text-xl font-semibold">ความคืบหน้าการฝึกงาน</h2>
             {overview.applications.length === 0 && <p className="mt-3 rounded-xl bg-surface-muted p-5 text-sm text-ink-soft">ยังไม่มีใบสมัครฝึกงาน</p>}
+            {overview.applications.length > 1 && <label className="mt-3 hidden text-sm lg:block">เลือกใบสมัคร
+              <select className="ml-3 max-w-full rounded-lg border border-border p-2" value={overview.applications.find((app) => app.id === selected)?.id ?? overview.applications[0].id} onChange={(e) => setSelected(e.target.value)}>
+                {overview.applications.map((app) => <option key={app.id} value={app.id}>{app.job_title} · {app.company_name}</option>)}
+              </select></label>}
             <ul className="mt-3 space-y-4">
               {overview.applications.map((app) => (
-                <AdvisorStudentApplication key={app.id} app={app} dispute={disputes?.[app.id]}
+                <AdvisorStudentApplication key={app.id} selected={app.id === (overview.applications.find((entry) => entry.id === selected)?.id ?? overview.applications[0]?.id)} app={app} dispute={disputes?.[app.id]}
                   loadingDispute={disputes === null} disputesFailed={disputesFailed} busy={busyId !== null} onDecide={decide} />
               ))}
             </ul>

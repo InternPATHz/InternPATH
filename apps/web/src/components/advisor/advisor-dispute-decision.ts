@@ -3,7 +3,7 @@
 import { useRef, useState } from 'react';
 import type { AdvisorDisputeAction, AdvisorDisputeItem } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
-import { failure, NOTE_MAX, type Message } from './advisor-ui';
+import { failure, type Message } from './advisor-ui';
 
 export function useAdvisorDisputeDecision(onChanged: () => void | Promise<void>) {
   const { request } = useAuth();
@@ -12,14 +12,14 @@ export function useAdvisorDisputeDecision(onChanged: () => void | Promise<void>)
   const [message, setMessage] = useState<Message | null>(null);
 
   async function decide(item: AdvisorDisputeItem, action: AdvisorDisputeAction, rawNote: string) {
-    if (inFlight.current || (action === 'request-reevaluation' && item.evaluation?.round === 2)) return;
+    if (inFlight.current || (action === 'request-reevaluation' && item.evaluation?.round !== 1)) return;
     const reeval = action === 'request-reevaluation';
     const question = reeval
       ? `ให้บริษัทประเมิน ${item.student_name} ใหม่? (ประเมินซ้ำได้ 1 รอบ)`
       : `ยืนยันผลไม่ผ่านของ ${item.student_name}?`;
     if (!window.confirm(question)) return;
     const note = rawNote.trim();
-    if (note.length > NOTE_MAX) { setMessage({ tone: 'error', text: `หมายเหตุต้องไม่เกิน ${NOTE_MAX} ตัวอักษร` }); return; }
+    if (note.length > 2000) { setMessage({ tone: 'error', text: `หมายเหตุต้องไม่เกิน 2,000 ตัวอักษร` }); return; }
 
     inFlight.current = true;
     setBusyId(item.id);

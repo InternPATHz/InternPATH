@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { Paginated } from '@internpath/contracts';
+import { AdminPicker } from './admin-picker';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { IDENTITY_AUDIT_ACTION_LABEL, IDENTITY_AUDIT_TARGET_LABEL, labelOf } from '@/lib/status-map';
@@ -81,18 +82,18 @@ export function IdentityAuditLog() {
 
   const lastPage = Math.max(1, Math.ceil((result?.meta.total ?? 0) / PAGE_SIZE));
   return <div className="space-y-5">
-    <div><h1 className="text-2xl font-semibold">Audit log ของ Identity</h1>
+    <div><h1 className="text-2xl font-semibold">บันทึกการดำเนินการ · บัญชีและองค์กร</h1>
       <p className="mt-1 text-sm text-ink-soft">ดูการเปลี่ยนแปลงบัญชี อาจารย์ และบริษัท โดยเรียงรายการใหม่ก่อน</p></div>
     <form onSubmit={submit} className="grid gap-3 rounded-xl border border-border bg-surface p-4 sm:grid-cols-2 lg:grid-cols-5">
       {[
         { label: 'การกระทำ', value: actionText, set: setActionText, max: 100 },
         { label: 'ชนิดเป้าหมาย', value: targetTypeText, set: setTargetTypeText, max: 50 },
         { label: 'รหัสเป้าหมาย', value: targetIdText, set: setTargetIdText, max: 36 },
-        { label: 'รหัสผู้ดูแล', value: adminIdText, set: setAdminIdText, max: 36 },
       ].map((field) => <label key={field.label} className="text-sm">{field.label}
         <input value={field.value} onChange={(event) => field.set(event.target.value)} maxLength={field.max}
           className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
       </label>)}
+      <AdminPicker value={adminIdText} onChange={setAdminIdText} />
       <button className="self-end rounded-lg bg-primary px-4 py-2 font-medium text-white hover:bg-primary-hover">กรอง</button>
     </form>
     {error && <Notice tone="error">{error}</Notice>}
