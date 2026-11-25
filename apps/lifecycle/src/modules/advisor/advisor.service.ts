@@ -22,6 +22,12 @@ import {
 import { applicationNotFound, stateConflict } from '../../state-machine/errors';
 import type { Actor } from '../../state-machine/status-history.writer';
 import { ACADEMIC_RESULT_WITHOUT_TRANSITION, INACTIVE_STATUSES } from '../../state-machine/transition-table';
+
+/**
+ * ฝึกงานจบแล้ว (ไม่ว่าผลจะเป็นอย่างไร) — เดิมนับแค่ `COMPLETED` (หลังอาจารย์บันทึกผล) ทำให้นักศึกษาที่บริษัทประเมินแล้ว,
+ * กำลังโต้แย้งผล FAIL หรือถูกยุติกลางคัน ขึ้นว่า "ยังไม่ได้ฝึกงาน" ในหน้ารายชื่อของอาจารย์
+ */
+const TRAINING_ENDED: readonly string[] = ['EVALUATED_PASS', 'EVALUATED_FAIL', 'FAIL_DISPUTED', 'REEVALUATION_REQUESTED', 'NO_EVALUATION', 'TERMINATED', 'COMPLETED'];
 import { loadSnapshotNames, toAdvisorItem, toApplicationBase } from '../applications/application-view';
 import type { AcademicResultDto, AdvisorApplicationsQueryDto, AdvisorStudentsQueryDto } from './advisor.dto';
 
@@ -90,7 +96,7 @@ export class AdvisorService {
     for (const app of applications) {
       const entry = training.get(app.studentUserId) ?? { inProgress: false, completed: false, active: 0 };
       if (app.status === 'IN_PROGRESS') entry.inProgress = true;
-      if (app.status === 'COMPLETED') entry.completed = true;
+      if (TRAINING_ENDED.includes(app.status)) entry.completed = true;
       if (!INACTIVE_STATUSES.includes(app.status)) entry.active += 1;
       training.set(app.studentUserId, entry);
     }

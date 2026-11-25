@@ -1,5 +1,5 @@
 import { CurrentUser, JwtAuthGuard, JwtClaims, Roles, RolesGuard } from '@internpath/common';
-import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { AdminTagListQuery, CreateTagDto, TagListQuery, UpdateTagDto } from './dto';
 import { TagsService } from './tags.service';
 
@@ -35,5 +35,12 @@ export class AdminTagsController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTagDto, @CurrentUser() user: JwtClaims) {
     return this.tags.update(id, dto, user.sub);
+  }
+
+  /** ลบได้เฉพาะ Tag ที่ไม่มีประกาศใช้ — ถูกใช้แล้ว ⇒ 409 `TAG_IN_USE` (ให้ปิดใช้งานแทน) */
+  @Delete(':id')
+  @HttpCode(204)
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.tags.remove(id);
   }
 }

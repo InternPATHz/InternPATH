@@ -8,7 +8,7 @@ import { expect } from 'chai';
 import request from 'supertest';
 import { VerificationModule } from '../../src/verification.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
-import { brokerReachableOrSkip, brokerUrl, collectJobVerified, messageCount, publishRaw, purgeVerificationQueues, type Collector } from '../support/amqp';
+import { brokerReachableOrSkip, brokerUrl, dropBrokerSandbox, collectJobVerified, messageCount, publishRaw, purgeVerificationQueues, type Collector } from '../support/amqp';
 import { createTestDatabase, dbReachableOrSkip, type TestDatabase } from '../support/db';
 import { LONG, PHONE, companyChanged, envelope, statusChanged, submitted } from '../support/events';
 import { createJwtKit } from '../support/jwt';
@@ -66,10 +66,11 @@ describe('e2e: ตรวจประกาศงานผ่าน RabbitMQ จ�
   });
 
   after(async () => {
-    if (!started) return;
+    if (!started) { await dropBrokerSandbox(); return; }
     await app?.close();
     await collector?.close();
     await purgeVerificationQueues();
+    await dropBrokerSandbox();
     await db?.drop();
   });
 

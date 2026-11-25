@@ -74,7 +74,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
 | POST | `/auth/student-invitations/accept` | Public | `{token, password, accept_privacy:true}` → `204`; ตั้งรหัสผ่านและยืนยันอีเมลของนักศึกษาที่อาจารย์สร้างให้ (บัญชีเป็น `ACTIVE`) — token ใช้ได้ครั้งเดียว อายุ 7 วัน; ผิด/หมดอายุ/ใช้แล้ว ⇒ `400 VALIDATION_FAILED` (`INVALID_TOKEN`) **ไม่มี `POST /auth/register/student`** (นักศึกษาไม่สมัครเอง — ปรับ Requirement 2026-11-21 เรียกเส้นทางเดิมได้ `404`) |
-| POST | `/auth/register/advisor` | Public | `@ac.th`, สถานะ `PENDING_EMAIL` → (ยืนยัน) → `PENDING_APPROVAL` |
+| POST | `/auth/register/advisor` | Public | `@ac.th`, สถานะ `PENDING_EMAIL` → (ยืนยัน) → `PENDING_APPROVAL`; ต้องส่ง `university_name` (≤200) และ `university_abbreviation` (A-Z/0-9 2–10 ตัว แปลงเป็นตัวพิมพ์ใหญ่) — ผู้สมัครคนแรกของโดเมนตั้งชื่อ/ตัวย่อ คนหลังใช้ของเดิม; ตัวย่อซ้ำกับมหาวิทยาลัยอื่น ⇒ `409 STATE_CONFLICT` (`UNIVERSITY_ABBREVIATION_TAKEN`); ระบบออก `advisor_code` = ตัวย่อ + เลขสุ่ม 6 หลัก |
 | POST | `/auth/register/company` | Public | `{company:{name, registration_no (ตัวเลข 13 หลัก), website?, phone?}, user:{email(domain องค์กร), password, full_name}, accept_privacy:true}` — ปฏิเสธอีเมลสาธารณะ (`PUBLIC_EMAIL_NOT_ALLOWED`); คนแรก = Owner |
 | POST | `/auth/verify-email` | Public | `{token}` |
 | POST | `/auth/resend-verification` | Public | rate-limited |
@@ -86,7 +86,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/auth/password/reset` | Public | `{token, new_password}` ใช้ได้ครั้งเดียว |
 | GET | `/.well-known/jwks.json` | Public | Public Key (ถ้าเลือกใช้ JWKS — Open Decision #2) |
 
-ข้อกำหนดของ Auth รอบแรก: `POST /auth/register/advisor` รับ `{email(@ac.th), password, full_name, department, accept_privacy:true}`; รหัสผ่านของทุกบทบาทยาวอย่างน้อย 12 ตัวอักษรและเก็บแบบ Argon2id; บันทึก `PRIVACY_POLICY` consent เมื่อสมัคร. ลิงก์ยืนยันอีเมลหมดอายุใน 24 ชั่วโมง, ลิงก์รีเซ็ตรหัสผ่านหมดอายุใน 30 นาทีและใช้ได้ครั้งเดียว; Refresh Token อยู่ได้ 30 วันและหมุนทุกครั้งที่ใช้. ล็อกบัญชี 15 นาทีเมื่อรหัสผ่านผิดครบ 5 ครั้ง แต่เจ้าของบัญชีใช้ลิงก์ปลดล็อกอายุ 15 นาทีร่วมกับรหัสผ่านเพื่อเข้าสู่ระบบได้ โดยลิงก์ถูกใช้หลังตรวจ token และรหัสผ่านถูกต้องเท่านั้น และออกลิงก์ใหม่ได้เมื่อไม่มีลิงก์ที่ยังใช้ได้. `resend-verification`, `password/forgot` และ `login/unlock/request` คืน 204 แม้อีเมลไม่มีในระบบ เพื่อไม่เปิดเผยรายชื่อบัญชี; จำกัดการขอซ้ำต่อบัญชีอย่างน้อย 60 วินาที (Gateway ยังต้องจำกัดต่อ IP ตาม README §5.7). ลิงก์อีเมลสร้างจาก `WEB_BASE_URL` และส่งผ่าน SMTP ที่ตั้งค่าไว้.
+ข้อกำหนดของ Auth รอบแรก: `POST /auth/register/advisor` รับ `{email(@ac.th), password, full_name, department, university_name, university_abbreviation, accept_privacy:true}`; รหัสผ่านของทุกบทบาทยาวอย่างน้อย 12 ตัวอักษรและเก็บแบบ Argon2id; บันทึก `PRIVACY_POLICY` consent เมื่อสมัคร. ลิงก์ยืนยันอีเมลหมดอายุใน 24 ชั่วโมง, ลิงก์รีเซ็ตรหัสผ่านหมดอายุใน 30 นาทีและใช้ได้ครั้งเดียว; Refresh Token อยู่ได้ 30 วันและหมุนทุกครั้งที่ใช้. ล็อกบัญชี 15 นาทีเมื่อรหัสผ่านผิดครบ 5 ครั้ง แต่เจ้าของบัญชีใช้ลิงก์ปลดล็อกอายุ 15 นาทีร่วมกับรหัสผ่านเพื่อเข้าสู่ระบบได้ โดยลิงก์ถูกใช้หลังตรวจ token และรหัสผ่านถูกต้องเท่านั้น และออกลิงก์ใหม่ได้เมื่อไม่มีลิงก์ที่ยังใช้ได้. `resend-verification`, `password/forgot` และ `login/unlock/request` คืน 204 แม้อีเมลไม่มีในระบบ เพื่อไม่เปิดเผยรายชื่อบัญชี; จำกัดการขอซ้ำต่อบัญชีอย่างน้อย 60 วินาที (Gateway ยังต้องจำกัดต่อ IP ตาม README §5.7). ลิงก์อีเมลสร้างจาก `WEB_BASE_URL` และส่งผ่าน SMTP ที่ตั้งค่าไว้.
 
 ### 4.2 ผู้ใช้และโปรไฟล์ระบุตัวตน
 | Method | Path | Role | คำอธิบาย |
@@ -141,8 +141,8 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | POST | `/admin/advisors/{id}/actions/{approve\|reject}` | AD | |
 | POST | `/admin/students/{id}/advisor` | AD | `{advisor_id}` ย้ายอาจารย์ทันที (`LINKED`) |
 | GET | `/admin/users` | AD | `?q=&role=&status=&university_id=&page=&page_size=` ค้นบัญชีตามชื่อ อีเมล หรือรหัสนักศึกษา → Pagination; คืน `id, full_name, email, role, status, university_id, university_name, advisor_id?, student_code?, company_id?, created_at` สำหรับหน้า Admin |
-| POST | `/admin/users/{id}/actions/{suspend\|unsuspend}` | AD | → `UserSuspended` |
-| GET | `/admin/audit-logs` | AD | Audit ของ Identity |
+| POST | `/admin/users/{id}/actions/{suspend\|unsuspend}` | AD | → `UserSuspended`; `{id}` เป็นบัญชีของ Admin เอง ⇒ `409 CANNOT_ACT_ON_SELF` |
+| GET | `/admin/audit-logs` | AD | Audit ของ Identity — `?action=&target_type=&target_id=&target_code=&admin_id=` + Pagination; `target_code` = รหัสนักศึกษา/รหัสอาจารย์/อีเมล/เลขทะเบียนนิติบุคคล (ตรงทุกตัวอักษร); แต่ละแถวมี `target_label`, `admin_label` (ชื่อ + รหัส, หาไม่เจอ = `null`) ให้หน้าเว็บแสดงแทน UUID |
 
 ---
 
@@ -197,6 +197,7 @@ Tag = ป้ายทักษะ/เทคโนโลยีของประ�
 | GET | `/admin/tags` | AD | `?q=&active=` + Pagination → `{id, name, slug, active, job_count}` (รวมที่ปิดใช้งาน) |
 | POST | `/admin/tags` | AD | `{name}` (1–50 ตัวอักษร) → `201 {id, name, slug, active:true}`; `slug` สร้างจากชื่อ (ตัวพิมพ์เล็ก ตัดอักขระที่ไม่ใช่ตัวอักษร/ตัวเลข เช่น `Next.js` → `nextjs`); `slug` ซ้ำ ⇒ `409 STATE_CONFLICT` (`TAG_EXISTS`) |
 | PATCH | `/admin/tags/{id}` | AD | `{name?, active?}` — เปลี่ยนชื่อได้ (slug คงเดิม), `active=false` = ปิดใช้งาน: ไม่ขึ้นให้เลือกใหม่ แต่ประกาศเดิมที่ติด Tag นี้ยังแสดงตามเดิม; ไม่พบ ⇒ `404`; ไม่มี Audit Log แยก (เก็บ `created_by`/`updated_by` ในตาราง) |
+| DELETE | `/admin/tags/{id}` | AD | ลบ Tag ที่**ไม่มีประกาศใช้เลย** → `204`; มีประกาศใช้ (`job_count > 0`) ⇒ `409 STATE_CONFLICT` (`TAG_IN_USE`) ให้ปิดใช้งานแทน; ไม่พบ ⇒ `404` |
 `tag_ids[]` ที่ HR ส่ง: ต้องเป็น Tag ที่ `active` จำนวน 1–10 รายการไม่ซ้ำ ไม่เช่นนั้น `400 VALIDATION_FAILED` (`details[].issue` = `TAG_UNKNOWN`/`TAG_INACTIVE`/`TAGS_COUNT`)
 
 ## 6. Verification & Trust Service
@@ -314,7 +315,7 @@ Tag = ป้ายทักษะ/เทคโนโลยีของประ�
 | POST | `/advisor/applications/{id}/actions/continue` | A | กรณีบริษัทถูกระงับ: เลือก "ฝึกต่อ" (บันทึก decision) |
 | GET | `/advisor/problem-reports` | A | |
 | POST | `/problem-reports/{id}/actions/{acknowledge\|resolve}` | A,AD | `resolve` รับ `{note, follow_up_action?}` — **H ได้ 403/404** |
-| GET | `/advisor/students` | A | รายชื่อนักศึกษาในความดูแลพร้อมสถานะการฝึกงาน: `?q=&year_level=&training_status=IN_TRAINING\|COMPLETED` + Pagination → `{student_user_id, full_name, student_code, major, year_level, training_status, active_application_count}` — `year_level` = ชั้นปีของนักศึกษา, `IN_TRAINING` = มีใบสมัครสถานะ `IN_PROGRESS`, `COMPLETED` = มีใบสมัครสถานะ `COMPLETED` (ไม่ส่ง `training_status` ⇒ ทุกคน; นักศึกษาที่ไม่มีทั้งสองสถานะมี `training_status=NONE`); ชื่อ/รหัส/สาขา/ชั้นปีดึงสดจาก Identity (`students/summaries`) **ไม่เก็บ `full_name`**; ตัวกรองเพิ่มเติม PM จะแจ้งภายหลัง |
+| GET | `/advisor/students` | A | รายชื่อนักศึกษาในความดูแลพร้อมสถานะการฝึกงาน: `?q=&year_level=&training_status=IN_TRAINING\|COMPLETED` + Pagination → `{student_user_id, full_name, student_code, major, year_level, training_status, active_application_count}` — `year_level` = ชั้นปีของนักศึกษา, `IN_TRAINING` = มีใบสมัครสถานะ `IN_PROGRESS`, `COMPLETED` = ฝึกงานจบแล้ว: มีใบสมัครสถานะ `EVALUATED_PASS`/`EVALUATED_FAIL`/`FAIL_DISPUTED`/`REEVALUATION_REQUESTED`/`NO_EVALUATION`/`TERMINATED`/`COMPLETED` (ไม่ส่ง `training_status` ⇒ ทุกคน; นักศึกษาที่ไม่มีทั้งสองสถานะมี `training_status=NONE`); ชื่อ/รหัส/สาขา/ชั้นปีดึงสดจาก Identity (`students/summaries`) **ไม่เก็บ `full_name`**; ตัวกรองเพิ่มเติม PM จะแจ้งภายหลัง |
 | GET | `/advisor/students/{id}/overview` | A | สรุปสถานะฝึกงานของนักศึกษาในความดูแล |
 
 ### 7.5 E-Certificate และการตรวจสอบ

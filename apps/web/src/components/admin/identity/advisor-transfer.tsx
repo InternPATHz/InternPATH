@@ -6,6 +6,7 @@ import type { AdminUserListItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
+import { universityLabel } from './use-universities';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE_SIZE = 100;
@@ -84,7 +85,7 @@ export function AdvisorTransfer() {
   }, [params, search]);
 
   const student = matches?.find((row) => row.id === studentId) ?? null;
-  const advisorLabel = (row: AdminUserListItem) => `${row.full_name} · ${row.email}`;
+  const advisorLabel = (row: AdminUserListItem) => `${row.full_name}${row.advisor_code ? ` (${row.advisor_code})` : ''} · ${row.email}`;
   const currentAdvisor = student?.advisor_id ? advisors?.find((row) => row.id === student.advisor_id) : undefined;
   const choices = student && advisors
     ? advisors.filter((row) => row.university_id !== null && row.university_id === student.university_id && row.id !== student.advisor_id)
@@ -127,7 +128,7 @@ export function AdvisorTransfer() {
             onChange={() => { setStudentId(row.id); setTargetId(''); setNotice(''); }} className="mt-1" />
           <span className="min-w-0"><span className="block font-medium">{row.full_name}</span>
             <span className="block break-all text-ink-soft">{row.email} · {labelOf(USER_STATUS_LABEL, row.status)}</span>
-            {row.university_name && <span className="block text-ink-soft">มหาวิทยาลัย {row.university_name}</span>}</span>
+            {row.university_name && <span className="block text-ink-soft">{universityLabel(row.university_name)}</span>}</span>
         </label>)}
       </div>
     </fieldset>}

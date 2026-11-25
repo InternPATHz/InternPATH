@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { CompanyFlagItem, Paginated, SetCompanyFlagRequest, SetCompanyFlagResponse } from '@internpath/contracts';
+import type { AdminCompanyListItem, CompanyFlagItem, Paginated, SetCompanyFlagRequest, SetCompanyFlagResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { Badge, formatDateTime } from '@/components/admin/queue/queue-ui';
 import { ApiError } from '@/lib/api';
 import { CompanyPicker } from '@/components/admin/identity/company-picker';
+import { allPages } from '@/lib/list';
 
 const PAGE_SIZE = 20;
 const REASON_MAX = 500;
@@ -51,6 +52,14 @@ export function FlagsList() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { request } = useAuth();
+  // ธงมาจาก Verification ซึ่งไม่มีเลขทะเบียน — ดึงจาก Identity มาแสดงแทน UUID (โหลดไม่ได้ก็แค่ไม่แสดง)
+  const [registrationNos, setRegistrationNos] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    let active = true;
+    allPages<AdminCompanyListItem>((page) => request<Paginated<AdminCompanyListItem>>(`/admin/companies?page=${page}&page_size=100`))
+      .then((rows) => { if (active) setRegistrationNos(new Map(rows.map((row) => [row.id, row.registration_no]))); }, () => undefined);
+    return () => { active = false; };
+  }, [request]);
   const filters = readFilters(new URLSearchParams(searchParams.toString()));
   const queryString = toQuery(filters);
 
@@ -202,7 +211,7 @@ export function FlagsList() {
                   <td className="px-4 py-3">
                     <p className="font-medium">{item.company_name ?? 'ไม่ทราบชื่อ'}</p>
                     <Link href={`/admin/company-stats?company_id=${encodeURIComponent(item.company_id)}`} className="text-xs font-medium text-primary hover:underline">ดูสถิติบริษัท</Link>
-                    <details className="text-xs text-ink-soft"><summary className="cursor-pointer">รหัสอ้างอิงบริษัท</summary>{item.company_id}</details>
+                    {registrationNos.get(item.company_id) && <p className="text-xs text-ink-soft">เลขทะเบียน <span className="font-mono">{registrationNos.get(item.company_id)}</span></p>}
                   </td>
                   <td className="px-4 py-3">
                     <Badge className={item.active ? 'bg-danger-soft text-danger-text' : 'bg-surface-muted text-ink-soft'}>{item.active ? 'ติดธงอยู่' : 'เคลียร์แล้ว'}</Badge>

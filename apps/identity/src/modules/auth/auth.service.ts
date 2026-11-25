@@ -1,4 +1,4 @@
-import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomInt, randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppException, normalizePemKey } from '@internpath/common';
@@ -45,14 +45,30 @@ export class AuthService {
     return domain;
   }
 
-  private async universityId(tx: Prisma.TransactionClient, domain: string): Promise<string> {
-    const university = await tx.university.upsert({
-      where: { emailDomain: domain },
-      create: { emailDomain: domain, name: domain },
-      update: {},
-    });
-    if (!university.active) throw new AppException('UNIVERSITY_INACTIVE', 'สถาบันนี้ยังไม่เปิดรับสมัคร', 403);
-    return university.id;
+  /**
+   * หา/สร้างมหาวิทยาลัยจากโดเมนอีเมล — ผู้สมัครคนแรกของโดเมนตั้งชื่อและตัวย่อ
+   * โดเมนที่มีชื่อ/ตัวย่อแล้ว ใช้ของเดิม (ผู้สมัครคนหลังเปลี่ยนชื่อมหาวิทยาลัยไม่ได้)
+   */
+  private async university(tx: Prisma.TransactionClient, domain: string, name: string, abbreviation: string): Promise<{ id: string; abbreviation: string }> {
+    const existing = await tx.university.findUnique({ where: { emailDomain: domain } });
+    if (existing && !existing.active) throw new AppException('UNIVERSITY_INACTIVE', 'สถาบันนี้ยังไม่เปิดรับสมัคร', 403);
+    if (existing?.abbreviation) return { id: existing.id, abbreviation: existing.abbreviation };
+    const taken = await tx.university.findFirst({ where: { abbreviation, NOT: { emailDomain: domain } }, select: { id: true } });
+    if (taken) throw new AppException('STATE_CONFLICT', 'ตัวย่อนี้มีมหาวิทยาลัยอื่นใช้แล้ว', 409, [{ field: 'university_abbreviation', issue: 'UNIVERSITY_ABBREVIATION_TAKEN' }]);
+    const saved = existing
+      // โดเมนเดิมที่ระบบสร้างไว้ก่อนมีฟิลด์นี้ (ชื่อ = โดเมน) ⇒ ตั้งชื่อจริงให้ครั้งเดียว
+      ? await tx.university.update({ where: { id: existing.id }, data: { abbreviation, ...(existing.name === domain ? { name } : {}) } })
+      : await tx.university.create({ data: { emailDomain: domain, name, abbreviation } });
+    return { id: saved.id, abbreviation };
+  }
+
+  /** ตัวย่อ + เลขสุ่ม 6 หลัก ที่ยังไม่มีอาจารย์คนไหนใช้ (ชนตอน commit ⇒ ผู้เรียกลองใหม่) */
+  private async advisorCode(tx: Prisma.TransactionClient, abbreviation: string): Promise<string> {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const code = `${abbreviation}${randomInt(0, 1_000_000).toString().padStart(6, '0')}`;
+      if (!await tx.advisorProfile.findUnique({ where: { advisorCode: code }, select: { userId: true } })) return code;
+    }
+    throw new AppException('STATE_CONFLICT', 'สร้างรหัสอาจารย์ไม่สำเร็จ กรุณาลองใหม่', 409);
   }
 
   async issueEmailToken(tx: Prisma.TransactionClient, userId: string, purpose: 'VERIFY_EMAIL' | 'RESET_PASSWORD' | 'LOGIN_UNLOCK' | 'STUDENT_INVITATION'): Promise<string> {
@@ -70,20 +86,28 @@ export class AuthService {
     const normalized = normalizeEmail(email);
     const domain = this.requireAcademic(normalized);
     const passwordHash = await hashPassword(password);
-    let token: string;
-    try {
-      token = await this.db.$transaction(async (tx) => {
-        const universityId = await this.universityId(tx, domain);
-        const user = await tx.user.create({ data: {
-          email: normalized, passwordHash, fullName: fullName.trim(), role: 'ADVISOR', universityId,
-          advisorProfile: { create: { department: profile.department } },
-          consents: { create: { type: 'PRIVACY_POLICY', policyVersion: 'v1' } },
-        } });
-        return this.issueEmailToken(tx, user.id, 'VERIFY_EMAIL');
-      });
-    } catch (error) {
-      if (isUniqueError(error)) throw new AppException('ACCOUNT_EXISTS', 'อีเมลนี้ลงทะเบียนแล้ว', 409);
-      throw error;
+    let token: string | undefined;
+    for (let attempt = 0; !token; attempt += 1) {
+      try {
+        token = await this.db.$transaction(async (tx) => {
+          const university = await this.university(tx, domain, profile.university_name, profile.university_abbreviation);
+          const user = await tx.user.create({ data: {
+            email: normalized, passwordHash, fullName: fullName.trim(), role: 'ADVISOR', universityId: university.id,
+            advisorProfile: { create: { department: profile.department, advisorCode: await this.advisorCode(tx, university.abbreviation) } },
+            consents: { create: { type: 'PRIVACY_POLICY', policyVersion: 'v1' } },
+          } });
+          return this.issueEmailToken(tx, user.id, 'VERIFY_EMAIL');
+        });
+      } catch (error) {
+        const target = JSON.stringify((error as Prisma.PrismaClientKnownRequestError)?.meta?.target ?? '');
+        // คำขอพร้อมกันได้รหัสอาจารย์/ตัวย่อชนกัน ⇒ ลองใหม่ (ไม่ใช่อีเมลซ้ำ)
+        if (isUniqueError(error) && /advisor_?code|abbreviation|email_?domain/i.test(target) && attempt < 3) continue;
+        if (isUniqueError(error) && /abbreviation/i.test(target)) {
+          throw new AppException('STATE_CONFLICT', 'ตัวย่อนี้มีมหาวิทยาลัยอื่นใช้แล้ว', 409, [{ field: 'university_abbreviation', issue: 'UNIVERSITY_ABBREVIATION_TAKEN' }]);
+        }
+        if (isUniqueError(error)) throw new AppException('ACCOUNT_EXISTS', 'อีเมลนี้ลงทะเบียนแล้ว', 409);
+        throw error;
+      }
     }
     try { await this.mailer.send(normalized, 'verify-email', token); }
     catch { /* The account is committed; do not report registration as failed. */ }

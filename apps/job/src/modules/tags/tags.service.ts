@@ -88,6 +88,24 @@ export class TagsService {
     }
   }
 
+  /**
+   * ลบได้เฉพาะ Tag ที่ไม่มีประกาศใช้เลย (รวมประกาศที่ปิด/ถูกลบสถานะแล้ว) — Tag ที่ถูกใช้ให้ "ปิดใช้งาน" แทน
+   * เพื่อไม่ให้ประกาศเดิมเสีย Tag ไป ถ้ามีประกาศเพิ่ม Tag นี้ระหว่างลบ FK ของ job_tags จะกันไว้ (P2003)
+   */
+  async remove(id: string): Promise<void> {
+    const inUse = () => new AppException('STATE_CONFLICT', 'Tag นี้มีประกาศใช้อยู่ ให้ปิดใช้งานแทนการลบ', 409, [{ field: 'id', issue: 'TAG_IN_USE' }]);
+    const tag = await this.db.tag.findUnique({ where: { id }, select: { _count: { select: { jobs: true } } } });
+    if (!tag) throw new AppException('NOT_FOUND', 'ไม่พบ Tag', 404);
+    if (tag._count.jobs > 0) throw inUse();
+    try {
+      await this.db.tag.delete({ where: { id } });
+    } catch (cause) {
+      if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2025') throw new AppException('NOT_FOUND', 'ไม่พบ Tag', 404);
+      if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2003') throw inUse();
+      throw cause;
+    }
+  }
+
   private slugOrThrow(name: string): string {
     const slug = slugify(name);
     if (!slug) throw new AppException('VALIDATION_FAILED', 'ชื่อ Tag ต้องมีตัวอักษรภาษาอังกฤษหรือตัวเลข', 400, [{ field: 'name', issue: 'TAG_NAME_INVALID' }]);

@@ -37,7 +37,9 @@ export default function RegisterPage() {
     try {
       if (role === 'advisor') {
         await apiRequest<void>('/auth/register/advisor', { email, password, full_name: fullName,
-          department: String(form.get('department')).trim(), accept_privacy: true });
+          department: String(form.get('department')).trim(),
+          university_name: String(form.get('university_name')).trim(),
+          university_abbreviation: String(form.get('university_abbreviation')).trim().toUpperCase(), accept_privacy: true });
       } else {
         const website = String(form.get('website') || '').trim();
         const phone = String(form.get('phone') || '').trim();
@@ -91,7 +93,13 @@ export default function RegisterPage() {
           <legend className="mb-2 font-semibold">ข้อมูลบัญชี</legend>
         <Field label={formRole === 'company' ? 'ชื่อผู้ดูแลบริษัท' : 'ชื่อ-นามสกุล'} name="full_name" autoComplete="name" required />
         <Field label={formRole === 'company' ? 'อีเมลองค์กร' : 'อีเมลสถาบัน (.ac.th)'} name="email" type="email" autoComplete="email" required />
-        {formRole === 'advisor' && <Field label="ภาควิชา" name="department" required />}
+        {formRole === 'advisor' && <>
+          <Field label="ภาควิชา" name="department" required />
+          <Field label="ชื่อมหาวิทยาลัย" name="university_name" maxLength={200} placeholder="เช่น มหาวิทยาลัยเกษตรศาสตร์" required />
+          <Field label="ตัวย่อมหาวิทยาลัย (A-Z, 0-9)" name="university_abbreviation" minLength={2} maxLength={10} pattern="[A-Za-z0-9]{2,10}"
+            title="ตัวอักษรอังกฤษหรือตัวเลข 2–10 ตัว เช่น KU" autoCapitalize="characters" placeholder="เช่น KU" required />
+          <p className="text-xs text-ink-soft">ถ้ามีอาจารย์จากโดเมนอีเมลเดียวกันสมัครไว้แล้ว ระบบใช้ชื่อและตัวย่อเดิม • รหัสอาจารย์ของคุณจะเป็นตัวย่อ + เลข 6 หลัก</p>
+        </>}
         </fieldset>
         {formRole === 'advisor' && <p className="rounded-lg bg-surface-muted p-3 text-sm text-ink-soft">ใช้อีเมลสถาบันเพื่อยืนยันบทบาท บัญชีจะรอผู้ดูแลระบบอนุมัติหลังยืนยันอีเมล</p>}
         <fieldset className="space-y-3">

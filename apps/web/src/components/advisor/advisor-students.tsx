@@ -19,7 +19,9 @@ const TRAINING_STYLE = {
   IN_TRAINING: 'bg-info-soft text-info-text', COMPLETED: 'bg-success-soft text-success-text', NONE: 'bg-surface-muted text-ink-soft',
 } as const;
 
-const YEAR_OPTIONS: Array<[string, string]> = [['', 'ทุกชั้นปี'], ...[1, 2, 3, 4, 5, 6].map((year): [string, string] => [String(year), `ชั้นปี ${year}`])];
+// ฝึกงานเฉพาะนักศึกษาชั้นปี 4 — ตัวกรองและฟอร์มเพิ่มนักศึกษาจึงมีแค่ปี 4
+const INTERN_YEAR = '4';
+const YEAR_OPTIONS: Array<[string, string]> = [[INTERN_YEAR, `ชั้นปี ${INTERN_YEAR}`]];
 
 function failure(cause: unknown): string {
   if (!(cause instanceof ApiError)) return 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่';
@@ -31,7 +33,7 @@ function failure(cause: unknown): string {
   return cause.message;
 }
 
-const EMPTY_FORM = { email: '', full_name: '', student_code: '', major: '', year_level: '' };
+const EMPTY_FORM = { email: '', full_name: '', student_code: '', major: '', year_level: INTERN_YEAR };
 const inputClass = 'mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft';
 
 /**
@@ -59,7 +61,7 @@ export function AdvisorStudents() {
   const [reload, setReload] = useState(0);
 
   const [q, setQ] = useState('');
-  const [yearLevel, setYearLevel] = useState('');
+  const [yearLevel, setYearLevel] = useState(INTERN_YEAR);
   const [training, setTraining] = useState('');
   const [page, setPage] = useState(1);
   const [list, setList] = useState<Paginated<AdvisorTrainingStudentItem> | null>(null);
@@ -108,7 +110,7 @@ export function AdvisorStudents() {
   async function create(event: FormEvent) {
     event.preventDefault();
     const year = Number(form.year_level);
-    if (!Number.isInteger(year) || year < 1 || year > 10) { setFormMessage({ tone: 'error', text: 'ชั้นปีต้องเป็นจำนวนเต็ม 1–10' }); return; }
+    if (year !== Number(INTERN_YEAR)) { setFormMessage({ tone: 'error', text: 'เพิ่มได้เฉพาะนักศึกษาชั้นปี 4' }); return; }
     setFormBusy(true);
     setFormMessage(null);
     try {
@@ -197,7 +199,8 @@ export function AdvisorStudents() {
             <input id={`${fieldId}-major`} required value={form.major} onChange={set('major')} maxLength={200} className={inputClass} />
           </Field>
           <Field id={`${fieldId}-year`} label="ชั้นปี">
-            <input id={`${fieldId}-year`} type="number" inputMode="numeric" required min={1} max={10} value={form.year_level} onChange={set('year_level')} className={inputClass} />
+            <input id={`${fieldId}-year`} readOnly value={`ชั้นปี ${INTERN_YEAR}`} aria-describedby={`${fieldId}-year-hint`} className={inputClass + ' bg-surface-muted'} />
+            <p id={`${fieldId}-year-hint`} className="mt-1 text-xs text-ink-soft">ฝึกงานได้เฉพาะชั้นปี 4</p>
           </Field>
           <div className="sm:col-span-2">
             {formMessage && <div id={`${fieldId}-message`} className="mb-3"><Notice tone={formMessage.tone}>{formMessage.text}</Notice></div>}

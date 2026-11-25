@@ -230,7 +230,7 @@ export class AdvisorLinkService {
     ]);
     return page(users.map((user) => ({ id: user.id, full_name: user.fullName, email: user.email,
       ...(user.advisorProfile?.department ? { department: user.advisorProfile.department } : {}), status: user.status,
-      university_id: user.universityId, university_name: user.university?.name ?? null, created_at: user.createdAt.toISOString() })), total, query);
+      university_id: user.universityId, university_name: user.university?.name ?? null, advisor_code: user.advisorProfile?.advisorCode ?? null, created_at: user.createdAt.toISOString() })), total, query);
   }
 
   async adminAdvisorAction(adminId: string, advisorId: string, action: string, reason: string | undefined, correlationId: string): Promise<void> {

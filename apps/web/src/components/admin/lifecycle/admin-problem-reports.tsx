@@ -171,7 +171,6 @@ export function AdminProblemReports() {
               {report.id === selected?.id && <ReportStudent key={report.student_user_id} userId={report.student_user_id} />}
               <details className="mt-3 text-xs"><summary className="cursor-pointer">รหัสอ้างอิงระบบ</summary><dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-ink-soft sm:grid-cols-2">
                 <div><dt className="inline">ใบสมัคร: </dt><dd className="inline break-all font-mono">{report.application_id}</dd></div>
-                <div><dt className="inline">นักศึกษา: </dt><dd className="inline break-all font-mono">{report.student_user_id}</dd></div>
               </dl></details>
               <div className="mt-4 flex flex-wrap gap-3 text-sm">
                 <Link href={`/admin/applications?terminate=${encodeURIComponent(report.application_id)}`}

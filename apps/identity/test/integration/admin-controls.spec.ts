@@ -101,6 +101,18 @@ describe('Identity Admin controls (Postgres จริง)', function () {
       .set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).expect(400);
   });
 
+  it('treats % and _ in the user search as plain characters, not LIKE wildcards', async () => {
+    const auth = bearer(adminId, 'PLATFORM_ADMIN');
+    const underscored = await db.user.create({ data: { email: 'under_score@company.test', passwordHash: 'test', fullName: 'Under Score',
+      role: 'COMPANY_HR', status: 'ACTIVE', emailVerifiedAt: new Date() } });
+    for (const q of ['%', '_', '%%', '\\']) {
+      const res = await request(app.getHttpServer()).get(`/v1/admin/users?q=${encodeURIComponent(q)}`).set('Authorization', auth).expect(200);
+      expect(res.body.data.map((row: { id: string }) => row.id), `q=${q}`).to.not.include(adminId);
+    }
+    const literal = await request(app.getHttpServer()).get('/v1/admin/users?q=under_score').set('Authorization', auth).expect(200);
+    expect(literal.body.data.map((row: { id: string }) => row.id)).to.deep.equal([underscored.id]);
+  });
+
   it('lists universities and filters users by university with its name', async () => {
     const alpha = await db.university.create({ data: { name: 'Alpha University', emailDomain: 'alpha.ac.th' } });
     const beta = await db.university.create({ data: { name: 'Beta University', emailDomain: 'beta.ac.th', active: false } });
@@ -113,8 +125,8 @@ describe('Identity Admin controls (Postgres จริง)', function () {
     await request(app.getHttpServer()).get('/v1/admin/universities').set('Authorization', bearer(memberId, 'COMPANY_HR')).expect(403);
     const list = await request(app.getHttpServer()).get('/v1/admin/universities').set('Authorization', auth).expect(200);
     expect(list.body.data).to.deep.equal([
-      { id: alpha.id, name: 'Alpha University', email_domain: 'alpha.ac.th', active: true },
-      { id: beta.id, name: 'Beta University', email_domain: 'beta.ac.th', active: false },
+      { id: alpha.id, name: 'Alpha University', email_domain: 'alpha.ac.th', abbreviation: null, active: true },
+      { id: beta.id, name: 'Beta University', email_domain: 'beta.ac.th', abbreviation: null, active: false },
     ]);
 
     const filtered = await request(app.getHttpServer()).get(`/v1/admin/users?role=ADVISOR&university_id=${alpha.id}`)
@@ -191,5 +203,28 @@ describe('Identity Admin controls (Postgres จริง)', function () {
     await db.user.update({ where: { id: memberId }, data: { status: 'SUSPENDED', suspendedReason: `COMPANY_SUSPENDED:${companyId}` } });
     await request(app.getHttpServer()).post(`/v1/admin/users/${memberId}/actions/unsuspend`).set('Authorization', token).send({}).expect(409);
     expect((await db.user.findUniqueOrThrow({ where: { id: memberId } })).status).to.equal('SUSPENDED');
+  });
+
+  it('audit log filters by a readable code and labels target/admin instead of UUIDs', async () => {
+    const auth = bearer(adminId, 'PLATFORM_ADMIN');
+    await request(app.getHttpServer()).put(`/v1/admin/companies/${companyId}/university-partner`).set('Authorization', auth).send({ enabled: false });
+    const byRegNo = await request(app.getHttpServer()).get('/v1/admin/audit-logs?target_code=REG-001').set('Authorization', auth).expect(200);
+    expect(byRegNo.body.meta.total).to.be.greaterThan(0);
+    for (const row of byRegNo.body.data) {
+      expect(row.target_id).to.equal(companyId);
+      expect(row).to.include({ target_label: 'Test Company (REG-001)', admin_label: 'Admin (admin@test.local)' });
+    }
+    const none = await request(app.getHttpServer()).get('/v1/admin/audit-logs?target_code=NO-SUCH-CODE').set('Authorization', auth).expect(200);
+    expect(none.body).to.deep.include({ data: [] });
+    expect(none.body.meta.total).to.equal(0);
+  });
+
+  it('refuses to let an Admin suspend their own account', async () => {
+    const res = await request(app.getHttpServer()).post(`/v1/admin/users/${adminId}/actions/suspend`)
+      .set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).send({ reason: 'ทดสอบ' }).expect(409);
+    expect(res.body.error.code).to.equal('CANNOT_ACT_ON_SELF');
+    const admin = await db.user.findUniqueOrThrow({ where: { id: adminId } });
+    expect(admin.status).to.equal('ACTIVE');
+    expect(await db.tokenDenylist.count({ where: { userId: adminId } })).to.equal(0);
   });
 });

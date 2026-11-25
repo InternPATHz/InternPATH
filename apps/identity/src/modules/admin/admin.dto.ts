@@ -30,5 +30,7 @@ export class AuditQueryDto {
   @IsOptional() @IsString() @MaxLength(100) action?: string;
   @IsOptional() @IsString() @MaxLength(50) target_type?: string;
   @IsOptional() @IsUUID() target_id?: string;
+  /** รหัสที่คนอ่านได้แทน UUID: รหัสนักศึกษา/รหัสอาจารย์/อีเมล/เลขทะเบียนนิติบุคคล (ตรงทุกตัวอักษร) */
+  @IsOptional() @IsString() @MaxLength(320) target_code?: string;
   @IsOptional() @IsUUID() admin_id?: string;
 }

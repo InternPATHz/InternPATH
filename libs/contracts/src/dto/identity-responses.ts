@@ -24,8 +24,9 @@ export interface UserMeResponse extends AuthUser {
     advisor_link_status: AdvisorLinkStatus;
     advisor_id?: string;
   };
-  advisor?: { department?: string };
-  company?: { id: string; name: string; status: CompanyStatus; member_role: CompanyMemberRole; categories?: JobCategory[] };
+  /** `advisor_code` = รหัสอาจารย์ที่แสดงแทน UUID (ตัวย่อมหาวิทยาลัย + 6 หลัก) */
+  advisor?: { department?: string; advisor_code?: string };
+  company?: { id: string; name: string; registration_no: string; status: CompanyStatus; member_role: CompanyMemberRole; categories?: JobCategory[] };
   /** มหาวิทยาลัยของนักศึกษา/อาจารย์ (HR/Admin ไม่มี) */
   university?: { id: string; name: string };
 }
@@ -146,6 +147,8 @@ export interface AdminUniversityItem {
   id: string;
   name: string;
   email_domain: string;
+  /** ตัวย่อ (คำนำหน้ารหัสอาจารย์) — มหาวิทยาลัยเก่าที่ยังไม่มีอาจารย์ตั้งให้เป็น null */
+  abbreviation: string | null;
   active: boolean;
 }
 
@@ -158,6 +161,7 @@ export interface AdminAdvisorListItem {
   status: UserStatus;
   university_id: string | null;
   university_name: string | null;
+  advisor_code: string | null;
   created_at: string;
 }
 
@@ -170,6 +174,9 @@ export interface AdminUserListItem {
   status: UserStatus;
   university_id: string | null;
   university_name: string | null;
+  /** รหัสที่แสดงแทน UUID ตามบทบาท: อาจารย์ = advisor_code, HR = เลขทะเบียนนิติบุคคลของบริษัท (นักศึกษาใช้ student_code) */
+  advisor_code: string | null;
+  company_registration_no: string | null;
   advisor_id: string | null;
   student_code: string | null;
   company_id: string | null;

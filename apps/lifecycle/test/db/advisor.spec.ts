@@ -587,6 +587,13 @@ describe('Lifecycle 1.6 — ฝั่งอาจารย์ที่ปรึ�
         expect(byCode.B003).to.deep.include({ training_status: 'NONE', active_application_count: 0 });
         expect(byCode.B004).to.deep.include({ training_status: 'IN_TRAINING', active_application_count: 1 }); // กำลังฝึกมาก่อน COMPLETED
         expect(res.body.data[0]).to.have.all.keys('student_user_id', 'full_name', 'student_code', 'major', 'year_level', 'training_status', 'active_application_count');
+        // ฝึกจบแล้วแต่ยังไม่ COMPLETED (บริษัทประเมินแล้ว/โต้แย้ง/ถูกยุติ) ต้องไม่ขึ้นว่ายังไม่ได้ฝึก
+        for (const status of ['EVALUATED_PASS', 'EVALUATED_FAIL', 'FAIL_DISPUTED', 'TERMINATED'] as ApplicationStatus[]) {
+          const id = await addStudent(`E-${status}`);
+          await apply(id, status);
+          const row = (await list(`?q=E-${status}`).expect(200)).body.data[0];
+          expect(row, status).to.deep.include({ training_status: 'COMPLETED' });
+        }
         // ดึงสดจาก Identity: ชื่อไม่อยู่ในตารางใดของ Lifecycle
         expect(JSON.stringify(await prisma.application.findMany())).to.not.include('นักศึกษา B00');
         expect(JSON.stringify(await prisma.studentAdvisorLink.findMany())).to.not.include('นักศึกษา B00');

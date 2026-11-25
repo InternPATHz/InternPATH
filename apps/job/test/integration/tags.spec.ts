@@ -132,4 +132,20 @@ describe('Tags API (HTTP และ PostgreSQL จริง)', function () {
     const clash = await http().patch(`/v1/admin/tags/${react.id}`).set(admin()).send({ name: 'Python' }).expect(409);
     expect(clash.body.error.details[0].issue).to.equal('TAG_EXISTS');
   });
+
+  it('DELETE ลบได้เฉพาะ Tag ที่ไม่มีประกาศใช้, ใช้อยู่ 409 TAG_IN_USE, ไม่พบ 404, ไม่ใช่ Admin 403', async () => {
+    const unused = await http().post('/v1/admin/tags').set(admin()).send({ name: 'Kotlin Delete Test' }).expect(201);
+    await http().delete(`/v1/admin/tags/${unused.body.id}`).set({ Authorization: `Bearer ${token('COMPANY_HR')}` }).expect(403);
+    await http().delete(`/v1/admin/tags/${unused.body.id}`).set(admin()).expect(204);
+    expect(await db.prisma.tag.count({ where: { id: unused.body.id } })).to.equal(0);
+    await http().delete(`/v1/admin/tags/${unused.body.id}`).set(admin()).expect(404);
+    await http().delete('/v1/admin/tags/not-a-uuid').set(admin()).expect(400);
+
+    const used = await db.prisma.tag.findUniqueOrThrow({ where: { slug: 'react' } });
+    const job = await seedJob(db.prisma, 'CLOSED');
+    await db.prisma.jobTag.create({ data: { jobId: job.id, tagId: used.id } });
+    const blocked = await http().delete(`/v1/admin/tags/${used.id}`).set(admin()).expect(409);
+    expect(blocked.body.error.details[0].issue).to.equal('TAG_IN_USE');
+    expect(await db.prisma.jobTag.count({ where: { tagId: used.id } })).to.equal(1);
+  });
 });

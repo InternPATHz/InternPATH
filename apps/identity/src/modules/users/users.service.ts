@@ -31,9 +31,10 @@ export class UsersService {
       } } : {}),
       ...(user.role === 'ADVISOR' && user.advisorProfile ? { advisor: {
         ...(user.advisorProfile.department ? { department: user.advisorProfile.department } : {}),
+        ...(user.advisorProfile.advisorCode ? { advisor_code: user.advisorProfile.advisorCode } : {}),
       } } : {}),
       ...(user.role === 'COMPANY_HR' && user.companyMember ? { company: {
-        id: user.companyMember.companyId, name: user.companyMember.company.name,
+        id: user.companyMember.companyId, name: user.companyMember.company.name, registration_no: user.companyMember.company.registrationNo,
         status: user.companyMember.company.status, member_role: user.companyMember.memberRole,
         // สายงานที่ Owner มอบหมาย — ฟอร์มประกาศของ Member แสดงเฉพาะสายงานเหล่านี้ (Owner ดูแลทุกสายงาน จึงไม่ส่ง)
         ...(user.companyMember.memberRole === 'MEMBER' ? { categories: user.companyMember.categories } : {}),

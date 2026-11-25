@@ -96,6 +96,25 @@ export function TagsAdmin() {
     finally { setBusy(false); }
   }
 
+  /** ลบได้เฉพาะ Tag ที่ไม่มีประกาศใช้ — API ตอบ 409 TAG_IN_USE ถ้ามีประกาศเพิ่มเข้ามาระหว่างนี้ */
+  async function remove() {
+    if (!editing || editing.job_count > 0) return;
+    if (!window.confirm(`ลบ Tag "${editing.name}" ถาวร? ลบแล้วกู้คืนไม่ได้`)) return;
+    setBusy(true);
+    setNotice('');
+    setError('');
+    try {
+      await request(`/admin/tags/${encodeURIComponent(editing.id)}`, { method: 'DELETE' });
+      setNotice(`ลบ Tag "${editing.name}" แล้ว`);
+      dialog.current?.close();
+      reload();
+    } catch (cause) {
+      const inUse = cause instanceof ApiError && cause.issues.includes('TAG_IN_USE');
+      setEditError(inUse ? 'มีประกาศใช้ Tag นี้แล้ว ลบไม่ได้ — ปิดใช้งานแทน' : failure(cause));
+      if (inUse) reload();
+    } finally { setBusy(false); }
+  }
+
   const total = result?.meta.total ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -178,6 +197,11 @@ export function TagsAdmin() {
           <p className="text-sm text-ink-soft">slug · {editing.slug}</p>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={editActive} onChange={(event) => setEditActive(event.target.checked)} />เปิดให้เลือกในประกาศใหม่</label>
           {editing.active && !editActive && <p className="text-sm text-ink-soft">ประกาศเดิมที่ใช้ Tag นี้ยังแสดงได้ตามเดิม</p>}
+          <div className="border-t border-border pt-3 text-sm">
+            {editing.job_count > 0
+              ? <p className="text-ink-soft">ลบไม่ได้ — มีประกาศใช้ Tag นี้ {editing.job_count} รายการ (ปิดใช้งานแทนได้)</p>
+              : <button type="button" disabled={busy} onClick={() => void remove()} className="font-medium text-danger-text disabled:opacity-50">ลบ Tag นี้</button>}
+          </div>
           <div className="flex justify-end gap-3"><button type="button" disabled={busy} onClick={() => dialog.current?.close()}>ยกเลิก</button>
             <button disabled={busy || !editName.trim() || (editName.trim() === editing.name && editActive === editing.active)} className="rounded-full bg-primary px-4 py-2 text-white disabled:opacity-50">บันทึก</button></div>
         </form>}
