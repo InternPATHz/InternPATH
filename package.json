@@ -13,6 +13,8 @@
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
     "format": "prettier --write .",
+    "demo:seed": "node scripts/demo/seed.mjs",
+    "demo:verify": "node scripts/demo/verify.mjs",
     "dev:up": "node scripts/dev-stack.mjs up",
     "dev:down": "node scripts/dev-stack.mjs down",
     "dev:migrate": "node scripts/dev-stack.mjs migrate",
