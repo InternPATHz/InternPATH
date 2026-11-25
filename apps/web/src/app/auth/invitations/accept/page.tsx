@@ -9,7 +9,7 @@ import { ApiError, apiRequest } from '@/lib/api';
 
 // ลิงก์ในอีเมลเชิญสมาชิก HR (Identity ส่ง `/auth/invitations/accept?token=`) — token ใช้ได้ครั้งเดียว
 export default function AcceptInvitationPage() {
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [done, setDone] = useState(false);
@@ -19,6 +19,7 @@ export default function AcceptInvitationPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!token || busy) return;
     const form = new FormData(event.currentTarget);
     const password = String(form.get('password'));
     if (password !== form.get('confirm_password')) { setError('รหัสผ่านทั้งสองช่องไม่ตรงกัน'); return; }
@@ -40,9 +41,9 @@ export default function AcceptInvitationPage() {
           <Notice>เปิดบัญชีสำเร็จแล้ว เข้าสู่ระบบด้วยอีเมลที่ได้รับคำเชิญได้เลย</Notice>
           <Link href="/login" className="block rounded-full bg-primary px-4 py-3 text-center font-semibold text-white hover:bg-primary-hover">เข้าสู่ระบบ</Link>
         </div>
-      ) : !token || invalid ? <div className="space-y-3"><Notice error>ลิงก์คำเชิญใช้ไม่ได้ กรุณาติดต่อ Owner ของบริษัทเพื่อขอลิงก์ใหม่</Notice><Link href="/login" className="text-sm text-primary">เข้าสู่ระบบหากเปิดบัญชีแล้ว</Link></div> : (
+      ) : token === null ? <p role="status">กำลังอ่านลิงก์…</p> : !token || invalid ? <div className="space-y-3"><Notice error>ลิงก์คำเชิญใช้ไม่ได้ กรุณาติดต่อ Owner ของบริษัทเพื่อขอลิงก์ใหม่</Notice><Link href="/login" className="text-sm text-primary">เข้าสู่ระบบหากเปิดบัญชีแล้ว</Link></div> : (
         <form onSubmit={submit} className="space-y-4">
-          {error && <Notice error>{error}</Notice>}
+          {error && <Notice error focus>{error}</Notice>}
           <Field label="ชื่อ-นามสกุล" name="full_name" autoComplete="name" required />
           <NewPasswordFields />
           <ActionButton busy={busy}>เปิดบัญชีและเข้าร่วมทีม</ActionButton>

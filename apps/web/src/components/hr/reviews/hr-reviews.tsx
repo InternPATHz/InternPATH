@@ -56,7 +56,15 @@ export function HrReviews() {
     }
   }, [companyId, page, request]);
 
-  useEffect(() => { setReviews(null); void load(); return () => { sequence.current++; }; }, [load, revision]);
+  useEffect(() => { setReviews(null); }, [companyId, page]);
+  useEffect(() => { void load(); return () => { sequence.current++; }; }, [load, revision]);
+
+  function recordReply(reply: ReplyReviewResponse) {
+    setReviews((current) => current && {
+      ...current,
+      data: current.data.map((item) => item.id === reply.review_id ? { ...item, reply } : item),
+    });
+  }
 
   const totalPages = reviews ? Math.max(1, Math.ceil(reviews.meta.total / PAGE_SIZE)) : 1;
   const waiting = reviews?.data.filter((review) => !review.reply).length ?? 0;
@@ -84,7 +92,7 @@ export function HrReviews() {
               <span className="block truncate font-semibold">{review.title || reviewerLabel(review)}</span><span className="text-sm">{review.rating}/5 · {review.reply ? 'ตอบแล้ว' : 'รอตอบ'} · {reviewDateFormat.format(new Date(review.published_at))}</span>
             </button></li>)}
           </ul>
-          <ul className="min-w-0 space-y-4">{reviews.data.map((review) => <ReviewCard key={review.id} review={review} selected={selected?.id === review.id} onReplied={load} notify={setNotice} />)}</ul>
+          <ul className="min-w-0 space-y-4">{reviews.data.map((review) => <ReviewCard key={review.id} review={review} selected={selected?.id === review.id} onReplied={recordReply} onConflict={() => setRevision((value) => value + 1)} notify={setNotice} />)}</ul>
         </div>
       )}
       {reviews && reviews.meta.total > PAGE_SIZE && (
@@ -98,7 +106,13 @@ export function HrReviews() {
   );
 }
 
-function ReviewCard({ review, selected, onReplied, notify }: { review: PublicReviewItem; selected: boolean; notify: (message: string) => void; onReplied: () => Promise<void> }) {
+type ReplyActions = {
+  notify: (message: string) => void;
+  onReplied: (reply: ReplyReviewResponse) => void;
+  onConflict: () => void;
+};
+
+function ReviewCard({ review, selected, onReplied, onConflict, notify }: ReplyActions & { review: PublicReviewItem; selected: boolean }) {
   const outcome = OUTCOME[review.outcome_label];
   return (
     <li className={`rounded-xl border border-border bg-surface p-5 ${selected ? '' : 'lg:hidden'}`}>
@@ -115,13 +129,13 @@ function ReviewCard({ review, selected, onReplied, notify }: { review: PublicRev
           <p className="mt-1 whitespace-pre-line">{review.reply.body}</p>
         </div>
       ) : (
-        <ReplyForm reviewId={review.id} notify={notify} onReplied={onReplied} />
+        <ReplyForm reviewId={review.id} notify={notify} onReplied={onReplied} onConflict={onConflict} />
       )}
     </li>
   );
 }
 
-function ReplyForm({ reviewId, onReplied, notify }: { reviewId: string; notify: (message: string) => void; onReplied: () => Promise<void> }) {
+function ReplyForm({ reviewId, onReplied, onConflict, notify }: ReplyActions & { reviewId: string }) {
   const { request } = useAuth();
   const fieldId = useId();
   const [preview, setPreview] = useState(false);
@@ -138,14 +152,14 @@ function ReplyForm({ reviewId, onReplied, notify }: { reviewId: string; notify: 
     setMessage(null);
     try {
       const payload: ReplyReviewRequest = { body: value };
-      await request<ReplyReviewResponse>(`/hr/reviews/${encodeURIComponent(reviewId)}/reply`, { method: 'POST', body: payload });
-      setBody(''); setPreview(false); notify('เผยแพร่คำตอบแล้ว');
-      await onReplied();
+      const reply = await request<ReplyReviewResponse>(`/hr/reviews/${encodeURIComponent(reviewId)}/reply`, { method: 'POST', body: payload });
+      onReplied(reply);
+      notify('เผยแพร่คำตอบแล้ว');
     } catch (cause) {
       if (cause instanceof ApiError && (cause.code === 'ALREADY_REPLIED' || cause.status === 404)) {
         notify(cause.status === 404 ? 'รีวิวนี้ไม่พร้อมให้ตอบแล้ว' : 'สมาชิกทีมตอบรีวิวนี้แล้ว');
         // มีสมาชิกคนอื่นตอบไปแล้ว — โหลดใหม่เพื่อแสดงคำตอบนั้นแทนฟอร์ม
-        await onReplied();
+        onConflict();
         return;
       }
       setMessage(cause instanceof ApiError ? cause.message : 'ส่งคำตอบไม่สำเร็จ กรุณาลองใหม่');

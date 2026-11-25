@@ -73,7 +73,7 @@ function AccountContent() {
             {student && <><Row label="รหัสนักศึกษา">{student.student_code}</Row><Row label="สาขาและชั้นปี">{student.major} · ชั้นปี {student.year_level}</Row></>}
             {profile.advisor?.department && <Row label="ภาควิชา">{profile.advisor.department}</Row>}
             {profile.company && <><Row label="บริษัท"><Link href="/hr/company" className={link}>{profile.company.name}</Link></Row>
-              <Row label="บทบาทในทีม"><Link href="/hr/team" className={link}>{profile.company.member_role}</Link></Row></>}
+              <Row label="บทบาทในทีม"><Link href="/hr/team" className={link}>{profile.company.member_role === 'OWNER' ? 'เจ้าของบัญชีบริษัท' : 'สมาชิก HR'}</Link></Row></>}
           </dl>
           <details className="mt-3 text-sm"><summary className="cursor-pointer">รหัสอ้างอิงบัญชี</summary><p className="mt-2 flex items-center gap-2 font-mono">{profile.id}<CopyButton value={profile.id} label="คัดลอกรหัสบัญชี" /></p></details>
           {editing ? <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={save}><label className="text-sm">ชื่อและนามสกุล<input autoFocus required value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block rounded-lg border border-border px-3 py-2" /></label>

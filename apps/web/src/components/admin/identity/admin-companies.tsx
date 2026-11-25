@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import { useEffect, useState } from 'react';
 import type { AdminCompanyDetail, AdminCompanyListItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
@@ -34,11 +36,15 @@ export function AdminCompanies() {
     const query = new URLSearchParams({ page: String(page) });
     if (status) query.set('status', status);
     request<Paginated<AdminCompanyListItem>>(`/admin/companies?${query}`)
-      .then((data) => { if (active) { setResult(data); setError(''); } })
+      .then((data) => { if (active) { setResult(data); setSelectedId((id) => data.data.some((item) => item.id === id) ? id : data.data[0]?.id ?? null); setError(''); } })
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'โหลดบริษัทไม่สำเร็จ'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [request, status, page, reload]);
+
+  useEffect(() => {
+    setOwnerId(''); setTab('review'); setAction(null); setReason('');
+  }, [selectedId]);
 
   useEffect(() => {
     if (!selectedId) { setDetail(null); return; }
@@ -89,15 +95,16 @@ export function AdminCompanies() {
       <section className="rounded-xl border border-border bg-surface p-4">
         <div className="flex items-end justify-between gap-3"><h2 className="text-lg font-semibold">รายชื่อบริษัท</h2><FilterSelect label="สถานะ" value={status} options={statusOptions} onChange={(value) => { setStatus(value); setPage(1); setSelectedId(null); }} /></div>
         {loading ? <p className="mt-4 text-sm text-ink-soft">กำลังโหลด…</p> : !result?.data.length ? <p className="mt-4 text-sm text-ink-soft">ไม่มีบริษัทในสถานะนี้</p> :
-          <div className="mt-4 divide-y divide-border">{result.data.map((item) => <button key={item.id} onClick={() => { setSelectedId(item.id); setOwnerId(''); setTab('review'); setAction(null); setReason(''); }}
+          <div className="mt-4 divide-y divide-border">{result.data.map((item) => <button key={item.id} onClick={() => { setSelectedId(item.id); }}
             className={`block w-full py-3 text-left first:pt-0 last:pb-0 ${selectedId === item.id ? 'text-primary' : ''}`}>
             <span className="block font-medium">{item.name}</span><span className="block text-xs text-ink-soft">{item.registration_no} · {statusOptions.find(([code]) => code === item.status)?.[1] ?? item.status}</span></button>)}</div>}
-        {lastPage > 1 && <div className="mt-4 flex items-center justify-end gap-3 text-sm"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="disabled:opacity-40">ก่อนหน้า</button><span>{page} / {lastPage}</span><button disabled={page >= lastPage} onClick={() => setPage(page + 1)} className="disabled:opacity-40">ถัดไป</button></div>}
+        {lastPage > 1 && <div className="mt-4 flex items-center justify-end gap-3 text-sm"><button disabled={page <= 1} onClick={() => { setSelectedId(null); setPage(page - 1); }} className="disabled:opacity-40">ก่อนหน้า</button><span>{page} / {lastPage}</span><button disabled={page >= lastPage} onClick={() => { setSelectedId(null); setPage(page + 1); }} className="disabled:opacity-40">ถัดไป</button></div>}
       </section>
       <section className="rounded-xl border border-border bg-surface p-4">
         {!selectedId ? <p className="text-sm text-ink-soft">เลือกบริษัทเพื่อดูรายละเอียดและดำเนินการ</p> : detail?.id !== selectedId ? <p className="text-sm text-ink-soft">กำลังโหลดรายละเอียด…</p> : <div className="space-y-5">
           <div><h2 className="text-xl font-semibold">{detail.name}</h2><p className="mt-1 text-sm text-ink-soft">{statusOptions.find(([code]) => code === detail.status)?.[1] ?? detail.status} · เลขทะเบียน {detail.registration_no} · {detail.email_domain}</p>
             {detail.review_note && <p className="mt-2 text-sm">หมายเหตุ: {detail.review_note}</p>}
+            <Link className="mt-2 inline-block text-sm font-medium text-primary hover:underline" href={`/admin/company-stats?company_id=${encodeURIComponent(detail.id)}`}>ดูสถิติบริษัท</Link>
             <p className="mt-2 text-sm">{externalHref(detail.website) && <a href={externalHref(detail.website)} target="_blank" rel="noreferrer" className="text-primary underline">เว็บไซต์บริษัท</a>}{detail.phone && ` · โทร ${detail.phone}`}</p></div>
           <div role="group" aria-label="รายละเอียดบริษัท" className="flex flex-wrap gap-2">{([['review', 'ตรวจเอกสาร'], ['members', 'สมาชิก HR'], ['badges', 'ป้ายและสิทธิ์']] as const).map(([key, label]) => <button key={key} aria-pressed={tab === key} onClick={() => setTab(key)} className="rounded-full border border-border px-3 py-1.5 text-sm aria-pressed:bg-primary-soft aria-pressed:text-primary">{label}</button>)}</div>
           <div hidden={tab !== 'review'}><h3 className="font-semibold">เอกสาร</h3>{detail.documents.length ? <ul className="mt-2 space-y-1 text-sm">{detail.documents.map((doc) => <li key={doc.id}><a href={doc.url} target="_blank" rel="noreferrer" className="text-primary underline">{doc.doc_type}</a> <span className="text-ink-soft">({Math.ceil(doc.size_bytes / 1024)} KB)</span></li>)}</ul> : <p className="mt-1 text-sm text-ink-soft">ยังไม่มีเอกสาร</p>}</div>

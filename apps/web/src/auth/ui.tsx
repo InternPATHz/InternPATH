@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { InputHTMLAttributes, ReactNode } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { SiteHeader } from '@/components/layout/site-header';
@@ -9,6 +9,13 @@ import { SiteFooter } from '@/components/layout/site-footer';
 export function AuthShell({ title, subtitle, icon, children }: {
   title: string; subtitle?: ReactNode; icon?: ReactNode; children: ReactNode;
 }) {
+  const heading = useRef<HTMLHeadingElement>(null);
+  const previousTitle = useRef(title);
+  useEffect(() => {
+    if (previousTitle.current !== title) heading.current?.focus();
+    previousTitle.current = title;
+  }, [title]);
+
   return (
     <div className="flex min-h-screen flex-col bg-surface lg:bg-surface-muted">
       <SiteHeader />
@@ -17,7 +24,7 @@ export function AuthShell({ title, subtitle, icon, children }: {
           <div aria-hidden="true" className="mx-auto mb-4 grid h-[72px] w-[72px] place-items-center rounded-xl bg-surface-muted text-primary">
             {icon ?? <img src="/logo.png" alt="" width={72} height={72} className="rounded-xl" />}
           </div>
-          <h1 className="text-3xl font-semibold leading-tight text-ink">{title}</h1>
+          <h1 ref={heading} tabIndex={-1} className="text-3xl font-semibold leading-tight text-ink">{title}</h1>
           {subtitle && <p className="mt-2 text-sm text-ink-soft">{subtitle}</p>}
         </header>
         <div className="mt-8">{children}</div>
@@ -74,7 +81,11 @@ export function ActionButton({ children, busy = false }: { children: ReactNode; 
   return <button type="submit" disabled={busy} className="w-full rounded-full bg-primary px-4 py-3 font-semibold text-white hover:bg-primary-hover disabled:cursor-wait disabled:opacity-60">{busy ? 'กำลังดำเนินการ…' : children}</button>;
 }
 
-export function Notice({ children, error = false }: { children: ReactNode; error?: boolean }) {
-  return <p role={error ? 'alert' : 'status'}
+export function Notice({ children, error = false, focus = false }: { children: ReactNode; error?: boolean; focus?: boolean }) {
+  const notice = useRef<HTMLParagraphElement>(null);
+  useEffect(() => {
+    if (focus) notice.current?.focus();
+  }, [focus, children]);
+  return <p ref={notice} tabIndex={focus ? -1 : undefined} role={error ? 'alert' : 'status'}
     className={`rounded-lg px-4 py-3 text-sm ${error ? 'bg-danger-soft text-danger-text' : 'bg-success-soft text-success-text'}`}>{children}</p>;
 }

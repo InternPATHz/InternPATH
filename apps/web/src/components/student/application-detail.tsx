@@ -40,6 +40,10 @@ export function ApplicationDetail() {
   const back = new URLSearchParams();
   for (const key of ['group','status','page']) { const value = params.get(key); if (value) back.set(key, value); }
   const backHref = back.size ? `/student/applications?${back}` : '/student/applications';
+  return <ApplicationRecord key={id} id={id} backHref={backHref} />;
+}
+
+function ApplicationRecord({ id, backHref }: { id: string; backHref: string }) {
   const { request } = useAuth();
   const [app, setApp] = useState<StudentApplicationDetail | null>(null);
   const [loadError, setLoadError] = useState<{ missing: boolean; text: string } | null>(null);
@@ -140,6 +144,13 @@ export function ApplicationDetail() {
       </header>
 
       <div className="mt-5 rounded-xl bg-surface-muted p-4 empty:hidden"><ApplicationProgress status={app.status} timeline={app.timeline} /></div>
+      {!app.frozen && (app.status === 'PENDING' || app.status === 'ADVISOR_PENDING' || app.status === 'ADVISOR_APPROVED') && (
+        <p className="mt-3 text-sm text-ink-soft">{{
+          PENDING: 'ขั้นต่อไป บริษัทพิจารณาใบสมัครของคุณ',
+          ADVISOR_PENDING: 'ขั้นต่อไป อาจารย์ที่ปรึกษาพิจารณาอนุมัติการฝึกงาน',
+          ADVISOR_APPROVED: 'ขั้นต่อไป บริษัทยืนยันวันเริ่มฝึกงาน',
+        }[app.status]}</p>
+      )}
       {(canConfirmOffer || canDeclineOffer) && (
         <section className={`mt-5 rounded-xl bg-tile p-5 text-white ${canConfirmOffer ? '' : 'hidden lg:block'}`}>
           <p className="text-sm text-white/75">ถึงตาคุณ</p>

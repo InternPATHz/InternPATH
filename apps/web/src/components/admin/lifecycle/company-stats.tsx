@@ -87,11 +87,11 @@ export function CompanyStats() {
             <div className="rounded-lg bg-surface-muted p-4">
               <dt className="text-sm text-ink-soft">ยุติการฝึกกลางคัน</dt>
               <dd className="mt-1 text-3xl font-semibold">{stats.terminated_count}</dd>
-              <dd className="mt-1 text-xs text-ink-soft">ทุกฝ่ายที่ยุติ (บริษัท นักศึกษา อาจารย์ ผู้ดูแล)</dd>
+              <dd className="mt-1 text-xs text-ink-soft">นับทุกฝ่ายที่ยุติ รวมใบสมัครที่ประเมินผลภายหลัง</dd>
             </div>
           </dl>
           <p className="mt-4 text-sm">
-            <Link href="/admin/flags" className="font-medium text-primary hover:underline">ไปที่ธงบริษัท</Link>
+            <Link href={`/admin/flags?active=all&q=${encodeURIComponent(company.name)}`} className="font-medium text-primary hover:underline">ไปที่ธงบริษัท</Link>
             <span className="text-ink-soft"> เพื่อติดธงหรือดูประวัติการตรวจสอบของบริษัทนี้</span>
           </p>
         </section>

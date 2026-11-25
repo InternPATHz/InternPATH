@@ -140,21 +140,20 @@ export function TagsAdmin() {
           <thead className="border-b border-border bg-surface-muted text-xs text-ink-soft">
             <tr>
               <th scope="col" className="px-4 py-3 font-medium">ชื่อ</th>
-              <th scope="col" className="px-4 py-3 font-medium">slug</th>
               <th scope="col" className="px-4 py-3 font-medium">ประกาศที่ใช้</th>
               <th scope="col" className="px-4 py-3 font-medium">สถานะ</th>
               <th scope="col" className="px-4 py-3 font-medium"><span className="sr-only">การทำงาน</span></th>
             </tr>
           </thead>
           <tbody>
-            {loading && !result && <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-soft">กำลังโหลด…</td></tr>}
-            {!loading && !error && result && result.data.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-soft">ไม่มี Tag ตามตัวกรองนี้</td></tr>}
+            {loading && !result && <tr><td colSpan={4} className="px-4 py-8 text-center text-ink-soft">กำลังโหลด…</td></tr>}
+            {!loading && !error && result && result.data.length === 0 && <tr><td colSpan={4} className="px-4 py-8 text-center text-ink-soft">ไม่มี Tag ตามตัวกรองนี้</td></tr>}
             {result?.data.map((tag) => (
               <tr key={tag.id} className="border-t border-border">
                 <td className="px-4 py-3 font-medium">
                   {tag.name}
+                  <span className="block font-mono text-xs font-normal text-ink-soft [overflow-wrap:anywhere]">{tag.slug}</span>
                 </td>
-                <td className="px-4 py-3 font-mono text-xs text-ink-soft">{tag.slug}</td>
                 <td className="px-4 py-3">{tag.job_count}</td>
                 <td className="px-4 py-3">
                   <Badge className={tag.active ? 'bg-success-soft text-success-text' : 'bg-surface-muted text-ink-soft'}>{tag.active ? 'ใช้งานอยู่' : 'ปิดใช้งาน'}</Badge>

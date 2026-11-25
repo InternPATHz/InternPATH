@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Paginated, ProblemReportItem, ProblemReportStatus, ResolveProblemReportRequest } from '@internpath/contracts';
 import type { AdvisorStudentOverview } from '@internpath/contracts';
@@ -15,6 +15,7 @@ import {
   PROBLEM_STATUS_VIEW as STATUS_VIEW,
   type ProblemFollowUp as FollowUp,
 } from '@/components/problem-reports/problem-report-meta';
+import { ApiError } from '@/lib/api';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { formatDateTime } from '@/components/student/application-ui';
 
@@ -36,32 +37,56 @@ export function AdvisorProblemReports() {
   const [note, setNote] = useState('');
   const [followUp, setFollowUp] = useState<'' | FollowUp>('');
 
-  const load = useCallback(async () => {
-    try {
-      setList(null);
-      const query = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
-      if (status) query.set('status', status);
-      setList(await request<Paginated<ProblemReportItem>>(`/advisor/problem-reports?${query.toString()}`));
-    } catch (cause) {
-      setList(null);
-      setMessage({ tone: 'error', text: failure(cause) });
-    }
-  }, [request, status, page]);
+  const [revision, setRevision] = useState(0);
+  const currentView = useRef(0);
+  useEffect(() => {
+    let active = true;
+    setList(null);
+    const query = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
+    if (status) query.set('status', status);
+    request<Paginated<ProblemReportItem>>(`/advisor/problem-reports?${query}`).then(
+      (rows) => { if (active) setList(rows); },
+      (cause) => { if (active) setMessage({ tone: 'error', text: failure(cause) }); },
+    );
+    return () => { active = false; currentView.current++; };
+  }, [request, status, page, revision]);
 
-  useEffect(() => { void load(); }, [load]);
+  // A concurrent resolution may have moved the case to another page of the closed queue.
+  async function showResolution(reportId: string, view: number) {
+    for (let next = 1; currentView.current === view; next++) {
+      const rows = await request<Paginated<ProblemReportItem>>(`/advisor/problem-reports?status=RESOLVED&page=${next}&page_size=${PAGE_SIZE}`);
+      if (currentView.current !== view) return;
+      if (rows.data.some((row) => row.id === reportId)) {
+        setStatus('RESOLVED'); setPage(next); setSelectedId(reportId);
+        break;
+      }
+      if (!rows.data.length || next * rows.meta.page_size >= rows.meta.total) break;
+    }
+  }
 
   async function act(report: ProblemReportItem, action: 'acknowledge' | 'resolve', body?: ResolveProblemReportRequest) {
+    const view = currentView.current;
     setBusyId(report.id);
     setMessage(null);
     try {
       await request(`/problem-reports/${encodeURIComponent(report.id)}/actions/${action}`, { method: 'POST', body });
+      if (currentView.current !== view) return;
+      setRevision((n) => n + 1);
       setResolving(null);
       setMessage({ tone: 'success', text: action === 'acknowledge' ? 'รับเรื่องแล้ว' : 'ปิดเรื่องแล้ว' });
     } catch (cause) {
+      if (currentView.current !== view) return;
       setMessage({ tone: 'error', text: failure(cause) });
+      if (cause instanceof ApiError && cause.status === 409) {
+        setResolving(null);
+        if (cause.issues.includes('ALREADY_RESOLVED')) {
+          try { await showResolution(report.id, view); }
+          catch (error) { if (currentView.current === view) setMessage({ tone: 'error', text: failure(error) }); }
+        }
+        if (currentView.current === view) setRevision((n) => n + 1);
+      }
     } finally {
       setBusyId(null);
-      await load();
     }
   }
 
@@ -120,7 +145,7 @@ export function AdvisorProblemReports() {
                   <p className="text-xs text-ink-soft">รายงานเมื่อ {formatDateTime(report.created_at)} · กำหนดดำเนินการ {formatDateTime(report.due_at)}</p>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {report.overdue && <StatusBadge tone="danger">OVERDUE</StatusBadge>}
+                  {report.overdue && <StatusBadge tone="danger">เกินกำหนด</StatusBadge>}
                   <StatusBadge tone={view.tone} icon={view.icon}>{view.label}</StatusBadge>
                 </div>
               </div>
@@ -142,7 +167,7 @@ export function AdvisorProblemReports() {
                 )}
                 <Link href={`/advisor/students/item?id=${report.student_user_id}`} className="text-sm font-medium text-primary hover:underline">ดูข้อมูลนักศึกษา ›</Link>
               </div>
-              {resolving === report.id && (
+              {report.status !== 'RESOLVED' && resolving === report.id && (
                 <form onSubmit={(event) => submitResolve(event, report)} noValidate className="mt-4 space-y-3 rounded-xl bg-surface-muted p-4 text-sm">
                   <label className="block font-medium">
                     สรุปผลการดำเนินการ

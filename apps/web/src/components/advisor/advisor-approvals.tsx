@@ -111,7 +111,7 @@ export function AdvisorApprovals() {
           <ul className="hidden min-w-0 divide-y divide-border self-start [overflow-wrap:anywhere] rounded-xl border border-border lg:block" aria-label="เลือกใบสมัคร">
             {list.data.map((app) => (
               <li key={app.id}>
-                <button type="button" aria-pressed={selected?.id === app.id} onClick={() => { setSelectedId(app.id); setRejecting(null); }}
+                <button type="button" aria-pressed={selected?.id === app.id} onClick={() => { setSelectedId(app.id); setRejecting(null); setMessage(null); }}
                   className={`w-full p-4 text-left ${selected?.id === app.id ? 'bg-primary-soft' : 'hover:bg-surface-muted'}`}>
                   <span className="block font-semibold">{app.student_name}</span>
                   <span className="block text-sm text-ink-soft">{app.company_name}</span>
@@ -129,7 +129,7 @@ export function AdvisorApprovals() {
                 {app.status === 'ADVISOR_PENDING' && (
                   <>
                     <span className="flex-1" />
-                    <button type="button" disabled={busyId === app.id} onClick={() => approve(app)} className={primaryButton}>อนุมัติ</button>
+                    <button type="button" disabled={busyId === app.id || app.frozen} onClick={() => approve(app)} className={primaryButton}>อนุมัติ</button>
                     <button type="button" disabled={busyId === app.id} onClick={() => { setRejecting(app.id); setReason(''); setMessage(null); }}
                       className={`${secondaryButton} text-danger-text`}>ไม่อนุมัติ</button>
                   </>
@@ -139,7 +139,7 @@ export function AdvisorApprovals() {
                 <form onSubmit={(event) => submitReject(event, app)} noValidate className="mt-4 space-y-3 rounded-xl bg-surface-muted p-4 text-sm">
                   <label className="block font-medium">
                     เหตุผลที่ไม่อนุมัติ (นักศึกษาจะเห็นเหตุผลนี้)
-                    <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} className={inputClass} />
+                    <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={REASON_MAX} className={inputClass} />
                     <span className="mt-1 block text-xs font-normal text-ink-soft">{reason.length}/{REASON_MAX}</span>
                   </label>
                   <div className="flex gap-3">
@@ -163,7 +163,7 @@ export function AdvisorApprovals() {
         </>}
         <form method="dialog" className="mt-5 flex flex-wrap justify-end gap-2">
           <button type="submit" className={secondaryButton}>ยกเลิก</button>
-          <button type="button" className={primaryButton} disabled={!approving || busyId !== null} onClick={() => {
+          <button type="button" className={primaryButton} disabled={!approving || approving.frozen || busyId !== null} onClick={() => {
             if (!approving) return;
             approvalDialog.current?.close();
             void act(approving, 'approve');

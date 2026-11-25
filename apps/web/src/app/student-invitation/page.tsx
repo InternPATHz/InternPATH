@@ -12,7 +12,7 @@ import { ApiError, apiRequest } from '@/lib/api';
  * นักศึกษาตั้งรหัสผ่านและยอมรับนโยบายความเป็นส่วนตัว → บัญชีใช้งานได้ทันที — token ใช้ได้ครั้งเดียว อายุ 7 วัน
  */
 export default function StudentInvitationPage() {
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [invalid, setInvalid] = useState(false);
   const [done, setDone] = useState(false);
@@ -22,6 +22,7 @@ export default function StudentInvitationPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!token || busy) return;
     const form = new FormData(event.currentTarget);
     const password = String(form.get('password'));
     if (password !== form.get('confirm_password')) { setError('รหัสผ่านทั้งสองช่องไม่ตรงกัน'); return; }
@@ -39,15 +40,15 @@ export default function StudentInvitationPage() {
   }
 
   return (
-    <AuthShell title="เริ่มใช้งานบัญชีนักศึกษา" subtitle="อาจารย์ที่ปรึกษาสร้างบัญชีให้คุณแล้ว ตั้งรหัสผ่านเพื่อเริ่มใช้งาน ลิงก์ใช้ได้ครั้งเดียวภายใน 7 วัน">
+    <AuthShell title={done ? 'เปิดใช้งานบัญชีแล้ว' : 'เริ่มใช้งานบัญชีนักศึกษา'} subtitle={done ? undefined : 'อาจารย์ที่ปรึกษาสร้างบัญชีให้คุณแล้ว ตั้งรหัสผ่านเพื่อเริ่มใช้งาน ลิงก์ใช้ได้ครั้งเดียวภายใน 7 วัน'}>
       {done ? (
         <div className="space-y-4">
           <Notice>ตั้งรหัสผ่านสำเร็จแล้ว เข้าสู่ระบบด้วยอีเมลสถาบันของคุณได้เลย</Notice>
           <Link href="/login" className="text-sm text-primary hover:underline">เข้าสู่ระบบ</Link>
         </div>
-      ) : !token || invalid ? <div className="space-y-3"><Notice error>ลิงก์คำเชิญใช้ไม่ได้ กรุณาติดต่ออาจารย์ที่ปรึกษาเพื่อขอลิงก์ใหม่</Notice><Link href="/login" className="text-sm text-primary">เข้าสู่ระบบหากเปิดบัญชีแล้ว</Link></div> : (
+      ) : token === null ? <p role="status">กำลังอ่านลิงก์…</p> : !token || invalid ? <div className="space-y-3"><Notice error>ลิงก์คำเชิญใช้ไม่ได้ กรุณาติดต่ออาจารย์ที่ปรึกษาเพื่อขอลิงก์ใหม่</Notice><Link href="/login" className="text-sm text-primary">เข้าสู่ระบบหากเปิดบัญชีแล้ว</Link></div> : (
         <form onSubmit={submit} className="space-y-4">
-          {error && <Notice error>{error}</Notice>}
+          {error && <Notice error focus>{error}</Notice>}
           <NewPasswordFields />
           <label className="flex gap-2 text-sm text-ink-soft">
             <input type="checkbox" name="accept_privacy" required className="mt-1 accent-primary" />

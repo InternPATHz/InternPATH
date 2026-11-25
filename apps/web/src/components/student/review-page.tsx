@@ -5,14 +5,14 @@ import { CircleCheck, CircleX, Clock5, Star } from 'lucide-react';
 import { useCallback, useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import type {
-  ApplicationStatus, CreateReviewRequest, MyReviewItem, Paginated, ReviewStatus, StudentApplicationItem,
+  ApplicationStatus, CreateReviewRequest, CreateReviewResponse, MyReviewItem, Paginated, ReviewStatus, StudentApplicationItem,
 } from '@internpath/contracts';
 import { allPages } from '@/lib/list';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { Stars } from '@/components/ui/rating';
 import { StatusBadge, type StatusTone } from '@/components/ui/status-badge';
-import { formatDate } from '@/components/student/application-ui';
+import { ApplicationStatusBadge, formatDate } from '@/components/student/application-ui';
 import { ApiError } from '@/lib/api';
 
 /** สถานะที่เขียนรีวิวได้ — ตรงกับ Lifecycle `REVIEWABLE_STATUSES` (README §5.5) */
@@ -46,7 +46,7 @@ function failure(cause: unknown): string {
  * หน้ารีวิวบริษัทของนักศึกษา (README §5.5, UAT-07/20/22/28)
  * - การฝึกงานที่เขียนรีวิวได้ = `GET /me/applications` ที่อยู่ในสถานะหลังประเมิน/สิ้นสุด และยังไม่มีรีวิว (`GET /me/reviews`)
  * - ส่ง `POST /applications/{id}/review` `{rating, title?, body, anonymous}` — 1 รีวิวต่อ 1 การฝึกงาน
- * - หลังส่งแสดงว่าเผยแพร่แล้ว และแจ้งว่า Admin อาจถอดออกถ้าถูกรายงาน (PM ตัดสิน 2026-11-22)
+ * - Lifecycle รับรีวิวเป็น SUBMITTED ก่อน Verification เผยแพร่อัตโนมัติ
  */
 export function ReviewPage() {
   const { request } = useAuth();
@@ -55,6 +55,7 @@ export function ReviewPage() {
   const [loadError, setLoadError] = useState('');
   const [message, setMessage] = useState<Message | null>(null);
   const [writing, setWriting] = useState<string | null>(null);
+  const [submittedIds, setSubmittedIds] = useState<string[]>([]);
 
   const load = useCallback(async () => {
     try {
@@ -65,6 +66,7 @@ export function ReviewPage() {
       setApps(myApps);
       setReviews(myReviews);
       setLoadError('');
+      return myReviews;
     } catch (cause) {
       setLoadError(cause instanceof ApiError ? cause.message : 'โหลดข้อมูลไม่สำเร็จ กรุณาลองใหม่');
     }
@@ -73,7 +75,7 @@ export function ReviewPage() {
   useEffect(() => { void load(); }, [load]);
 
   const reviewed = new Set(reviews.map((review) => review.application_id));
-  const candidates = (apps ?? []).filter((app) => REVIEWABLE.includes(app.status) && !reviewed.has(app.id));
+  const candidates = (apps ?? []).filter((app) => REVIEWABLE.includes(app.status) && !reviewed.has(app.id) && !submittedIds.includes(app.id));
   const appById = new Map((apps ?? []).map((app) => [app.id, app]));
 
   return (
@@ -84,7 +86,7 @@ export function ReviewPage() {
         และจะแสดงผลการฝึก (ผ่าน ไม่ผ่าน ยุติกลางคัน) คู่กับรีวิวเสมอ
       </p>
 
-      {loadError && <div className="mt-4"><Notice tone="error">{loadError}</Notice></div>}
+      {loadError && <div className="mt-4"><Notice tone="error">{loadError} <button type="button" onClick={() => void load()} className="underline">ลองอีกครั้ง</button></Notice></div>}
       {message && <div className="mt-4"><Notice tone={message.tone}>{message.text}</Notice></div>}
       {!apps && !loadError && <p className="mt-6 text-sm text-ink-soft">กำลังโหลด…</p>}
 
@@ -101,6 +103,7 @@ export function ReviewPage() {
                     <div>
                       <p className="font-semibold">{app.company_name}</p>
                       <p className="text-sm text-ink-soft">{app.job_title}</p>
+                      <ApplicationStatusBadge status={app.status} academicResult={app.academic_result} />
                     </div>
                     {writing !== app.id && (
                       <button type="button" onClick={() => { setWriting(app.id); setMessage(null); }}
@@ -110,15 +113,17 @@ export function ReviewPage() {
                   {writing === app.id && (
                     <ReviewForm
                       app={app}
-                      onConflict={load}
-                      onCancel={() => setWriting(null)}
-                      onDone={async () => {
-                        setWriting(null);
-                        setMessage({
-                          tone: 'success',
-                          text: `ส่งรีวิว ${app.company_name} แล้ว ถ้ามีผู้รายงานว่ารีวิวไม่เหมาะสม ผู้ดูแลระบบอาจพิจารณาถอดรีวิวออก`,
-                        });
+                      onConflict={async () => {
+                        setMessage({ tone: 'error', text: 'คุณส่งรีวิวสำหรับการฝึกงานนี้แล้ว' });
                         await load();
+                      }}
+                      onCancel={() => setWriting(null)}
+                      onDone={async (receipt) => {
+                        setWriting(null);
+                        setSubmittedIds((ids) => [...ids, app.id]);
+                        const latest = await load();
+                        const status = latest?.find((review) => review.application_id === app.id)?.status ?? receipt.status;
+                        setMessage({ tone: 'success', text: `${app.company_name} · ${REVIEW_STATUS[status].label}` });
                       }}
                     />
                   )}
@@ -141,6 +146,7 @@ export function ReviewPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <p className="font-semibold">{app?.company_name ?? 'บริษัท'}</p>
+                      {app && <p className="text-sm text-ink-soft">{app.job_title}</p>}
                       <p className="mt-1 flex items-center gap-2 text-xs text-ink-soft">
                         <Stars value={review.rating} /> {formatDate(review.created_at)} · {review.anonymous ? 'ไม่ระบุชื่อ' : 'แสดงชื่อ'}
                       </p>
@@ -148,7 +154,10 @@ export function ReviewPage() {
                     <StatusBadge tone={view.tone} icon={view.icon}>{view.label}</StatusBadge>
                   </div>
                   {review.title && <p className="mt-3 font-medium">{review.title}</p>}
-                  <p className="mt-1 whitespace-pre-line text-sm">{review.body}</p>
+                  <details className="mt-2 text-sm">
+                    <summary className="w-fit cursor-pointer font-medium text-primary hover:underline">อ่านรีวิว</summary>
+                    <p className="mt-2 whitespace-pre-wrap [overflow-wrap:anywhere]">{review.body}</p>
+                  </details>
                   {review.status === 'REMOVED' && <p className="mt-2 text-xs text-ink-soft">ผู้ดูแลระบบถอดรีวิวนี้ออกหลังมีผู้รายงาน รีวิวนี้จึงไม่แสดงในหน้าบริษัทแล้ว</p>}
                   {review.status === 'PUBLISHED' && (
                     <Link href={`/companies/item?id=${encodeURIComponent(review.company_id)}`} className="mt-2 inline-block text-sm font-medium text-primary hover:underline">
@@ -165,7 +174,7 @@ export function ReviewPage() {
   );
 }
 
-function ReviewForm({ app, onCancel, onDone, onConflict }: { onConflict: () => Promise<void>; app: StudentApplicationItem; onCancel: () => void; onDone: () => Promise<void> }) {
+function ReviewForm({ app, onCancel, onDone, onConflict }: { onConflict: () => Promise<void>; app: StudentApplicationItem; onCancel: () => void; onDone: (receipt: CreateReviewResponse) => Promise<void> }) {
   const { request } = useAuth();
   const fieldId = useId();
   const [rating, setRating] = useState(0);
@@ -186,8 +195,8 @@ function ReviewForm({ app, onCancel, onDone, onConflict }: { onConflict: () => P
       const payload: CreateReviewRequest = {
         rating: rating as CreateReviewRequest['rating'], body: body.trim(), anonymous, ...(title.trim() ? { title: title.trim() } : {}),
       };
-      await request(`/applications/${encodeURIComponent(app.id)}/review`, { method: 'POST', body: payload });
-      await onDone();
+      const receipt = await request<CreateReviewResponse>(`/applications/${encodeURIComponent(app.id)}/review`, { method: 'POST', body: payload });
+      await onDone(receipt);
     } catch (cause) {
       setError(failure(cause));
       if (cause instanceof ApiError && cause.code === 'ALREADY_REVIEWED') await onConflict();
@@ -228,7 +237,7 @@ function ReviewForm({ app, onCancel, onDone, onConflict }: { onConflict: () => P
         </span>
       </label>
       <p className="text-xs text-ink-soft">
-        รีวิวจะเผยแพร่ในหน้าบริษัททันทีหลังส่ง และแก้ไขภายหลังไม่ได้ ถ้ามีผู้รายงานว่ารีวิวไม่เหมาะสม ผู้ดูแลระบบอาจพิจารณาถอดรีวิวออก
+        หลังส่ง ระบบจะเผยแพร่รีวิวในหน้าบริษัทโดยอัตโนมัติ คุณติดตามสถานะได้ในรีวิวของฉัน รีวิวที่ส่งแล้วแก้ไขไม่ได้
       </p>
       {error && <Notice tone="error">{error}</Notice>}
       <div className="flex gap-3">

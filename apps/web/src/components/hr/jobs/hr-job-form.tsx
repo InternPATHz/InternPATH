@@ -138,14 +138,20 @@ export function HrJobForm() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [tagOptions, setTagOptions] = useState<JobTag[] | null>(null);
+  const [tagsFailed, setTagsFailed] = useState(false);
+  const [tagAttempt, setTagAttempt] = useState(0);
   const activeTagIds = new Set(tagOptions?.map((tag) => tag.id));
   const previousTags = (loaded?.tags ?? []).filter((tag) => !activeTagIds.has(tag.id) && form.tagIds.includes(tag.id));
 
   useEffect(() => {
     let cancelled = false;
-    api.tags().then((list) => { if (!cancelled) setTagOptions(list); }, () => undefined);
+    setTagsFailed(false);
+    api.tags().then(
+      (list) => { if (!cancelled) setTagOptions(list); },
+      () => { if (!cancelled) setTagsFailed(true); },
+    );
     return () => { cancelled = true; };
-  }, [api]);
+  }, [api, tagAttempt]);
 
   useEffect(() => {
     if (!id) return;
@@ -334,13 +340,15 @@ export function HrJobForm() {
           </label>
           <fieldset className="min-w-0 rounded-xl border border-border p-4">
             <legend className="px-1 text-sm font-medium">Tag ทักษะ (1–{TAG_MAX} รายการ)</legend>
+            {tagsFailed && <p role="alert" className="text-sm">โหลด Tag ทักษะไม่สำเร็จ <button type="button" onClick={() => setTagAttempt((n) => n + 1)} className="font-medium text-primary underline">ลองโหลด Tag อีกครั้ง</button></p>}
+            {!tagsFailed && !tagOptions && <p role="status" className="text-xs text-ink-soft">กำลังโหลด Tag ทักษะ…</p>}
             {tagOptions?.length === 0 && <p className="text-xs text-ink-soft">ยังไม่มี Tag ให้เลือก</p>}
             <div className="flex flex-wrap gap-2">
               {[...(tagOptions ?? []), ...previousTags].map((tag) => {
                 const checked = form.tagIds.includes(tag.id);
                 return (
-                  <label key={tag.id} className={`max-w-full cursor-pointer rounded-full border px-3 py-1 text-sm [overflow-wrap:anywhere] ${checked ? 'border-primary bg-primary-soft text-primary' : 'border-border'} ${lockedField('tag_ids') ? 'opacity-60' : ''}`}>
-                    <input type="checkbox" className="sr-only" checked={checked} disabled={lockedField('tag_ids')}
+                  <label key={tag.id} className={`max-w-full cursor-pointer rounded-full border px-3 py-1 text-sm [overflow-wrap:anywhere] focus-within:ring-2 focus-within:ring-primary ${checked ? 'border-primary bg-primary-soft text-primary' : 'border-border'} ${lockedField('tag_ids') ? 'opacity-60' : ''}`}>
+                    <input type="checkbox" data-job-field="tag_ids" className="sr-only" checked={checked} disabled={lockedField('tag_ids') || !tagOptions || (!checked && form.tagIds.length >= TAG_MAX)}
                       onChange={() => setForm((current) => ({ ...current, tagIds: checked ? current.tagIds.filter((tagId) => tagId !== tag.id) : [...current.tagIds, tag.id] }))} />
                     {tag.name}{tagOptions && !activeTagIds.has(tag.id) ? ' (ปิดใช้งาน)' : ''}
                   </label>

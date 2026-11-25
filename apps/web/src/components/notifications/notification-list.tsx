@@ -34,6 +34,22 @@ export function NotificationList() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [unreadCount, setUnreadCount] = useState<number | null>(null);
+  const [countStatus, setCountStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const countSequence = useRef(0);
+  const loadCount = useCallback(async () => {
+    const version = ++countSequence.current;
+    setCountStatus('loading');
+    try {
+      const count = await api.unreadCount();
+      if (version !== countSequence.current) return;
+      setUnreadCount(count);
+      setCountStatus('ready');
+    } catch {
+      if (version !== countSequence.current) return;
+      setUnreadCount(null);
+      setCountStatus('error');
+    }
+  }, [api]);
 
   const sequence = useRef(0);
   const load = useCallback(async () => {
@@ -49,19 +65,15 @@ export function NotificationList() {
       if (version !== sequence.current) return;
       setError(cause instanceof ApiError ? cause.message : 'โหลดการแจ้งเตือนไม่สำเร็จ กรุณาลองใหม่');
     }
-    api.unreadCount().then(
-      (count) => { if (version === sequence.current) setUnreadCount(count); },
-      () => { if (version === sequence.current) setUnreadCount(null); },
-    );
   }, [api, page, unreadOnly]);
 
   useEffect(() => {
     setResult(null);
-    void load();
-    const refresh = () => { void load(); };
+    const refresh = () => { void load(); void loadCount(); };
+    refresh();
     window.addEventListener('internpath:notifications-changed', refresh);
-    return () => { sequence.current++; window.removeEventListener('internpath:notifications-changed', refresh); };
-  }, [load]);
+    return () => { sequence.current++; countSequence.current++; window.removeEventListener('internpath:notifications-changed', refresh); };
+  }, [load, loadCount]);
 
   const changed = () => window.dispatchEvent(new Event('internpath:notifications-changed'));
 
@@ -115,6 +127,11 @@ export function NotificationList() {
           ))}
         </div>
 
+        {countStatus === 'error' && <div className="mt-3">
+          <Notice tone="error">โหลดจำนวนการแจ้งเตือนที่ยังไม่อ่านไม่สำเร็จ{' '}
+            <button type="button" onClick={() => void loadCount()} className="font-medium underline">ลองโหลดยอดอีกครั้ง</button>
+          </Notice>
+        </div>}
         <section aria-busy={!result && !error} className="mt-5">
           {error && <Notice tone="error">{error} <button type="button" onClick={() => void load()} className="underline">โหลดอีกครั้ง</button></Notice>}
           {!result && !error && <p className="text-sm text-ink-soft">กำลังโหลด…</p>}
@@ -140,7 +157,7 @@ export function NotificationList() {
                           <span className="flex flex-wrap items-baseline justify-between gap-2">
                             <span className={`text-sm ${item.read ? 'font-medium' : 'font-semibold'}`}>{item.title}{!item.read && <span className="sr-only"> (ยังไม่อ่าน)</span>}</span>
                             <time dateTime={item.created_at} className="text-xs text-ink-soft">
-                              {index !== 0 && dateFormat.format(new Date(item.created_at)) + ' · '}{timeFormat.format(new Date(item.created_at))}
+                              {index === 2 ? dateFormat.format(new Date(item.created_at)) : timeFormat.format(new Date(item.created_at))}
                             </time>
                           </span>
                           <span className="mt-1 block text-sm text-ink-soft">{item.body}</span>

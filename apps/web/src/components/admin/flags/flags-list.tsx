@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -199,7 +201,8 @@ export function FlagsList() {
                 <tr className="border-t border-border align-top">
                   <td className="px-4 py-3">
                     <p className="font-medium">{item.company_name ?? 'ไม่ทราบชื่อ'}</p>
-                    <p className="font-mono text-xs text-ink-soft">{item.company_id}</p>
+                    <Link href={`/admin/company-stats?company_id=${encodeURIComponent(item.company_id)}`} className="text-xs font-medium text-primary hover:underline">ดูสถิติบริษัท</Link>
+                    <details className="text-xs text-ink-soft"><summary className="cursor-pointer">รหัสอ้างอิงบริษัท</summary>{item.company_id}</details>
                   </td>
                   <td className="px-4 py-3">
                     <Badge className={item.active ? 'bg-danger-soft text-danger-text' : 'bg-surface-muted text-ink-soft'}>{item.active ? 'ติดธงอยู่' : 'เคลียร์แล้ว'}</Badge>
@@ -222,6 +225,7 @@ export function FlagsList() {
                   <tr className="bg-surface-muted">
                     <td colSpan={5} className="px-4 py-4">
                       <form onSubmit={(event) => void submitRow(event, item)} className="max-w-xl">
+                        <p className="mb-2 text-sm"><strong>{item.company_name ?? 'บริษัทที่เลือก'}</strong> · {item.active ? 'การปลดธงจะปิดเคสตรวจบัญชีบริษัทที่ยังเปิดอยู่' : 'ประกาศใหม่ของบริษัทจะเข้าคิวตรวจ'}</p>
                         <label className="block text-sm">
                           <span className="font-medium">เหตุผลที่{item.active ? 'เคลียร์ธง' : 'ตั้งธง'} (จำเป็น)</span>
                           <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} maxLength={REASON_MAX}

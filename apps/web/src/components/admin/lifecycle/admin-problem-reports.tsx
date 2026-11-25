@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { Paginated, ProblemReportItem, ProblemReportStatus } from '@internpath/contracts';
+import type { AdminUserListItem, Paginated, ProblemReportItem, ProblemReportStatus } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { PROBLEM_CATEGORY_LABEL, PROBLEM_FOLLOW_UP_LABEL, PROBLEM_STATUS_VIEW } from '@/components/problem-reports/problem-report-meta';
@@ -34,6 +34,45 @@ function toQuery(filters: Filters): string {
   if (filters.overdue) query.set('overdue', filters.overdue);
   if (filters.page > 1) query.set('page', String(filters.page));
   return query.toString();
+}
+
+/** Identity has a paged directory. Only look up a student's label when the admin asks for it. */
+function ReportStudent({ userId }: { userId: string }) {
+  const { request } = useAuth();
+  const [attempt, setAttempt] = useState(0);
+  const [state, setState] = useState<'idle' | 'loading' | 'found' | 'missing' | 'failed'>('idle');
+  const [label, setLabel] = useState('');
+  useEffect(() => {
+    if (!attempt) return;
+    let active = true;
+    async function lookup() {
+      setState('loading');
+      try {
+        for (let page = 1; active; page++) {
+          const rows = await request<Paginated<AdminUserListItem>>(`/admin/users?role=STUDENT&page=${page}&page_size=100`);
+          if (!active) return;
+          const student = rows.data.find((row) => row.id === userId);
+          if (student) {
+            setLabel([student.full_name, student.student_code].filter(Boolean).join(' · '));
+            setState('found');
+            return;
+          }
+          if (!rows.data.length || page * rows.meta.page_size >= rows.meta.total) break;
+        }
+        if (active) setState('missing');
+      } catch {
+        if (active) setState('failed');
+      }
+    }
+    void lookup();
+    return () => { active = false; };
+  }, [request, userId, attempt]);
+  return <div className="mt-3 text-sm" aria-live="polite">
+    {state === 'found' ? <p>นักศึกษา · {label}</p> : state === 'missing' ? <p>ไม่พบข้อมูลบัญชีนักศึกษา</p> :
+      <button type="button" className="font-medium text-primary hover:underline" disabled={state === 'loading'} onClick={() => setAttempt((n) => n + 1)}>
+        {state === 'loading' ? 'กำลังค้นหานักศึกษา…' : state === 'failed' ? 'ลองโหลดข้อมูลนักศึกษาอีกครั้ง' : 'ดูข้อมูลนักศึกษา'}
+      </button>}
+  </div>;
 }
 
 /**
@@ -98,7 +137,8 @@ export function AdminProblemReports() {
       {error && <Notice tone="error">{error}</Notice>}
       {loading && !result && <p className="text-sm text-ink-soft">กำลังโหลด…</p>}
       {!loading && !error && result && result.data.length === 0 && (
-        <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-ink-soft">ไม่มีรายงานตามตัวกรองนี้</p>
+        <p className="rounded-xl border border-dashed border-border p-8 text-center text-sm text-ink-soft">ไม่มีรายงานตามตัวกรองนี้
+          {(filters.status || filters.overdue) && <button className="ml-2 font-medium text-primary underline" onClick={() => update({ status: '', overdue: '' })}>ล้างตัวกรอง</button>}</p>
       )}
 
       <div className="mt-5 grid items-start gap-4 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
@@ -124,10 +164,11 @@ export function AdminProblemReports() {
               <p className="mt-3 whitespace-pre-line break-words text-sm">{report.detail}</p>
               {report.resolution_note && (
                 <p className="mt-3 whitespace-pre-line break-words rounded-xl bg-surface-muted p-3 text-sm">
-                  ผลการดำเนินการของอาจารย์: {report.resolution_note}
+                  ผลการดำเนินการ: {report.resolution_note}
                   {report.follow_up_action && <span className="text-ink-soft"> ({PROBLEM_FOLLOW_UP_LABEL[report.follow_up_action]})</span>}
                 </p>
               )}
+              {report.id === selected?.id && <ReportStudent key={report.student_user_id} userId={report.student_user_id} />}
               <details className="mt-3 text-xs"><summary className="cursor-pointer">รหัสอ้างอิงระบบ</summary><dl className="mt-3 grid gap-x-6 gap-y-1 text-xs text-ink-soft sm:grid-cols-2">
                 <div><dt className="inline">ใบสมัคร: </dt><dd className="inline break-all font-mono">{report.application_id}</dd></div>
                 <div><dt className="inline">นักศึกษา: </dt><dd className="inline break-all font-mono">{report.student_user_id}</dd></div>

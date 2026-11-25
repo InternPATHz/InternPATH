@@ -7,9 +7,9 @@ import { AuthShell, Notice } from '@/auth/ui';
 import { ApiError, apiRequest } from '@/lib/api';
 
 export default function VerifyEmailPage() {
-  const [token, setToken] = useState('');
+  const [token, setToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [invalid, setInvalid] = useState(false);
+  const [outcome, setOutcome] = useState<'invalid' | 'changed' | null>(null);
   const [verified, setVerified] = useState(false);
   const [error, setError] = useState('');
 
@@ -22,7 +22,15 @@ export default function VerifyEmailPage() {
     try {
       await apiRequest<void>('/auth/verify-email', { token });
       setVerified(true);
-    } catch (cause) { setInvalid(cause instanceof ApiError && ['INVALID_TOKEN','STATE_CONFLICT'].includes(cause.code)); setError(cause instanceof Error ? cause.message : 'ยืนยันอีเมลไม่สำเร็จ'); }
+    } catch (cause) {
+      if (cause instanceof ApiError && cause.code === 'STATE_CONFLICT') {
+        setOutcome('changed');
+        setError('สถานะบัญชีเปลี่ยนแล้ว ลองเข้าสู่ระบบ หากบัญชียังรอยืนยันอีเมล คุณสามารถขอลิงก์ใหม่ได้');
+      } else {
+        if (cause instanceof ApiError && cause.code === 'INVALID_TOKEN') setOutcome('invalid');
+        setError(cause instanceof Error ? cause.message : 'ยืนยันอีเมลไม่สำเร็จ');
+      }
+    }
     finally { setBusy(false); }
   }
 
@@ -32,9 +40,9 @@ export default function VerifyEmailPage() {
         <p className="rounded-lg bg-surface-muted p-4 text-sm text-ink-soft">หากสมัครเป็นอาจารย์ โปรดรอผู้ดูแลระบบอนุมัติบัญชี</p>
         <Link href="/login" className="block rounded-full bg-primary px-4 py-3 text-center font-semibold text-white hover:bg-primary-hover">เข้าสู่ระบบ</Link>
       </> : <>
-        {!token && <Notice error>ลิงก์ยืนยันอีเมลไม่ครบ กรุณาขอลิงก์ใหม่</Notice>}
-        {error && <Notice error>{error}</Notice>}
-        {token && !invalid && <button type="button" disabled={busy} onClick={verify}
+        {token === '' && <Notice error>ลิงก์ยืนยันอีเมลไม่ครบ กรุณาขอลิงก์ใหม่</Notice>}
+        {error && <Notice error focus>{error}</Notice>}
+        {token && !outcome && <button type="button" disabled={busy} onClick={verify}
           className="w-full rounded-full bg-primary px-4 py-3 font-semibold text-white hover:bg-primary-hover disabled:opacity-50">
           {busy ? 'กำลังยืนยัน…' : 'ยืนยันอีเมล'}
         </button>}
