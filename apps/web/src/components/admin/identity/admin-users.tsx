@@ -5,6 +5,7 @@ import type { AdminUserListItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { ROLE_LABEL, USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
+import { useUniversityOptions } from './use-universities';
 
 const roles: Array<[string, string]> = [['', 'ทุกบทบาท'], ['STUDENT', 'นักศึกษา'], ['ADVISOR', 'อาจารย์'], ['COMPANY_HR', 'HR'], ['PLATFORM_ADMIN', 'Admin']];
 const statuses: Array<[string, string]> = [['', 'ทุกสถานะ'], ['ACTIVE', 'ใช้งานอยู่'], ['PENDING_EMAIL', 'รอยืนยันอีเมล'], ['PENDING_APPROVAL', 'รออนุมัติ'], ['SUSPENDED', 'ถูกระงับ']];
@@ -15,6 +16,8 @@ export function AdminUsers() {
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
   const [status, setStatus] = useState('');
+  const [universityId, setUniversityId] = useState('');
+  const universityOptions = useUniversityOptions();
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
   const [result, setResult] = useState<Paginated<AdminUserListItem> | null>(null);
@@ -32,12 +35,13 @@ export function AdminUsers() {
     if (q) query.set('q', q);
     if (role) query.set('role', role);
     if (status) query.set('status', status);
+    if (universityId) query.set('university_id', universityId);
     request<Paginated<AdminUserListItem>>(`/admin/users?${query}`)
       .then((data) => { if (active) { setResult(data); setError(''); } })
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'โหลดรายชื่อผู้ใช้ไม่สำเร็จ'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [request, q, role, status, page, reload]);
+  }, [request, q, role, status, universityId, page, reload]);
 
   async function changeStatus(item: AdminUserListItem) {
     const action = item.status === 'SUSPENDED' ? 'unsuspend' : 'suspend';
@@ -62,12 +66,14 @@ export function AdminUsers() {
       </form>
       <FilterSelect label="บทบาท" value={role} options={roles} onChange={(value) => { setRole(value); setPage(1); }} />
       <FilterSelect label="สถานะ" value={status} options={statuses} onChange={(value) => { setStatus(value); setPage(1); }} />
+      <FilterSelect label="มหาวิทยาลัย" value={universityId} options={universityOptions} onChange={(value) => { setUniversityId(value); setPage(1); }} />
     </div>
     <div className="rounded-xl border border-border bg-surface p-4">
       {loading ? <p className="text-sm text-ink-soft">กำลังโหลด…</p> : !result?.data.length ? <p className="text-sm text-ink-soft">ไม่พบบัญชีที่ตรงกับตัวกรอง</p> :
         <div className="divide-y divide-border">{result.data.map((item) => <div key={item.id} className="py-4 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium">{item.full_name}</p>
             <p className="text-sm text-ink-soft">{item.email}</p><p className="mt-1 text-xs text-ink-soft">{labelOf(ROLE_LABEL, item.role)} · {labelOf(USER_STATUS_LABEL, item.status)}{item.student_code ? ` · รหัสนักศึกษา ${item.student_code}` : ''}</p>
+            {item.university_name && <p className="mt-1 text-xs text-ink-soft">มหาวิทยาลัย {item.university_name}</p>}
             <p className="mt-1 break-all text-xs text-ink-soft">รหัสบัญชี <span className="font-mono">{item.id}</span></p>
             {/* API ส่งแค่รหัสบัญชีอาจารย์ (ไม่มีชื่อ) — ใช้รหัสนี้ในฟอร์มย้ายอาจารย์ */}
             {item.advisor_id && <p className="mt-1 break-all text-xs text-ink-soft">รหัสบัญชีอาจารย์ที่ปรึกษา <span className="font-mono">{item.advisor_id}</span></p>}</div>

@@ -101,6 +101,31 @@ describe('Identity Admin controls (Postgres จริง)', function () {
       .set('Authorization', bearer(adminId, 'PLATFORM_ADMIN')).expect(400);
   });
 
+  it('lists universities and filters users by university with its name', async () => {
+    const alpha = await db.university.create({ data: { name: 'Alpha University', emailDomain: 'alpha.ac.th' } });
+    const beta = await db.university.create({ data: { name: 'Beta University', emailDomain: 'beta.ac.th', active: false } });
+    const make = (email: string, universityId: string) => db.user.create({ data: { email, passwordHash: 'test', fullName: email,
+      role: 'ADVISOR', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId } });
+    const alphaAdvisor = await make('a1@alpha.ac.th', alpha.id);
+    await make('b1@beta.ac.th', beta.id);
+    const auth = bearer(adminId, 'PLATFORM_ADMIN');
+
+    await request(app.getHttpServer()).get('/v1/admin/universities').set('Authorization', bearer(memberId, 'COMPANY_HR')).expect(403);
+    const list = await request(app.getHttpServer()).get('/v1/admin/universities').set('Authorization', auth).expect(200);
+    expect(list.body.data).to.deep.equal([
+      { id: alpha.id, name: 'Alpha University', email_domain: 'alpha.ac.th', active: true },
+      { id: beta.id, name: 'Beta University', email_domain: 'beta.ac.th', active: false },
+    ]);
+
+    const filtered = await request(app.getHttpServer()).get(`/v1/admin/users?role=ADVISOR&university_id=${alpha.id}`)
+      .set('Authorization', auth).expect(200);
+    expect(filtered.body.meta.total).to.equal(1);
+    expect(filtered.body.data[0]).to.include({ id: alphaAdvisor.id, university_id: alpha.id, university_name: 'Alpha University' });
+    const hr = await request(app.getHttpServer()).get('/v1/admin/users?role=COMPANY_HR').set('Authorization', auth).expect(200);
+    expect(hr.body.data[0]).to.include({ university_id: null, university_name: null });
+    await request(app.getHttpServer()).get('/v1/admin/users?university_id=not-a-uuid').set('Authorization', auth).expect(400);
+  });
+
   it('sets University Partner with E05 snapshot and one audit row; repeated PUT is a no-op', async () => {
     const adminToken = bearer(adminId, 'PLATFORM_ADMIN');
     const url = `/v1/admin/companies/${companyId}/university-partner`;

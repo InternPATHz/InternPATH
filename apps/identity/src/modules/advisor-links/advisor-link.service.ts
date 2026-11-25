@@ -222,13 +222,15 @@ export class AdvisorLinkService {
 
   async adminAdvisors(adminId: string, query: AdminAdvisorQueryDto): Promise<Page<AdminAdvisorListItem>> {
     await this.actor(adminId, 'PLATFORM_ADMIN');
-    const where: Prisma.UserWhereInput = { role: 'ADVISOR', ...(query.status ? { status: query.status } : {}) };
+    const where: Prisma.UserWhereInput = { role: 'ADVISOR', ...(query.status ? { status: query.status } : {}),
+      ...(query.university_id ? { universityId: query.university_id } : {}) };
     const [users, total] = await Promise.all([
-      this.db.user.findMany({ where, include: { advisorProfile: true }, orderBy: { createdAt: 'desc' }, skip: (query.page - 1) * query.page_size, take: query.page_size }),
+      this.db.user.findMany({ where, include: { advisorProfile: true, university: true }, orderBy: { createdAt: 'desc' }, skip: (query.page - 1) * query.page_size, take: query.page_size }),
       this.db.user.count({ where }),
     ]);
     return page(users.map((user) => ({ id: user.id, full_name: user.fullName, email: user.email,
-      ...(user.advisorProfile?.department ? { department: user.advisorProfile.department } : {}), status: user.status, created_at: user.createdAt.toISOString() })), total, query);
+      ...(user.advisorProfile?.department ? { department: user.advisorProfile.department } : {}), status: user.status,
+      university_id: user.universityId, university_name: user.university?.name ?? null, created_at: user.createdAt.toISOString() })), total, query);
   }
 
   async adminAdvisorAction(adminId: string, advisorId: string, action: string, reason: string | undefined, correlationId: string): Promise<void> {

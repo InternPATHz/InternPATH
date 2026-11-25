@@ -19,6 +19,7 @@ export class AdminUsersQueryDto {
   @IsOptional() @IsString() @MaxLength(100) q?: string;
   @IsOptional() @IsEnum(Role) role?: Role;
   @IsOptional() @IsEnum(UserStatus) status?: UserStatus;
+  @IsOptional() @IsUUID() university_id?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) page_size = 20;
 }

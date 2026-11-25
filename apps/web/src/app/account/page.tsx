@@ -70,6 +70,7 @@ function AccountContent() {
                   ['ชื่อ', profile.full_name],
                   ['อีเมล', profile.email],
                   ...(profile.student ? [['รหัสนักศึกษา', profile.student.student_code]] : []),
+                  ...(profile.university ? [['มหาวิทยาลัย', profile.university.name]] : []),
                   ['บทบาท', labelOf(ROLE_LABEL, profile.role)],
                   ['สถานะบัญชี', labelOf(USER_STATUS_LABEL, profile.status)],
                 ] as Array<[string, string]>).map(([label, value]) => (

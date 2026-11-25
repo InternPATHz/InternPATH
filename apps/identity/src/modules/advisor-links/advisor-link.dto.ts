@@ -34,6 +34,7 @@ export class UpdateStudentDto implements UpdateStudentRequest {
 
 export class AdminAdvisorQueryDto {
   @IsOptional() @IsEnum(UserStatus) status?: UserStatus;
+  @IsOptional() @IsUUID() university_id?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) page_size = 20;
 }

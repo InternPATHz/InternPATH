@@ -5,7 +5,7 @@ import { Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateMeDto } from './users.dto';
 
-const profile = { studentProfile: true, advisorProfile: true, companyMember: { include: { company: true } } } as const;
+const profile = { studentProfile: true, advisorProfile: true, companyMember: { include: { company: true } }, university: true } as const;
 type ProfileUser = Prisma.UserGetPayload<{ include: typeof profile }>;
 
 @Injectable()
@@ -36,6 +36,8 @@ export class UsersService {
         id: user.companyMember.companyId, name: user.companyMember.company.name,
         status: user.companyMember.company.status, member_role: user.companyMember.memberRole,
       } } : {}),
+      ...((user.role === 'STUDENT' || user.role === 'ADVISOR') && user.university
+        ? { university: { id: user.university.id, name: user.university.name } } : {}),
     };
   }
 

@@ -26,6 +26,8 @@ export interface UserMeResponse extends AuthUser {
   };
   advisor?: { department?: string };
   company?: { id: string; name: string; status: CompanyStatus; member_role: CompanyMemberRole; categories?: JobCategory[] };
+  /** มหาวิทยาลัยของนักศึกษา/อาจารย์ (HR/Admin ไม่มี) */
+  university?: { id: string; name: string };
 }
 
 export interface UpdateMeRequest {
@@ -139,6 +141,14 @@ export interface AdminCompanyDetail extends CompanyMeResponse {
   members: CompanyMemberItem[];
 }
 
+/** GET /admin/universities — ตัวเลือกตัวกรองมหาวิทยาลัยในหน้า Admin */
+export interface AdminUniversityItem {
+  id: string;
+  name: string;
+  email_domain: string;
+  active: boolean;
+}
+
 /** GET /admin/advisors */
 export interface AdminAdvisorListItem {
   id: string;
@@ -146,6 +156,8 @@ export interface AdminAdvisorListItem {
   email: string;
   department?: string;
   status: UserStatus;
+  university_id: string | null;
+  university_name: string | null;
   created_at: string;
 }
 
@@ -157,6 +169,7 @@ export interface AdminUserListItem {
   role: Role;
   status: UserStatus;
   university_id: string | null;
+  university_name: string | null;
   advisor_id: string | null;
   student_code: string | null;
   company_id: string | null;
