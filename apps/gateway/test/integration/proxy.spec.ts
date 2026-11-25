@@ -1,7 +1,8 @@
 import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
 import { createServer, Server } from 'node:http';
 import { AddressInfo } from 'node:net';
-import { INestApplication } from '@nestjs/common';
+import { INestApplication, Logger } from '@nestjs/common';
+import sinon from 'sinon';
 import { Test } from '@nestjs/testing';
 import { expect } from 'chai';
 import * as jwt from 'jsonwebtoken';
@@ -80,6 +81,24 @@ describe('Gateway proxy and security', function () {
     expect(JSON.parse(result.body.body)).to.deep.equal({ email: 'a@example.com' });
     expect(result.body.headers).not.to.have.property('x-user-id');
     expect(result.body.headers['x-forwarded-for']).to.equal('203.0.113.10');
+  });
+
+  it('writes an access log line with the correlation id it forwards upstream, without the query string', async () => {
+    const logged: Array<Record<string, unknown>> = [];
+    const spy = sinon.stub(Logger.prototype, 'log').callsFake(function (this: Logger, message: unknown) {
+      if (message && typeof message === 'object') logged.push(message as Record<string, unknown>);
+    });
+    try {
+      const correlation = randomUUID();
+      const result = await edge(request(app.getHttpServer()).get('/api/v1/search/jobs?q=secret@example.com'))
+        .set('X-Correlation-Id', correlation).expect(200);
+      expect(result.body.headers['x-correlation-id']).to.equal(correlation);
+      const line = logged.find((entry) => entry.correlation_id === correlation);
+      expect(line).to.deep.include({ msg: 'request completed', method: 'GET', path: '/api/v1/search/jobs', status_code: 200 });
+      expect(JSON.stringify(logged)).not.to.include('secret@example.com');
+    } finally {
+      spy.restore();
+    }
   });
 
   it('checks JWT and denylist and forwards trusted claims', async () => {
