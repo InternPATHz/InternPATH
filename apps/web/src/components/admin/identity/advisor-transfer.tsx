@@ -126,7 +126,8 @@ export function AdvisorTransfer() {
           <input type="radio" name={`${formId}-student`} value={row.id} checked={studentId === row.id}
             onChange={() => { setStudentId(row.id); setTargetId(''); setNotice(''); }} className="mt-1" />
           <span className="min-w-0"><span className="block font-medium">{row.full_name}</span>
-            <span className="block break-all text-ink-soft">{row.email} · {labelOf(USER_STATUS_LABEL, row.status)}</span></span>
+            <span className="block break-all text-ink-soft">{row.email} · {labelOf(USER_STATUS_LABEL, row.status)}</span>
+            {row.university_name && <span className="block text-ink-soft">มหาวิทยาลัย {row.university_name}</span>}</span>
         </label>)}
       </div>
     </fieldset>}
@@ -136,6 +137,7 @@ export function AdvisorTransfer() {
         {([
           ['นักศึกษา', student.full_name],
           ['อีเมล', student.email],
+          ['มหาวิทยาลัย', student.university_name ?? '-'],
           ['สถานะบัญชี', labelOf(USER_STATUS_LABEL, student.status)],
           ['อาจารย์คนปัจจุบัน', !student.advisor_id ? 'ยังไม่มีอาจารย์ที่ปรึกษา'
             : currentAdvisor ? advisorLabel(currentAdvisor)

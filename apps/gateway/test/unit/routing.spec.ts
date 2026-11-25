@@ -7,7 +7,7 @@ describe('Gateway routing contract §3', () => {
       ['/auth/login', 'identity'], ['/.well-known/jwks.json', 'identity'], ['/users/me', 'identity'],
       ['/advisor-links/students', 'identity'], ['/advisor-links/students/1/invitation', 'identity'], ['/companies/me/documents', 'identity'],
       ['/directory/companies', 'identity'], ['/admin/companies/1', 'identity'], ['/admin/advisors', 'identity'],
-      ['/admin/students/1/advisor', 'identity'], ['/admin/users/1', 'identity'], ['/admin/audit-logs', 'identity'],
+      ['/admin/students/1/advisor', 'identity'], ['/admin/users/1', 'identity'], ['/admin/universities', 'identity'],['/admin/audit-logs', 'identity'],
       ['/hr/jobs/1', 'job'], ['/jobs/1', 'job'], ['/search/jobs', 'job'], ['/admin/jobs', 'job'], ['/admin/jobs/1', 'job'],
       ['/tags', 'job'], ['/admin/tags', 'job'], ['/admin/tags/1', 'job'],
       ['/admin/queue', 'verification'],

@@ -104,6 +104,12 @@ describe('Identity advisor-created students (Postgres จริง)', function (
   it('Admin approves a pending advisor once, with audit and approval timestamp', async () => {
     const pending = await http().get('/v1/admin/advisors?status=PENDING_APPROVAL').set(adminAuth()).expect(200);
     expect(pending.body.meta.total).to.equal(2);
+    expect(pending.body.data[0]).to.include({ university_name: 'Test University' });
+    const sameUni = pending.body.data[0].university_id as string;
+    const byUni = await http().get(`/v1/admin/advisors?university_id=${sameUni}`).set(adminAuth()).expect(200);
+    expect(byUni.body.meta.total).to.equal(3);
+    expect(byUni.body.data.map((row: { id: string }) => row.id)).to.not.include(outsider);
+    await http().get('/v1/admin/advisors?university_id=bad').set(adminAuth()).expect(400);
     await http().post(`/v1/admin/advisors/${advisorA}/actions/approve`).set(adminAuth()).send({}).expect(204);
     await http().post(`/v1/admin/advisors/${advisorA}/actions/approve`).set(adminAuth()).send({}).expect(409);
     const profile = await db.advisorProfile.findUniqueOrThrow({ where: { userId: advisorA } });

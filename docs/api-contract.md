@@ -53,7 +53,7 @@
 
 | Path prefix | Service |
 | :--- | :--- |
-| `/auth/**`, `/.well-known/**`, `/users/**`, `/advisor-links/**`, `/companies/me/**`, `/directory/**`, `/admin/companies/**`, `/admin/advisors/**`, `/admin/students/**`, `/admin/users/**`, `/admin/audit-logs` | identity |
+| `/auth/**`, `/.well-known/**`, `/users/**`, `/advisor-links/**`, `/companies/me/**`, `/directory/**`, `/admin/companies/**`, `/admin/advisors/**`, `/admin/students/**`, `/admin/users/**`, `/admin/universities`, `/admin/audit-logs` | identity |
 | `/hr/jobs/**`, `/jobs/**`, `/search/**`, `/tags`, `/admin/jobs/**`, `/admin/tags/**` | job |
 | `/verification/**`, `/admin/queue/**`, `/admin/flags/**`, `/admin/audit`, `/jobs/{id}/reports`, `/reviews/{id}/reports` | verification |
 | `/applications/**`, `/me/**`, `/hr/applications/**`, `/hr/certificates/**`, `/hr/reviews/**`, `/advisor/**`, `/me/certificates/**`, `/companies/{id}/reviews`, `/problem-reports/**`, `/admin/lifecycle/**`, `/public/**` | lifecycle |
@@ -91,7 +91,7 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 ### 4.2 ผู้ใช้และโปรไฟล์ระบุตัวตน
 | Method | Path | Role | คำอธิบาย |
 | :--- | :--- | :---: | :--- |
-| GET | `/users/me` | Any | ข้อมูลตนเอง + สถานะ advisor link / บริษัท |
+| GET | `/users/me` | Any | ข้อมูลตนเอง + สถานะ advisor link / บริษัท; นักศึกษา/อาจารย์มี `university: {id, name}` |
 | PATCH | `/users/me` | Any | แก้ชื่อ/โทร |
 | POST | `/users/me/deletion-request` | Any | คำขอลบบัญชี (PM ตัดสิน 2026-11-17: **ซิงโครนัส** — Identity ตรวจสิทธิ์แล้วลบในคำขอเดียว) สำเร็จ `204` ไม่มี body และ token ของบัญชีถูกเพิกถอนทันที; `422 DELETION_BLOCKED` ถ้ามีใบสมัครที่ยังดำเนินอยู่ (ตรวจกับ Lifecycle: `ADVISOR_PENDING`, `ADVISOR_APPROVED`, `IN_PROGRESS`, `FAIL_DISPUTED`, `REEVALUATION_REQUESTED`) หรือเป็น Owner ที่ยังไม่โอน; `503 UPSTREAM_UNAVAILABLE` ถ้าตรวจกับ Lifecycle ไม่ได้ (ปฏิเสธไว้ก่อน ไม่ปล่อยผ่าน); สิ่งที่แต่ละ Service ทำหลังลบ ดู data-schema §2.3 |
 | POST | `/advisor-links/students` | A | **อาจารย์เพิ่มนักศึกษา** (อาจารย์ต้อง `ACTIVE`): `{email(@ac.th ของมหาวิทยาลัยเดียวกับอาจารย์), full_name, student_code, major, year_level}` → `201 {student_user_id, email, invitation_expires_at}` สร้างบัญชี `STUDENT` ที่ยังไม่ตั้งรหัสผ่าน ผูก `advisor_id` เป็น `LINKED` ทันที (ส่ง `AdvisorLinkChanged`) และส่งอีเมลคำเชิญ; `409 STATE_CONFLICT` (`EMAIL_ALREADY_REGISTERED`), `409 STATE_CONFLICT` (`STUDENT_CODE_ALREADY_USED`) (รหัสนักศึกษาซ้ำในมหาวิทยาลัยเดียวกัน), `400 VALIDATION_FAILED` (`EMAIL_DOMAIN_NOT_ALLOWED`); Gateway จำกัด 30 ครั้ง/ชั่วโมง/อาจารย์ และ 120 ครั้ง/ชั่วโมง/IP (`429 RATE_LIMITED`) |
@@ -136,10 +136,11 @@ Gateway ตรวจ JWT + Denylist + Rate Limit ก่อน forward และ�
 | PUT | `/admin/companies/{id}/university-partner` | AD | `{enabled}` |
 | PUT | `/admin/companies/{id}/entitlements` | AD | `{featured_enabled, fast_track_enabled}` → `CompanyEntitlementChanged` |
 | POST | `/admin/companies/{id}/owner` | AD | `{user_id}` แต่งตั้ง Owner ใหม่ (บริษัทที่ไม่มี Owner) |
-| GET | `/admin/advisors` | AD | `?status=PENDING_APPROVAL` |
+| GET | `/admin/advisors` | AD | `?status=PENDING_APPROVAL&university_id=` → Pagination; แต่ละรายการมี `university_id, university_name` |
+| GET | `/admin/universities` | AD | รายชื่อมหาวิทยาลัยทั้งหมด (ไม่แบ่งหน้า) `{data: [{id, name, email_domain, active}]}` เรียงตามชื่อ — ใช้เป็นตัวเลือกตัวกรอง |
 | POST | `/admin/advisors/{id}/actions/{approve\|reject}` | AD | |
 | POST | `/admin/students/{id}/advisor` | AD | `{advisor_id}` ย้ายอาจารย์ทันที (`LINKED`) |
-| GET | `/admin/users` | AD | `?q=&role=&status=&page=&page_size=` ค้นบัญชีตามชื่อ อีเมล หรือรหัสนักศึกษา → Pagination; คืน `id, full_name, email, role, status, university_id, advisor_id?, student_code?, company_id?, created_at` สำหรับหน้า Admin |
+| GET | `/admin/users` | AD | `?q=&role=&status=&university_id=&page=&page_size=` ค้นบัญชีตามชื่อ อีเมล หรือรหัสนักศึกษา → Pagination; คืน `id, full_name, email, role, status, university_id, university_name, advisor_id?, student_code?, company_id?, created_at` สำหรับหน้า Admin |
 | POST | `/admin/users/{id}/actions/{suspend\|unsuspend}` | AD | → `UserSuspended` |
 | GET | `/admin/audit-logs` | AD | Audit ของ Identity |
 

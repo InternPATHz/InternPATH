@@ -71,6 +71,7 @@ function AccountContent() {
         <section id="account-info" className="scroll-mt-20"><h2 className="text-lg font-semibold">ข้อมูลบัญชี</h2>
           <dl className="text-sm"><Row label="อีเมล">{profile.email} · {profile.email_verified ? 'ยืนยันแล้ว' : 'รอยืนยัน'}</Row>
             {student && <><Row label="รหัสนักศึกษา">{student.student_code}</Row><Row label="สาขาและชั้นปี">{student.major} · ชั้นปี {student.year_level}</Row></>}
+            {profile.university && <Row label="มหาวิทยาลัย">{profile.university.name}</Row>}
             {profile.advisor?.department && <Row label="ภาควิชา">{profile.advisor.department}</Row>}
             {profile.company && <><Row label="บริษัท"><Link href="/hr/company" className={link}>{profile.company.name}</Link></Row>
               <Row label="บทบาทในทีม"><Link href="/hr/team" className={link}>{profile.company.member_role === 'OWNER' ? 'เจ้าของบัญชีบริษัท' : 'สมาชิก HR'}</Link></Row></>}

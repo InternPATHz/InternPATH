@@ -5,6 +5,7 @@ import type { AdminUserListItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { ROLE_LABEL, USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
+import { useUniversityOptions } from './use-universities';
 
 const roles: Array<[string, string]> = [['', 'ทุกบทบาท'], ['STUDENT', 'นักศึกษา'], ['ADVISOR', 'อาจารย์'], ['COMPANY_HR', 'HR'], ['PLATFORM_ADMIN', 'Admin']];
 const statuses: Array<[string, string]> = [['', 'ทุกสถานะ'], ['ACTIVE', 'ใช้งานอยู่'], ['PENDING_EMAIL', 'รอยืนยันอีเมล'], ['PENDING_APPROVAL', 'รออนุมัติ'], ['SUSPENDED', 'ถูกระงับ']];
@@ -15,6 +16,8 @@ export function AdminUsers() {
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
   const [status, setStatus] = useState('');
+  const [universityId, setUniversityId] = useState('');
+  const universityOptions = useUniversityOptions();
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
   const [result, setResult] = useState<Paginated<AdminUserListItem> | null>(null);
@@ -34,12 +37,13 @@ export function AdminUsers() {
     if (q) query.set('q', q);
     if (role) query.set('role', role);
     if (status) query.set('status', status);
+    if (universityId) query.set('university_id', universityId);
     request<Paginated<AdminUserListItem>>(`/admin/users?${query}`)
       .then((data) => { if (active) { setResult(data); setError(''); } })
       .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'โหลดรายชื่อผู้ใช้ไม่สำเร็จ'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [request, q, role, status, page, reload]);
+  }, [request, q, role, status, universityId, page, reload]);
 
   async function changeStatus(item: AdminUserListItem) {
     const action = item.status === 'SUSPENDED' ? 'unsuspend' : 'suspend';
@@ -65,17 +69,18 @@ export function AdminUsers() {
         <button className="rounded-lg border border-border px-3 py-2 text-sm">ค้นหา</button>
       </form>
       <span className="text-sm text-ink-soft">{result && `พบ ${result.meta.total} บัญชี`}</span>
-      {(q || role || status || search) && <button className="text-sm text-primary" onClick={() => { setQ(''); setSearch(''); setRole(''); setStatus(''); setPage(1); }}>ล้างตัวกรอง</button>}
+      {(q || role || status || universityId || search) && <button className="text-sm text-primary" onClick={() => { setQ(''); setSearch(''); setRole(''); setStatus(''); setUniversityId(''); setPage(1); }}>ล้างตัวกรอง</button>}
       <FilterSelect label="บทบาท" value={role} options={roles} onChange={(value) => { setRole(value); setPage(1); }} />
       <FilterSelect label="สถานะ" value={status} options={statuses} onChange={(value) => { setStatus(value); setPage(1); }} />
+      <FilterSelect label="มหาวิทยาลัย" value={universityId} options={universityOptions} onChange={(value) => { setUniversityId(value); setPage(1); }} />
     </div>
     <div className="rounded-xl border border-border bg-surface p-4">
       {loading ? <p className="text-sm text-ink-soft">กำลังโหลด…</p> : !result?.data.length ? <p className="text-sm text-ink-soft">ไม่พบบัญชีที่ตรงกับตัวกรอง</p> :
         <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-          <thead className="bg-surface-muted text-ink-soft"><tr>{['ชื่อและอีเมล', 'บทบาท', 'สถานะ', 'รหัสนักศึกษา', 'จัดการ'].map((label) => <th key={label} scope="col" className="p-3">{label}</th>)}</tr></thead>
+          <thead className="bg-surface-muted text-ink-soft"><tr>{['ชื่อและอีเมล', 'บทบาท', 'สถานะ', 'มหาวิทยาลัย', 'รหัสนักศึกษา', 'จัดการ'].map((label) => <th key={label} scope="col" className="p-3">{label}</th>)}</tr></thead>
           <tbody className="divide-y divide-border">{result.data.map((item) => <tr key={item.id} className={item.id === selectedId ? 'bg-primary-soft' : ''}>
             <th scope="row" className="max-w-xs p-3 [overflow-wrap:anywhere]">{item.full_name}<span className="block font-normal text-ink-soft">{item.email}</span></th>
-            <td className="p-3">{labelOf(ROLE_LABEL, item.role)}</td><td className="p-3">{labelOf(USER_STATUS_LABEL, item.status)}</td><td className="p-3">{item.student_code || '—'}</td>
+            <td className="p-3">{labelOf(ROLE_LABEL, item.role)}</td><td className="p-3">{labelOf(USER_STATUS_LABEL, item.status)}</td><td className="p-3">{item.university_name || '—'}</td><td className="p-3">{item.student_code || '—'}</td>
             <td className="p-3"><button aria-label={`จัดการ ${item.full_name} ${item.email}`} onClick={() => { setSelectedId(item.id); setActionId(null); setReason(''); }} className="text-primary">จัดการ</button></td>
           </tr>)}</tbody>
         </table></div>}

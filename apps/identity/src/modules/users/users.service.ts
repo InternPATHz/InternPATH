@@ -5,7 +5,7 @@ import { Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateMeDto } from './users.dto';
 
-const profile = { studentProfile: true, advisorProfile: true, companyMember: { include: { company: true } } } as const;
+const profile = { studentProfile: true, advisorProfile: true, companyMember: { include: { company: true } }, university: true } as const;
 type ProfileUser = Prisma.UserGetPayload<{ include: typeof profile }>;
 
 @Injectable()
@@ -38,6 +38,8 @@ export class UsersService {
         // สายงานที่ Owner มอบหมาย — ฟอร์มประกาศของ Member แสดงเฉพาะสายงานเหล่านี้ (Owner ดูแลทุกสายงาน จึงไม่ส่ง)
         ...(user.companyMember.memberRole === 'MEMBER' ? { categories: user.companyMember.categories } : {}),
       } } : {}),
+      ...((user.role === 'STUDENT' || user.role === 'ADVISOR') && user.university
+        ? { university: { id: user.university.id, name: user.university.name } } : {}),
     };
   }
 

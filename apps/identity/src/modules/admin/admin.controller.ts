@@ -30,6 +30,9 @@ export class AdminController {
   @Get('users')
   users(@CurrentUser() actor: JwtClaims, @Query() query: AdminUsersQueryDto) { return this.service.users(actor.sub, query); }
 
+  @Get('universities')
+  universities(@CurrentUser() actor: JwtClaims) { return this.service.universities(actor.sub); }
+
   @Get('audit-logs')
   audit(@CurrentUser() actor: JwtClaims, @Query() query: AuditQueryDto) { return this.service.audit(actor.sub, query); }
 }

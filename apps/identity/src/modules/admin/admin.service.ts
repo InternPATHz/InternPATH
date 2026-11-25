@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { AppException, OutboxWriter, asUuid } from '@internpath/common';
-import type { CompanyEntitlementChangedPayload, CompanyStatusChangedPayload, UserSuspendedPayload } from '@internpath/contracts';
+import type { AdminUniversityItem, CompanyEntitlementChangedPayload, CompanyStatusChangedPayload, UserSuspendedPayload } from '@internpath/contracts';
 import { Company, Prisma, User } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AdminUsersQueryDto, AuditQueryDto, SetEntitlementsDto } from './admin.dto';
@@ -130,6 +130,7 @@ export class AdminService {
     const where: Prisma.UserWhereInput = {
       ...(query.role ? { role: query.role } : {}),
       ...(query.status ? { status: query.status } : { status: { not: 'DELETED' } }),
+      ...(query.university_id ? { universityId: query.university_id } : {}),
       ...(q ? { OR: [
         { fullName: { contains: q, mode: 'insensitive' } },
         { email: { contains: q, mode: 'insensitive' } },
@@ -137,14 +138,21 @@ export class AdminService {
       ] } : {}),
     };
     const [rows, total] = await Promise.all([
-      this.db.user.findMany({ where, include: { studentProfile: true, companyMember: true },
+      this.db.user.findMany({ where, include: { studentProfile: true, companyMember: true, university: true },
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.page_size, take: query.page_size }),
       this.db.user.count({ where }),
     ]);
     return { data: rows.map((user) => ({ id: user.id, full_name: user.fullName, email: user.email,
-      role: user.role, status: user.status, university_id: user.universityId,
+      role: user.role, status: user.status, university_id: user.universityId, university_name: user.university?.name ?? null,
       advisor_id: user.studentProfile?.advisorId ?? null, student_code: user.studentProfile?.studentCode ?? null,
       company_id: user.companyMember?.companyId ?? null, created_at: user.createdAt.toISOString() })),
     meta: { page: query.page, page_size: query.page_size, total } };
+  }
+
+  /** ตัวเลือกตัวกรองมหาวิทยาลัย — จำนวนน้อย (มาจากโดเมนอีเมลที่สมัคร) จึงคืนทั้งหมดไม่แบ่งหน้า */
+  async universities(adminId: string): Promise<{ data: AdminUniversityItem[] }> {
+    await this.admin(adminId);
+    const rows = await this.db.university.findMany({ orderBy: [{ name: 'asc' }, { emailDomain: 'asc' }] });
+    return { data: rows.map((row) => ({ id: row.id, name: row.name, email_domain: row.emailDomain, active: row.active })) };
   }
 }

@@ -97,9 +97,12 @@ describe('Identity profile and resume consent (Postgres จริง)', function
     const advisor = await request(app.getHttpServer()).get('/v1/users/me')
       .set('Authorization', auth(advisorId, 'ADVISOR')).expect(200);
     expect(advisor.body.advisor).to.deep.equal({ department: 'Engineering' });
+    expect(student.body.university).to.deep.equal({ id: advisor.body.university.id, name: 'Test U' });
+    expect(advisor.body.university.name).to.equal('Test U');
     const hr = await request(app.getHttpServer()).get('/v1/users/me')
       .set('Authorization', auth(hrId, 'COMPANY_HR')).expect(200);
     expect(hr.body.company).to.deep.equal({ id: companyId, name: 'Test Company', status: 'VERIFIED', member_role: 'OWNER' });
+    expect(hr.body).not.to.have.property('university');
   });
 
   it('updates only name and phone and rejects invalid or inactive requests', async () => {

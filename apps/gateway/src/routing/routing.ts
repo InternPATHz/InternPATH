@@ -11,7 +11,7 @@ export function resolveService(path: string): ServiceName | undefined {
   if (new RegExp(`^/companies/${item}/reviews$`).test(path)) return 'lifecycle';
 
   if (['/auth', '/.well-known', '/users', '/advisor-links', '/companies/me', '/directory',
-    '/admin/companies', '/admin/advisors', '/admin/students', '/admin/users', '/admin/audit-logs']
+    '/admin/companies', '/admin/advisors', '/admin/students', '/admin/users', '/admin/universities', '/admin/audit-logs']
     .some((start) => prefix(path, start))) return 'identity';
   if (['/hr/jobs', '/jobs', '/search', '/tags', '/admin/jobs', '/admin/tags'].some((start) => prefix(path, start))) return 'job';
   // ปรับ Requirement 2026-11-21: ถอด /admin/blacklist, /admin/risk-rules และ /advisors (ไม่มีปลายทาง ⇒ 404 ที่ Gateway)
