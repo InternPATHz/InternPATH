@@ -16,7 +16,9 @@ export function Hero({ children }: { children?: ReactNode }) {
         โอกาสฝึกงานที่ใช่<br />เริ่มจากข้อมูลที่ชัดเจน
       </h1>
       <p className="mx-auto mt-4 max-w-2xl text-lg text-ink-soft sm:text-[21px] sm:leading-[1.45]">
-        ดูประกาศที่ผ่านการตรวจสอบ ข้อมูลบริษัท เงื่อนไขงาน และรีวิวจากผู้ฝึกงานจริงก่อนตัดสินใจสมัคร
+        <span className="lg:hidden">ดูประกาศที่ผ่านการตรวจสอบ ข้อมูลบริษัท</span>
+        <span className="hidden lg:inline">ค้นหางานฝึกงานจากบริษัทที่ผ่านการรับรอง ดูข้อมูลบริษัท</span>
+        {' '}เงื่อนไขงาน และรีวิวจากผู้ฝึกงานจริงก่อนตัดสินใจสมัคร
       </p>
       <form action="/jobs" method="get" role="search" className="mx-auto mt-8 flex max-w-2xl flex-col gap-3 sm:flex-row">
         <label className="relative flex-1">

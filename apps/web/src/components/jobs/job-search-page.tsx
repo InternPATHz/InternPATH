@@ -135,7 +135,11 @@ export function JobSearchPage() {
       <header className="bg-surface-muted px-4 py-12 sm:px-6">
         <div className="mx-auto max-w-6xl">
           <h1 className="text-4xl font-semibold">ค้นหางานฝึกงาน</h1>
-          <p className="mt-2 text-sm text-ink-soft">เลือกจากประกาศที่ผ่านการตรวจสอบแล้ว กรองตามสายงาน รูปแบบการทำงาน และสาขาของคุณ</p>
+          <p className="mt-2 text-sm text-ink-soft">
+            <span className="lg:hidden">เลือกจากประกาศที่ผ่านการตรวจสอบแล้ว</span>
+            <span className="hidden lg:inline">ค้นหาประกาศจากบริษัทที่ผ่านการรับรอง</span>
+            {' '}กรองตามสายงาน รูปแบบการทำงาน และสาขาของคุณ
+          </p>
 
           <form
             role="search"

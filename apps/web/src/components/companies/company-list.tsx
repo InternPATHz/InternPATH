@@ -41,17 +41,33 @@ export function CompanyList() {
     return () => { cancelled = true; };
   }, [q, category, partner, page]);
 
-  function update(changes: Record<string, string | undefined>, keepPage = false) {
+  function filterHref(changes: Record<string, string | undefined>, keepPage = false) {
     const next = new URLSearchParams(searchParams.toString());
     for (const [name, value] of Object.entries(changes)) { if (value) next.set(name, value); else next.delete(name); }
     if (!keepPage) next.delete('page');
     const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+    return qs ? `${pathname}?${qs}` : pathname;
+  }
+
+  function update(changes: Record<string, string | undefined>, keepPage = false) {
+    router.replace(filterHref(changes, keepPage), { scroll: false });
   }
 
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
   return (
     <main className="bg-surface-muted">
+      <nav aria-label="เมนูบริษัทและรีวิว" className="frosted sticky top-[3.25rem] z-20 hidden border-b border-border lg:block">
+        <div className="mx-auto flex min-h-[52px] max-w-6xl items-center justify-between gap-6 px-6 py-2">
+          <span className="text-xl font-semibold">บริษัทและรีวิว</span>
+          <div className="flex items-center gap-5 text-xs text-ink/80">
+            <Link href={filterHref({ partner: undefined })} aria-current={!partner ? 'page' : undefined}
+              className="py-2 hover:text-primary aria-[current=page]:text-ink-soft">บริษัททั้งหมด</Link>
+            <Link href={filterHref({ partner: 'true' })} aria-current={partner ? 'page' : undefined}
+              className="py-2 hover:text-primary aria-[current=page]:text-ink-soft">University Partner</Link>
+            <Link href="/jobs" className="py-2 hover:text-primary">ค้นหางาน</Link>
+          </div>
+        </div>
+      </nav>
       <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
         <h1 className="text-4xl font-semibold">บริษัทและรีวิว</h1>
         <p className="mt-2 text-sm text-ink-soft">ดูข้อมูลบริษัทที่ผ่านการรับรองและรีวิวจากผู้ฝึกงานจริง</p>
