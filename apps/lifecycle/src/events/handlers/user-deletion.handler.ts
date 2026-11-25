@@ -12,9 +12,19 @@ import {
 import { QuotaService, collectQuotaEffects } from '../../state-machine/quota.service';
 import { StatusHistoryWriter, SYSTEM_ACTOR } from '../../state-machine/status-history.writer';
 import { DELETION_BLOCKING_STATUSES } from '../../state-machine/transition-table';
+import type { ApplicationStatus } from '../../../generated/client';
+import { REVIEW_SUBMITTED } from '../producers/review-events';
 import { invalid, optionalUuid, requireTimestamp, requireUuid } from './handler-support';
 
 const TYPE = 'UserDeletionRequested';
+
+/** ใบที่ยังไม่เริ่มฝึก ⇒ `cancel-by-deletion` (transition-table) + คืนโควตา */
+export const CANCELLABLE_ON_DELETION: readonly ApplicationStatus[] = Object.freeze([
+  'PENDING',
+  'HR_ACCEPTED',
+  'ADVISOR_PENDING',
+  'ADVISOR_APPROVED',
+]);
 
 /** ชื่อผู้ถือใบรับรองหลังลบบัญชี (data-schema §6 `holder_name_snapshot`) */
 export const DELETED_HOLDER_NAME = 'ผู้ใช้ที่ลบบัญชีแล้ว';
@@ -51,6 +61,8 @@ export interface UserDeletionOutcome {
   resumesDeleted: number;
   reviewsRemoved: number;
   certificatesAnonymized: number;
+  certificateFilesDeleted: number;
+  reviewEventsPurged: number;
   historyAnonymized: number;
   auditAnonymized: number;
 }
@@ -59,14 +71,15 @@ export interface UserDeletionOutcome {
  * Consumer E15 `UserDeletionRequested` (identity → lifecycle) — README §5.11, data-schema §2.3 (PM ตัดสิน 2026-11-17)
  *
  * ทำทั้งหมดใน `tx` ของ Event (idempotent ผ่าน `processed_events` และรับซ้ำก็ไม่มีอะไรให้ทำแล้ว):
- * 1. ใบ `PENDING`/`HR_ACCEPTED` ⇒ `CANCELLED` (`cancel-by-deletion`, SYSTEM) + คืนโควตา
+ * 1. ใบที่ยังไม่เริ่มฝึก (`CANCELLABLE_ON_DELETION`) ⇒ `CANCELLED` (`cancel-by-deletion`, SYSTEM) + คืนโควตา
  * 2. ลบไฟล์เรซูเม่และรูปโปรไฟล์ (`student_profiles.photo_key`) ใน Storage แล้วลบแถว `resumes`, `student_profiles`, `student_advisor_links` ของผู้ใช้ และล้าง `cover_letter`
  * 3. รีวิว `SUBMITTED`/`HELD` ⇒ `REMOVED` + ล้าง `title`/`body`; รีวิว `PUBLISHED` เก็บไว้แบบ `anonymous` (ไม่แตะสถิติ)
- * 4. ใบรับรองเก็บไว้ ชื่อ ⇒ "ผู้ใช้ที่ลบบัญชีแล้ว"
+ * 3.1 ลบแถว Outbox ของ E09 (`ReviewSubmitted`) ของผู้ใช้ — มีเนื้อหารีวิวคู่กับ `student_user_id`
+ * 4. ใบรับรองเก็บไว้ ชื่อ ⇒ "ผู้ใช้ที่ลบบัญชีแล้ว" และลบไฟล์ PDF (พิมพ์ชื่อจริง) ใน Storage
  * 5. คอลัมน์ user id (`ANONYMIZED_COLUMNS`) ⇒ `anonymous_actor_id`
  * 6. `status_history.actor_id` / `admin_audit_log.admin_id` ⇒ Authorized Anonymization (`set_config` เฉพาะ transaction นี้)
  * payload ผิดรูป ⇒ `InvalidMessageError` (dead-letter) • Storage ล้ม ⇒ throw (retry ทั้ง Event — ลบไฟล์ซ้ำได้)
- * ใบที่ยังบล็อกการลบ (`DELETION_BLOCKING_STATUSES`) ไม่ควรมี (Identity ตรวจ `deletion-eligibility` ก่อน) — ถ้ามีจะ log และทำให้ไม่ระบุตัวตนตามปกติ
+ * ใบที่เริ่มฝึกแล้ว (`IN_PROGRESS`/`FAIL_DISPUTED`/`REEVALUATION_REQUESTED`) ไม่ควรมี (Identity ตรวจ `deletion-eligibility` ก่อน) — ถ้ามีจะ log และทำให้ไม่ระบุตัวตนตามปกติ
  */
 @Injectable()
 export class UserDeletionHandler {
@@ -99,16 +112,17 @@ export class UserDeletionHandler {
       SELECT set_config('internpath.anonymize', 'on', true) AS anonymize,
              set_config('internpath.anonymous_actor_id', ${anonymousId}, true) AS actor`;
 
-    // 1. ยกเลิกใบที่ยังไม่ถึงขั้นอาจารย์
+    // 1. ยกเลิกใบที่ยังไม่เริ่มฝึก — รวม ADVISOR_PENDING/ADVISOR_APPROVED ที่เกิดจากการยืนยันข้อเสนอพร้อมกับขอลบ
+    //    (Identity ตรวจ deletion-eligibility แล้ว แต่สถานะเปลี่ยนได้ก่อน E15 มาถึง — PM ตัดสิน 2026-11-25)
     await lockStudentApplications(tx, userId);
     const blocking = await tx.application.count({
-      where: { studentUserId: userId, status: { in: [...DELETION_BLOCKING_STATUSES] } },
+      where: { studentUserId: userId, status: { in: DELETION_BLOCKING_STATUSES.filter((s) => !CANCELLABLE_ON_DELETION.includes(s)) } },
     });
-    if (blocking) this.logger.warn(`E15: ผู้ใช้มีใบที่บล็อกการลบ ${blocking} ใบ (ควรถูกปฏิเสธที่ Identity) — ทำให้ไม่ระบุตัวตนต่อ`);
+    if (blocking) this.logger.warn(`E15: ผู้ใช้มีใบที่เริ่มฝึกแล้ว ${blocking} ใบ (ควรถูกปฏิเสธที่ Identity) — ทำให้ไม่ระบุตัวตนต่อ`);
     const config = await this.stateMachine.loadGuardConfig();
     const quota: PendingQuotaEffect[] = [];
     const cancellable = await tx.application.findMany({
-      where: { studentUserId: userId, status: { in: ['PENDING', 'HR_ACCEPTED'] } },
+      where: { studentUserId: userId, status: { in: [...CANCELLABLE_ON_DELETION] } },
       orderBy: { id: 'asc' },
     });
     for (const app of cancellable) {
@@ -160,7 +174,15 @@ export class UserDeletionHandler {
       UPDATE reviews SET anonymous = true
       WHERE student_user_id = ${userId}::uuid AND status = 'PUBLISHED'::review_status AND anonymous = false`;
 
-    // 4. ใบรับรอง
+    // ลบสำเนาเนื้อหารีวิวที่ค้างใน Outbox (E09 เก็บ title/body คู่กับ student_user_id) ทั้งที่ส่งแล้วและยังไม่ส่ง
+    // รีวิวที่ยังไม่เผยแพร่ถูก REMOVED ข้างบนแล้ว จึงไม่ต้องส่ง E09 ต่อ ส่วนที่เผยแพร่แล้ว Verification ได้รับไปแล้ว
+    const reviewEventsPurged = await tx.$executeRaw`
+      DELETE FROM outbox_events WHERE type = ${REVIEW_SUBMITTED} AND payload->>'student_user_id' = ${userId}`;
+
+    // 4. ใบรับรอง — PDF ในพื้นที่จัดเก็บพิมพ์ชื่อจริงไว้ จึงลบไฟล์ (เจ้าของคนเดียวที่ดาวน์โหลดได้คือผู้ที่ลบบัญชี)
+    //    หน้าตรวจสอบสาธารณะยังใช้ข้อมูลในฐานข้อมูลได้ตามปกติ • ลบซ้ำได้ (รับ E15 ซ้ำ/retry)
+    const certificateFiles = await tx.certificate.findMany({ where: { studentUserId: userId }, select: { pdfObjectKey: true } });
+    for (const certificate of certificateFiles) await this.storage.delete(certificate.pdfObjectKey);
     const certificatesAnonymized = await tx.$executeRaw`
       UPDATE certificates SET holder_name_snapshot = ${DELETED_HOLDER_NAME}
       WHERE student_user_id = ${userId}::uuid AND holder_name_snapshot <> ${DELETED_HOLDER_NAME}`;
@@ -185,6 +207,8 @@ export class UserDeletionHandler {
       resumesDeleted,
       reviewsRemoved: pendingReviews.length,
       certificatesAnonymized,
+      certificateFilesDeleted: certificateFiles.length,
+      reviewEventsPurged,
       historyAnonymized,
       auditAnonymized,
     };

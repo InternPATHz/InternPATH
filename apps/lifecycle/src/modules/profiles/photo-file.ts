@@ -1,4 +1,4 @@
-import { fromBuffer } from 'file-type';
+import { detectFileType } from '../../common/file-type';
 import { AppException } from '@internpath/common';
 
 /** README §5.9 / api-contract §7.1 — รูปโปรไฟล์ jpg / png / webp ≤ 2 MB */
@@ -37,7 +37,7 @@ export async function preparePhoto(file: UploadedPhotoFile | undefined): Promise
   if (file.buffer.length > PHOTO_MAX_BYTES) {
     throw photoError('FILE_TOO_LARGE', 'รูปโปรไฟล์ต้องไม่เกิน 2 MB', 'MAX_2_MB');
   }
-  const detected = await fromBuffer(file.buffer);
+  const detected = await detectFileType(file.buffer);
   const mime = detected?.mime as PhotoMime | undefined;
   if (!mime || !(mime in PHOTO_TYPES)) {
     throw photoError('FILE_TYPE_NOT_ALLOWED', 'รูปโปรไฟล์ต้องเป็น jpg, png หรือ webp', 'IMAGE_ONLY');

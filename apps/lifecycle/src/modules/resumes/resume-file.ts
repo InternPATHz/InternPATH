@@ -1,4 +1,4 @@
-import { fromBuffer } from 'file-type';
+import { detectFileType } from '../../common/file-type';
 import { AppException } from '@internpath/common';
 
 /** README §5.9 — เรซูเม่เป็น PDF ≤ 5 MB */
@@ -28,7 +28,7 @@ export async function assertResumeFile(file: UploadedResumeFile | undefined): Pr
       { field: RESUME_FILE_FIELD, issue: 'MAX_5_MB' },
     ]);
   }
-  const detected = await fromBuffer(file.buffer);
+  const detected = await detectFileType(file.buffer);
   if (!detected || detected.mime !== RESUME_MIME) {
     throw new AppException('FILE_TYPE_NOT_ALLOWED', 'เรซูเม่ต้องเป็นไฟล์ PDF เท่านั้น', 400, [
       { field: RESUME_FILE_FIELD, issue: 'PDF_ONLY' },

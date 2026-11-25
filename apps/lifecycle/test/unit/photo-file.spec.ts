@@ -1,5 +1,5 @@
 import { expect } from 'chai';
-import { fromBuffer } from 'file-type';
+import { detectFileType } from '../../src/common/file-type';
 import { AppException } from '@internpath/common';
 import { PHOTO_MAX_BYTES, preparePhoto } from '../../src/modules/profiles/photo-file';
 import { SAMPLE_FILES } from '../support/profile-resume-fakes';
@@ -28,7 +28,7 @@ describe('รูปโปรไฟล์ — ตรวจไฟล์และ�
       const out = await preparePhoto({ buffer: input });
       expect(out).to.include({ mime, extension: ext });
       expect(out.buffer.toString('latin1')).to.not.match(SECRETS);
-      expect((await fromBuffer(out.buffer))?.mime).to.equal(mime);
+      expect((await detectFileType(out.buffer))?.mime).to.equal(mime);
       expect(out.buffer.length).to.be.lessThan(input.length);
     });
   }

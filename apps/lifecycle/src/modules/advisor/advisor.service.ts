@@ -272,7 +272,7 @@ export class AdvisorService {
       await this.db.$transaction(async (tx) => {
         const fresh = await tx.application.findUnique({ where: { id: applicationId } });
         if (!fresh) throw applicationNotFound();
-        await this.transitions.recordAcademicResultWithoutTransition(tx, fresh, body.academic_result, note, now);
+        await this.transitions.recordAcademicResultWithoutTransition(tx, fresh, body.academic_result, note, now, user.sub);
       });
     } else {
       await this.execute(
@@ -297,11 +297,15 @@ export class AdvisorService {
    */
   async continueInternship(user: JwtClaims, applicationId: string): Promise<AdvisorApplicationItem> {
     await this.advisorApplication(user, applicationId);
+    // ใส่อาจารย์ใน WHERE ด้วย: Admin ย้ายนักศึกษาระหว่างตรวจสิทธิ์กับตอนเขียน ⇒ คำสั่งของอาจารย์เดิมไม่มีผล
     const { count } = await this.db.application.updateMany({
-      where: { id: applicationId, status: 'IN_PROGRESS', companySuspendedDecision: 'PENDING' },
+      where: { id: applicationId, advisorUserId: user.sub, status: 'IN_PROGRESS', companySuspendedDecision: 'PENDING' },
       data: { companySuspendedDecision: 'CONTINUE', version: { increment: 1 } },
     });
-    if (count === 0) throw stateConflict(NO_PENDING_COMPANY_DECISION);
+    if (count === 0) {
+      await this.advisorApplication(user, applicationId);
+      throw stateConflict(NO_PENDING_COMPANY_DECISION);
+    }
     return this.item(applicationId);
   }
 
@@ -344,7 +348,11 @@ export class AdvisorService {
     now = new Date(),
   ): Promise<void> {
     const actor: Actor = { userId: user.sub, role: 'ADVISOR' };
-    await this.stateMachine.execute(applicationId, { ...command, actor, correlationId: correlationId ?? randomUUID() }, now);
+    await this.stateMachine.execute(
+      applicationId,
+      { ...command, actor, expectedAdvisorUserId: user.sub, correlationId: correlationId ?? randomUUID() },
+      now,
+    );
   }
 
   /** ไม่มี ⇒ 404 • ไม่ใช่อาจารย์ของใบสมัคร (หรือยังไม่มีอาจารย์) ⇒ 403 `NOT_OWNER_OF_RESOURCE` */

@@ -680,6 +680,28 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
       expect(res).to.include({ status: 'IN_PROGRESS', actual_start_date: '2026-11-19' });
     });
 
+    it('วันเริ่มจริงก่อนวันที่อาจารย์อนุมัติ ⇒ 400 BEFORE_ADVISOR_APPROVAL (กันย้อนวันให้ครบ 30 วัน) • วันเดียวกันหรือหลังจากนั้น ⇒ ผ่าน', async () => {
+      const approved = await seedApproved();
+      await prisma.statusHistory.create({
+        data: {
+          entity: 'APPLICATION', entityId: approved.id, fromStatus: 'ADVISOR_PENDING', toStatus: 'ADVISOR_APPROVED',
+          actorId: randomUUID(), actorRole: 'ADVISOR', correlationId: randomUUID(), occurredAt: addDays(new Date(), -3),
+        },
+      });
+      const before = await action(approved.id, 'start', {
+        actual_start_date: ymd(addDays(today(), -60)),
+        end_date: ymd(addDays(today(), 10)),
+      }).expect(400);
+      expect(before.body.error.details).to.deep.equal([{ field: 'actual_start_date', issue: 'BEFORE_ADVISOR_APPROVAL' }]);
+      expect((await reload(approved.id)).status).to.equal('ADVISOR_APPROVED');
+
+      const ok = await action(approved.id, 'start', {
+        actual_start_date: ymd(addDays(today(), -3)),
+        end_date: ymd(addDays(today(), 40)),
+      }).expect(200);
+      expect(ok.body.status).to.equal('IN_PROGRESS');
+    });
+
     it('วันที่ไม่สมเหตุผล ⇒ 400 VALIDATION_FAILED และสถานะไม่เปลี่ยน', async () => {
       const approved = await seedApproved();
       const cases: Array<[Record<string, unknown>, string, string]> = [

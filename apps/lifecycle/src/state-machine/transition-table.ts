@@ -151,12 +151,15 @@ export const TRANSITIONS: readonly TransitionRule[] = Object.freeze([
   rule('ADVISOR_PENDING', 'WITHDRAWN', 'withdraw', [STUDENT], RELEASE),
   rule('ADVISOR_PENDING', 'OFFER_RESCINDED', 'rescind-offer', [HR], WITH_REASON_RELEASE),
   rule('ADVISOR_PENDING', 'CANCELLED', 'cancel-by-job', [SYSTEM], RELEASE),
+  // E15 มาถึงหลังนักศึกษายืนยันข้อเสนอพร้อมกับขอลบบัญชี (หลุดการตรวจ deletion-eligibility) — PM ตัดสิน 2026-11-25
+  rule('ADVISOR_PENDING', 'CANCELLED', 'cancel-by-deletion', [SYSTEM], RELEASE),
 
   // ---- ADVISOR_APPROVED ---- (ประกาศถูกตีกลับ ⇒ ติดธงเท่านั้น ดู FLAG_FOR_ADVISOR_STATUSES)
   rule('ADVISOR_APPROVED', 'IN_PROGRESS', 'start', [HR], { quota: 'CONFIRM' }),
   rule('ADVISOR_APPROVED', 'WITHDRAWN', 'withdraw', [STUDENT], RELEASE),
   rule('ADVISOR_APPROVED', 'OFFER_RESCINDED', 'rescind-offer', [HR], WITH_REASON_RELEASE),
   rule('ADVISOR_APPROVED', 'EXPIRED', 'expire', [SYSTEM], RELEASE),
+  rule('ADVISOR_APPROVED', 'CANCELLED', 'cancel-by-deletion', [SYSTEM], RELEASE),
 
   // ---- IN_PROGRESS ---- (ไม่ release เพราะ confirm แล้ว)
   rule('IN_PROGRESS', 'TERMINATED', 'terminate', [HR, ADVISOR, ADMIN], { guards: ['reasonRequired'] }),

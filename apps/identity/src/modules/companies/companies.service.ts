@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { fromBuffer } from 'file-type';
+import { detectFileType } from '../../common/file-type';
 import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { AdminCompanyDetail, AdminCompanyListItem, CompanyDocType, CompanyDocumentItem, CompanyMeResponse, CompanyStatusChangedPayload } from '@internpath/contracts';
 import { Company, CompanyStatus, Prisma, User } from '../../../generated/client';
@@ -81,7 +81,7 @@ export class CompaniesService {
   private async checkedFile(file: Express.Multer.File | undefined, expected: 'logo' | 'document'): Promise<string> {
     if (!file?.buffer?.length) throw new AppException('VALIDATION_ERROR', 'ต้องส่งไฟล์', 400);
     if (file.buffer.length > (expected === 'logo' ? 2 : 5) * 1024 * 1024) throw new AppException('FILE_TOO_LARGE', 'ไฟล์ใหญ่เกินกำหนด', 413);
-    const detected = await fromBuffer(file.buffer);
+    const detected = await detectFileType(file.buffer);
     const allowed = expected === 'document' ? ['application/pdf'] : ['image/jpeg', 'image/png', 'image/webp'];
     if (!detected || !allowed.includes(detected.mime)) throw new AppException('UNSUPPORTED_FILE_TYPE', 'ชนิดไฟล์ไม่ถูกต้อง', 422);
     return detected.mime;

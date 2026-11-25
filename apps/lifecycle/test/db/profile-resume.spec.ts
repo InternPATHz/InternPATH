@@ -199,6 +199,7 @@ describe('Lifecycle 1.3 — โปรไฟล์/เรซูเม่บน Po
     const application = await prisma.application.create({
       data: { jobId: randomUUID(), companyId: company, studentUserId: student, advisorUserId: advisor, resumeId: uploaded.id },
     });
+    await prisma.studentAdvisorLink.create({ data: { studentUserId: student, advisorUserId: advisor, linkStatus: 'LINKED' } });
     identity.consents.add(`${student}:${company}`);
     await resumes.remove(student, uploaded.id);
 
@@ -222,11 +223,34 @@ describe('Lifecycle 1.3 — โปรไฟล์/เรซูเม่บน Po
     const application = await prisma.application.create({
       data: { jobId: randomUUID(), companyId: company, studentUserId: student, advisorUserId: advisor, resumeId: uploaded.id },
     });
+    await prisma.studentAdvisorLink.create({ data: { studentUserId: student, advisorUserId: advisor, linkStatus: 'LINKED' } });
     identity.consents.add(`${student}:${company}`);
 
     const hr = await resumes.forHr({ role: 'COMPANY_HR', sub: randomUUID(), company_id: company } as never, application.id);
     expect(hr.url).to.be.a('string');
     const adv = await resumes.forAdvisor({ role: 'ADVISOR', sub: advisor } as never, application.id);
     expect(adv.url).to.be.a('string');
+  });
+
+  it('อาจารย์เดิมหลัง Admin ย้ายนักศึกษา ⇒ ขอเรซูเม่ของใบที่จบแล้ว (ยังผูกกับอาจารย์เดิม) ไม่ได้ 403 • อาจารย์คนใหม่ก็ไม่ได้ (ไม่ใช่ใบของตน)', async () => {
+    const student = randomUUID();
+    const company = randomUUID();
+    const oldAdvisor = randomUUID();
+    const newAdvisor = randomUUID();
+    const uploaded = await resumes.upload(student, { buffer: SAMPLE_FILES.pdf() });
+    // ใบที่จบแล้วไม่ย้ายตาม E07 ⇒ advisor_user_id ยังเป็นอาจารย์เดิม
+    const finished = await prisma.application.create({
+      data: { jobId: randomUUID(), companyId: company, studentUserId: student, advisorUserId: oldAdvisor, resumeId: uploaded.id, status: 'COMPLETED' },
+    });
+    await prisma.studentAdvisorLink.create({ data: { studentUserId: student, advisorUserId: newAdvisor, linkStatus: 'LINKED' } });
+
+    for (const sub of [oldAdvisor, newAdvisor]) {
+      const error = await resumes.forAdvisor({ role: 'ADVISOR', sub } as never, finished.id).then(() => null, (e: unknown) => e);
+      expect(error, sub === oldAdvisor ? 'old advisor' : 'new advisor').to.be.instanceOf(AppException);
+      expect((error as AppException).getStatus()).to.equal(403);
+    }
+    // Admin ยังเปิดได้ (ไม่ผูกกับลิงก์อาจารย์)
+    const admin = await resumes.forAdvisor({ role: 'PLATFORM_ADMIN', sub: randomUUID() } as never, finished.id);
+    expect(admin.url).to.be.a('string');
   });
 });

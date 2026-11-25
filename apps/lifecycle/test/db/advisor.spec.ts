@@ -14,6 +14,8 @@ import { AdvisorModule } from '../../src/modules/advisor/advisor.module';
 import { ProblemReportsModule } from '../../src/modules/problem-reports/problem-reports.module';
 import { PrismaModule } from '../../src/prisma/prisma.module';
 import { PrismaService } from '../../src/prisma/prisma.service';
+import { ApplicationStateMachine } from '../../src/state-machine/application-state-machine.service';
+import { ApplicationTransitionService } from '../../src/state-machine/application-transition.service';
 import { addDays, bangkokToday } from '../../src/state-machine/dates';
 import { FakeJobClient } from '../support/application-fakes';
 import { createTestDatabase, type TestDatabase } from '../support/db';
@@ -420,6 +422,32 @@ describe('Lifecycle 1.6 — ฝั่งอาจารย์ที่ปรึ�
       const decided = await seedSuspended({ companySuspendedDecision: 'CONTINUE', studentUserId: randomUUID() });
       await act(decided.id, 'actions/terminate', { reason: 'x' }).expect(409);
       expect((await reload(normal.id)).status).to.equal('IN_PROGRESS');
+    });
+  });
+
+  // ------------------------------------------------------------------
+  describe('Admin ย้ายนักศึกษาระหว่างตรวจสิทธิ์กับตอนเขียน (ข้อค้นพบรีวิวความปลอดภัย 2026-11-25)', () => {
+    it('คำสั่งของอาจารย์เดิมที่ผ่านการตรวจสิทธิ์ไปแล้ว ไม่เขียนผลทับใบที่ย้ายไปอาจารย์คนใหม่ ⇒ 403 และสถานะไม่เปลี่ยน', async () => {
+      const stateMachine = app.get(ApplicationStateMachine);
+      const transitions = app.get(ApplicationTransitionService);
+      const movedTo = randomUUID();
+      // ใบที่ถูกย้ายแล้ว (E07 เปลี่ยน advisor_user_id) — จำลองว่าอาจารย์เดิมตรวจสิทธิ์ผ่านก่อนการย้าย
+      const waiting = await seed('ADVISOR_PENDING', { advisorUserId: movedTo, quotaReserved: true });
+      const approve = stateMachine.execute(waiting.id, {
+        trigger: 'approve',
+        actor: { userId: advisor, role: 'ADVISOR' },
+        expectedAdvisorUserId: advisor,
+        correlationId: randomUUID(),
+      });
+      const error = await approve.then(() => null, (e: unknown) => e as { getStatus?: () => number });
+      expect(error?.getStatus?.()).to.equal(403);
+      expect(await reload(waiting.id)).to.include({ status: 'ADVISOR_PENDING', advisorUserId: movedTo });
+
+      const ended = await seed('TERMINATED', { advisorUserId: movedTo, studentUserId: randomUUID() });
+      const record = prisma.$transaction((tx) => transitions.recordAcademicResultWithoutTransition(tx, ended, 'ACADEMIC_FAIL', null, new Date(), advisor));
+      const recordError = await record.then(() => null, (e: unknown) => e as { getStatus?: () => number });
+      expect(recordError?.getStatus?.()).to.equal(403);
+      expect((await reload(ended.id)).academicResult).to.equal(null);
     });
   });
 

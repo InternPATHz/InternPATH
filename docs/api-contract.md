@@ -285,7 +285,7 @@ Tag = ป้ายทักษะ/เทคโนโลยีของประ�
 | POST | `/hr/applications/{id}/actions/accept` | H | `{start_date, end_date}` (ห่าง ≥ 30 วัน) → `403 ALREADY_CONFIRMED_ELSEWHERE`, `409 QUOTA_FULL`, `422 INVALID_PERIOD_MIN_30_DAYS` |
 | POST | `/hr/applications/{id}/actions/reject` | H | `{reason?}` |
 | POST | `/hr/applications/{id}/actions/rescind-offer` | H | `{reason}` บังคับ |
-| POST | `/hr/applications/{id}/actions/start` | H | `{actual_start_date, start_date?, end_date?}` → `IN_PROGRESS`; Response `{warning:'NO_CERTIFICATE_ELIGIBLE'}` เมื่อ `< 30` วัน |
+| POST | `/hr/applications/{id}/actions/start` | H | `{actual_start_date, start_date?, end_date?}` → `IN_PROGRESS`; Response `{warning:'NO_CERTIFICATE_ELIGIBLE'}` เมื่อ `< 30` วัน • `actual_start_date` ห้ามเกินวันนี้ (`400 VALIDATION_FAILED` `IN_FUTURE`) และห้ามก่อนวันที่อาจารย์อนุมัติตามเวลาไทย (`BEFORE_ADVISOR_APPROVAL` — PM ตัดสิน 2026-11-25) |
 | POST | `/hr/applications/{id}/actions/terminate` | H | `{reason, actual_end_date?}` |
 | POST | `/hr/applications/{id}/actions/evaluate` | H | `{result:'PASS'|'FAIL', reason(บังคับเมื่อ FAIL), note?}` → `422 EVALUATION_NOT_OPEN` ก่อน `end_date` |
 | POST | `/hr/applications/{id}/certificate` | H | ออก E-Certificate (`PASS` + ฝึกจริง ≥ 30 วัน → `422 CERT_MIN_ACTUAL_DAYS`) |

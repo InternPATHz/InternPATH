@@ -118,6 +118,15 @@ export class FakePrisma {
     },
   };
 
+  /** อาจารย์ที่ปรึกษาคนปัจจุบันของนักศึกษา (`forAdvisor` ตรวจด้วย) — `addApplication` ผูกให้อัตโนมัติถ้ายังไม่มี */
+  advisorLinks: Row[] = [];
+  studentAdvisorLink = {
+    findUnique: async ({ where, select }: { where: Row; select?: Row }) => {
+      const row = this.advisorLinks.find((l) => matches(l, where));
+      return row ? pick(row, select) : null;
+    },
+  };
+
   async $transaction<T>(fn: (tx: FakePrisma) => Promise<T>): Promise<T> {
     return fn(this);
   }
@@ -136,8 +145,11 @@ export class FakePrisma {
   }
 
   addApplication(data: Row): Row {
-    const row = { id: randomUUID(), advisorUserId: null, resumeId: null, ...data };
+    const row: Row = { id: randomUUID(), advisorUserId: null, resumeId: null, ...data };
     this.applications.push(row);
+    if (row.advisorUserId && !this.advisorLinks.some((l) => l.studentUserId === row.studentUserId)) {
+      this.advisorLinks.push({ studentUserId: row.studentUserId, advisorUserId: row.advisorUserId, linkStatus: 'LINKED' });
+    }
     return row;
   }
 }
