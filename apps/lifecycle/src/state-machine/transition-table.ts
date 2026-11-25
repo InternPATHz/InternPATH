@@ -133,7 +133,8 @@ export const TRANSITIONS: readonly TransitionRule[] = Object.freeze([
 
   // ---- HR_ACCEPTED ----
   rule('HR_ACCEPTED', 'ADVISOR_PENDING', 'confirm-offer', [STUDENT], {
-    guards: ['notConfirmedElsewhere'],
+    // ประกาศถูก Freeze ⇒ ใบสมัครหยุดเดินหน้าจนกว่าประกาศกลับเป็น PUBLISHED (README UAT-26) — ถอน/ปฏิเสธ/ถอนข้อเสนอยังทำได้
+    guards: ['notFrozen', 'notConfirmedElsewhere'],
     cascade: 'DECLINE_OTHER_OFFERS',
   }),
   rule('HR_ACCEPTED', 'STUDENT_DECLINED', 'decline-offer', [STUDENT], RELEASE),
@@ -145,6 +146,7 @@ export const TRANSITIONS: readonly TransitionRule[] = Object.freeze([
 
   // ---- ADVISOR_PENDING ----
   rule('ADVISOR_PENDING', 'ADVISOR_APPROVED', 'approve', [ADVISOR], {
+    guards: ['notFrozen'],
     cascade: 'WITHDRAW_OTHER_PENDING',
   }),
   rule('ADVISOR_PENDING', 'ADVISOR_REJECTED', 'reject', [ADVISOR], WITH_REASON_RELEASE),
@@ -155,7 +157,7 @@ export const TRANSITIONS: readonly TransitionRule[] = Object.freeze([
   rule('ADVISOR_PENDING', 'CANCELLED', 'cancel-by-deletion', [SYSTEM], RELEASE),
 
   // ---- ADVISOR_APPROVED ---- (ประกาศถูกตีกลับ ⇒ ติดธงเท่านั้น ดู FLAG_FOR_ADVISOR_STATUSES)
-  rule('ADVISOR_APPROVED', 'IN_PROGRESS', 'start', [HR], { quota: 'CONFIRM' }),
+  rule('ADVISOR_APPROVED', 'IN_PROGRESS', 'start', [HR], { guards: ['notFrozen'], quota: 'CONFIRM' }),
   rule('ADVISOR_APPROVED', 'WITHDRAWN', 'withdraw', [STUDENT], RELEASE),
   rule('ADVISOR_APPROVED', 'OFFER_RESCINDED', 'rescind-offer', [HR], WITH_REASON_RELEASE),
   rule('ADVISOR_APPROVED', 'EXPIRED', 'expire', [SYSTEM], RELEASE),
