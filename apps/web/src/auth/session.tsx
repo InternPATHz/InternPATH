@@ -7,6 +7,7 @@ import { ApiError, apiRequest } from '@/lib/api';
 import type { HttpMethod } from '@/lib/api';
 
 const REFRESH_KEY = 'internpath.refresh_token';
+const REFRESH_LOCK = 'internpath.refresh';
 
 type AuthContextValue = {
   ready: boolean;
@@ -23,7 +24,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
   const [user, setUser] = useState<AuthUser | null>(null);
   const accessToken = useRef<string | null>(null);
-  const refreshing = useRef<Promise<LoginResponse> | null>(null);
+  const refreshing = useRef<Promise<void> | null>(null);
 
   const clearSession = useCallback(() => {
     accessToken.current = null;
@@ -38,23 +39,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setReady(true);
   }, []);
 
-  const refresh = useCallback(async (): Promise<void> => {
-    const token = localStorage.getItem(REFRESH_KEY);
-    if (!token) throw new ApiError('UNAUTHENTICATED', 'กรุณาเข้าสู่ระบบ', 401);
+  /**
+   * ต่ออายุ session ทีละครั้ง — ทั้งในหน้าเดียวกัน (refreshing) และข้ามแท็บ (Web Locks)
+   * Identity หมุน Refresh Token ทุกครั้ง และถ้าเห็น token ที่หมุนไปแล้วถูกใช้ซ้ำจะเพิกถอนทั้ง family
+   * ⇒ เดิมเปิดหลายแท็บ/โหลดหน้าพร้อมกันแล้วทุกตัวส่ง token เดิม ผู้ใช้หลุดออกจากระบบทุกแท็บ
+   * จึงอ่าน token หลังได้ lock (แท็บก่อนหน้าอาจหมุนไปแล้ว ก็ใช้ token ใหม่ต่อ)
+   */
+  const refresh = useCallback((): Promise<void> => {
     if (!refreshing.current) {
-      refreshing.current = apiRequest<LoginResponse>('/auth/refresh', { refresh_token: token });
+      const run = async (): Promise<void> => {
+        const token = localStorage.getItem(REFRESH_KEY);
+        if (!token) throw new ApiError('UNAUTHENTICATED', 'กรุณาเข้าสู่ระบบ', 401);
+        try {
+          const session = await apiRequest<LoginResponse>('/auth/refresh', { refresh_token: token });
+          if (localStorage.getItem(REFRESH_KEY) === token) applySession(session);
+        }
+        catch (error) {
+          if (error instanceof ApiError && error.status === 401 && localStorage.getItem(REFRESH_KEY) === token) {
+            clearSession();
+          }
+          throw error;
+        }
+      };
+      const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+      refreshing.current = (locks ? locks.request(REFRESH_LOCK, run) : run())
+        .finally(() => { refreshing.current = null; });
     }
-    try {
-      const session = await refreshing.current;
-      if (localStorage.getItem(REFRESH_KEY) === token) applySession(session);
-    }
-    catch (error) {
-      if (error instanceof ApiError && error.status === 401 && localStorage.getItem(REFRESH_KEY) === token) {
-        clearSession();
-      }
-      throw error;
-    }
-    finally { refreshing.current = null; }
+    return refreshing.current;
   }, [applySession, clearSession]);
 
   useEffect(() => {
