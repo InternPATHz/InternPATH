@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { catalogHref } from '@/lib/catalog-navigation';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { DirectoryCompanyDetail, Paginated, PublicReviewItem, SearchJobItem } from '@internpath/contracts';
@@ -23,7 +24,9 @@ const dateFormat = new Intl.DateTimeFormat('th-TH', { day: 'numeric', month: 'sh
  * (`useAuth().request` refresh session ก่อนเสมอ ผู้เยี่ยมชมจะได้ 401) • การรายงานรีวิวใน `ReportPanel` ยังต้องล็อกอินตามเดิม
  */
 export function CompanyDetail() {
-  const id = useSearchParams().get('id') ?? '';
+  const params = useSearchParams();
+  const id = params.get('id') ?? '';
+  const backHref = catalogHref('/companies', params);
   const [company, setCompany] = useState<DirectoryCompanyDetail | null>(null);
   const [missing, setMissing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,7 +84,7 @@ export function CompanyDetail() {
       <main className="mx-auto max-w-md px-4 py-16 text-center">
         <h1 className="text-xl font-semibold">{missing ? 'ไม่พบบริษัทนี้' : 'โหลดข้อมูลไม่สำเร็จ'}</h1>
         <p className="mt-2 text-sm text-ink-soft">{missing ? 'บริษัทอาจยังไม่ผ่านการรับรองหรือถูกระงับ' : error}</p>
-        <Link href="/companies" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปรายชื่อบริษัท</Link>
+        <Link href={backHref} className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปรายชื่อบริษัท</Link>
       </main>
     );
   }
@@ -92,7 +95,7 @@ export function CompanyDetail() {
     <main className="mx-auto max-w-5xl px-4 pb-10 sm:px-6">
       <div className="frosted sticky top-12 z-20 -mx-4 flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-2 sm:-mx-6 sm:px-6">
         <div className="min-w-0">
-          <Link href="/companies" className="text-xs font-medium text-primary hover:underline">← บริษัทและรีวิว</Link>
+          <Link href={backHref} className="text-xs font-medium text-primary hover:underline">← บริษัทและรีวิว</Link>
           <p className="truncate text-sm font-semibold">{company.name}</p>
         </div>
         <Link href={`/jobs?company_id=${company.id}`} className="shrink-0 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">ดูประกาศงาน</Link>

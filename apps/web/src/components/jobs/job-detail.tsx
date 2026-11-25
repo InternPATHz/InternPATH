@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { catalogHref } from '@/lib/catalog-navigation';
 import { Avatar } from '@/components/ui/avatar';
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
@@ -62,7 +63,9 @@ function ApplyBox({ closed, job }: { closed: boolean; job: SearchJobItem }) {
 }
 
 export function JobDetail() {
-  const id = useSearchParams().get('id') ?? '';
+  const params = useSearchParams();
+  const id = params.get('id') ?? '';
+  const backHref = catalogHref('/jobs', params);
   const [state, setState] = useState<{ status: 'loading' } | { status: 'missing' } | { status: 'error' } | { status: 'ready'; data: JobDetailResult }>({ status: 'loading' });
 
   useEffect(() => {
@@ -86,7 +89,7 @@ export function JobDetail() {
         <p className="mt-2 text-sm text-ink-soft">
           {state.status === 'missing' ? 'ประกาศอาจถูกลบหรือยังไม่เปิดเผยต่อสาธารณะ' : 'ระบบไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง'}
         </p>
-        <Link href="/jobs" className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปค้นหางาน</Link>
+        <Link href={backHref} className="mt-4 inline-block text-sm font-medium text-primary hover:underline">กลับไปค้นหางาน</Link>
       </main>
     );
   }
@@ -98,7 +101,7 @@ export function JobDetail() {
     <main className="mx-auto max-w-6xl px-4 pb-8 [overflow-wrap:anywhere] sm:px-6">
       <div className="frosted sticky top-12 z-20 -mx-4 flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-2 sm:-mx-6 sm:px-6">
         <div className="min-w-0">
-          <Link href="/jobs" className="text-xs font-medium text-primary hover:underline">← กลับไปค้นหางาน</Link>
+          <Link href={backHref} className="text-xs font-medium text-primary hover:underline">← กลับไปค้นหางาน</Link>
           <p className="truncate text-sm font-semibold">{job.job_title}</p>
         </div>
         {!closed && <a href="#apply" className="hidden shrink-0 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover md:inline-block">สมัครงานนี้</a>}

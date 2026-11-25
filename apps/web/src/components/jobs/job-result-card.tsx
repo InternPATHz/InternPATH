@@ -26,7 +26,7 @@ export function formatDeadline(isoDate: string): string {
   return dateFormat.format(new Date(isoDate));
 }
 
-export function JobResultCard({ job, rating }: { job: SearchJobItem; rating?: CompanyRating }) {
+export function JobResultCard({ job, rating, href }: { job: SearchJobItem; rating?: CompanyRating; href?: string }) {
   const category = CATEGORIES.find((entry) => entry.id === job.category)?.label ?? job.category;
   const daysRemaining = Math.round((Date.parse(`${job.application_deadline.slice(0, 10)}T00:00:00+07:00`) -
     Date.parse(`${bangkokDay.format(Date.now())}T00:00:00+07:00`)) / 86_400_000);
@@ -64,7 +64,7 @@ export function JobResultCard({ job, rating }: { job: SearchJobItem; rating?: Co
       {job.quota > 0 && <meter className="mt-1 h-2 w-full accent-primary" value={job.quota_available} min={0} max={job.quota} aria-label="ตำแหน่งที่ยังว่าง" />}
       {job.major_mismatch && <p className="mt-3 rounded-lg bg-warning-soft p-3 text-xs text-warning-text">สาขาของคุณต่างจากที่ระบุ ({job.target_majors.join(', ')}) คุณยังส่งใบสมัครได้</p>}
       <Link
-        href={`/jobs/item?id=${job.id}`}
+        href={href ?? `/jobs/item?id=${job.id}`}
         className="mt-5 inline-block self-start text-sm font-semibold text-primary hover:underline"
       >
         ดูรายละเอียด ›
