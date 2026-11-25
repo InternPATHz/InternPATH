@@ -212,7 +212,7 @@ export function ApplicantDetail({ applicationId, onChanged }: {
   const certificate = app.certificate;
   const canRevoke = certificate?.status === 'VALID';
   const showActions = visibleButtons.length > 0 || Boolean(app.accept_blocked_reason) || can('evaluate') || can('certificate') || canRevoke;
-  const name = app.profile?.full_name || app.student_name || `ผู้สมัคร #${app.student_user_id.slice(0, 8)}`;
+  const name = app.profile?.full_name || app.student_name || 'ไม่พบข้อมูลชื่อ';
   return (
     <Container className={applicationId ? 'p-5' : 'mx-auto max-w-6xl px-4 py-10 sm:px-6'}>
       {!applicationId && <Link href="/hr/applicants" className="text-sm font-medium text-primary hover:underline">← ผู้สมัครของบริษัท</Link>}

@@ -22,11 +22,14 @@ export function NotificationBell() {
   const [items, setItems] = useState<NotificationItem[] | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [revision, setRevision] = useState(0);
 
   useEffect(() => {
     let active = true;
-    const refresh = () => api.unreadCount().then((value) => { if (active) setCount(value); }, () => undefined);
+    let sequence = 0;
+    const refresh = () => {
+      const version = ++sequence;
+      return api.unreadCount().then((value) => { if (active && version === sequence) setCount(value); }, () => undefined);
+    };
     void refresh();
     const timer = setInterval(refresh, POLL_MS);
     const onVisible = () => { if (document.visibilityState === 'visible') void refresh(); };
@@ -44,19 +47,26 @@ export function NotificationBell() {
     if (!open) return;
     let active = true;
     setError('');
-    void api.list(1, 5, false).then(
-      ({ data }) => { if (active) setItems(data); },
-      () => { if (active) setError('โหลดการแจ้งเตือนไม่สำเร็จ'); },
-    );
+    let sequence = 0;
+    const refresh = () => {
+      const version = ++sequence;
+      void api.list(1, 5, false).then(
+        ({ data }) => { if (active && version === sequence) { setItems(data); setError(''); } },
+        () => { if (active && version === sequence) setError('โหลดการแจ้งเตือนไม่สำเร็จ'); },
+      );
+    };
+    refresh();
+    window.addEventListener('internpath:notifications-changed', refresh);
     const dismiss = (event: PointerEvent) => {
       if (event.target instanceof Node && !container.current?.contains(event.target)) setOpen(false);
     };
     document.addEventListener('pointerdown', dismiss);
     return () => {
       active = false;
+      window.removeEventListener('internpath:notifications-changed', refresh);
       document.removeEventListener('pointerdown', dismiss);
     };
-  }, [api, open, revision]);
+  }, [api, open]);
 
   async function markAllRead() {
     setBusy(true);
@@ -66,7 +76,6 @@ export function NotificationBell() {
       setItems((current) => current?.map((item) => ({ ...item, read: true })) ?? null);
       setCount(0);
       window.dispatchEvent(new Event('internpath:notifications-changed'));
-      setRevision((value) => value + 1);
     } catch { setError('ทำเครื่องหมายไม่สำเร็จ กรุณาลองใหม่'); }
     finally { setBusy(false); }
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useId, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import { CircleCheck, CircleX } from 'lucide-react';
 import type { CertificateItem, Paginated } from '@internpath/contracts';
@@ -50,6 +50,7 @@ export function CertificateRevoke() {
     const target = code.trim();
     setMessage(null);
     if (!target) { setMessage({ tone: 'error', text: 'กรุณากรอกรหัสใบรับรอง' }); return; }
+    setResults(null); setSearched(null);
     setSearching(true);
     try {
       setResults(await find(target));
@@ -121,6 +122,7 @@ export function CertificateRevoke() {
 }
 
 function CertificateCard({ item, onRevoke }: { item: CertificateItem; onRevoke: (item: CertificateItem, reason: string) => Promise<void> }) {
+  const dialog = useRef<HTMLDialogElement>(null);
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -131,10 +133,10 @@ function CertificateCard({ item, onRevoke }: { item: CertificateItem; onRevoke: 
     setError('');
     if (!text) { setError('กรุณากรอกเหตุผล'); return; }
     if (text.length > LIFECYCLE_REASON_MAX) { setError(`เหตุผลต้องไม่เกิน ${LIFECYCLE_REASON_MAX} ตัวอักษร`); return; }
-    if (!window.confirm(`เพิกถอนใบรับรอง ${item.certificate_code} ของ ${item.company_name}? ย้อนกลับไม่ได้`)) return;
     setBusy(true);
     try {
       await onRevoke(item, text);
+      dialog.current?.close();
       setReason('');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'เพิกถอนไม่สำเร็จ กรุณาลองใหม่');
@@ -162,13 +164,18 @@ function CertificateCard({ item, onRevoke }: { item: CertificateItem; onRevoke: 
       </dl>
 
       {item.status === 'VALID' ? (
-        <form onSubmit={(event) => void submit(event)} noValidate aria-label={`เพิกถอนใบรับรอง ${item.certificate_code}`} className="mt-4 border-t border-border pt-4">
-          <ReasonField label="เหตุผลที่เพิกถอน" value={reason} onChange={setReason} required rows={2} />
-          {error && <div className="mt-2"><Notice tone="error">{error}</Notice></div>}
-          <button type="submit" disabled={busy} className="mt-3 rounded-full bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">
-            {busy ? 'กำลังดำเนินการ…' : 'เพิกถอนใบรับรอง'}
-          </button>
-        </form>
+        <><button type="button" onClick={() => dialog.current?.showModal()} className="mt-4 rounded-full border border-danger px-4 py-2 text-sm font-semibold text-danger-text">เพิกถอนใบรับรอง</button>
+        <dialog ref={dialog} aria-label="ยืนยันเพิกถอนใบรับรอง" className="m-auto w-[min(30rem,90vw)] rounded-xl p-6 backdrop:bg-black/40">
+          <h3 className="text-lg font-semibold">ยืนยันเพิกถอนใบรับรอง</h3>
+          <p className="mt-2 text-sm [overflow-wrap:anywhere]">{item.certificate_code} · {item.job_title} · {item.company_name}</p>
+          <p className="mt-2 text-sm text-ink-soft">หน้าตรวจสอบสาธารณะจะแสดงว่าถูกเพิกถอน ระบบบันทึกเหตุผลในบันทึกการดำเนินการ การเพิกถอนย้อนกลับไม่ได้</p>
+          <form onSubmit={(event) => void submit(event)} className="mt-4 space-y-3">
+            <ReasonField label="เหตุผลที่เพิกถอน" value={reason} onChange={setReason} required rows={2} />
+            {error && <Notice tone="error">{error}</Notice>}
+            <div className="flex justify-end gap-3"><button type="button" disabled={busy} onClick={() => dialog.current?.close()}>ยกเลิก</button>
+              <button disabled={busy || !reason.trim()} className="rounded-full bg-danger px-4 py-2 text-white disabled:opacity-50">ยืนยันเพิกถอน</button></div>
+          </form>
+        </dialog></>
       ) : (
         <p className="mt-4 border-t border-border pt-4 text-sm text-ink-soft">ใบรับรองนี้ถูกเพิกถอนแล้ว (เพิกถอนซ้ำไม่ได้ และออกใบใหม่ให้ใบสมัครเดิมไม่ได้)</p>
       )}

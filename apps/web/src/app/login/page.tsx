@@ -66,12 +66,13 @@ export default function LoginPage() {
       <ActionButton busy={busy}>เข้าสู่ระบบ</ActionButton>
     </form>
     <div className="mt-6 flex flex-wrap justify-center gap-4 text-sm">
-      <Link href="/unlock-login" className="text-primary hover:underline">บัญชีถูกล็อก?</Link>
+      <Link href="/unlock-login" className={recoveryLink?.href === '/unlock-login' ? 'text-primary lg:hidden' : 'text-primary hover:underline'}>บัญชีถูกล็อก?</Link>
       <Link href="/forgot-password" className="text-primary hover:underline">ลืมรหัสผ่าน?</Link>
     </div>
     <p className="mt-6 border-t border-border pt-5 text-center text-sm text-ink-soft">
-      ยังไม่มีบัญชี?{' '}
+      สมัครบัญชีอาจารย์หรือบริษัท{' '}
       <Link href="/register" className="font-semibold text-primary hover:underline">สมัครสมาชิก</Link>
     </p>
+    <p className="mt-2 text-center text-sm text-ink-soft">นักศึกษาเปิดใช้งานบัญชีจากอีเมลคำเชิญของอาจารย์</p>
   </AuthShell>;
 }

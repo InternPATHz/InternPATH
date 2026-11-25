@@ -28,12 +28,15 @@ export function FeaturedJobs({ children }: { children: ReactNode }) {
 
   const jobs = result?.jobs ?? [];
   const positions = ['relative z-10 w-full max-w-xs', 'absolute left-0 hidden -rotate-6 sm:flex', 'absolute right-0 hidden rotate-6 sm:flex'];
+  const message = failed ? 'โหลดประกาศไม่สำเร็จ กรุณาลองใหม่ภายหลัง'
+    : !result ? 'กำลังโหลด…'
+    : jobs.length === 0 ? 'ยังไม่มีประกาศที่เปิดรับ' : undefined;
 
   return (
     <>
       <Hero>
         {jobs.length > 0 && (
-          <ul className="relative mx-auto mt-12 flex max-w-3xl items-center justify-center sm:mt-16" aria-label="ตัวอย่างประกาศที่เปิดรับ">
+          <ul className="relative mx-auto mt-12 flex max-w-3xl items-center justify-center sm:mt-16 lg:hidden" aria-label="ตัวอย่างประกาศที่เปิดรับ">
             {jobs.map((job, index) => (
               <li key={job.id} className={`w-72 rounded-xl border border-border bg-surface-pearl ${positions[index]}`}>
                 <Link href={`/jobs/item?id=${job.id}`} className="flex min-w-0 items-center gap-3 rounded-xl p-4 text-left hover:text-primary">
@@ -48,23 +51,38 @@ export function FeaturedJobs({ children }: { children: ReactNode }) {
             ))}
           </ul>
         )}
+        <section aria-labelledby="desktop-jobs-title" className="mx-auto mt-7 hidden max-w-[1104px] text-left lg:block">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <h2 id="desktop-jobs-title" className="text-xl font-semibold">งานฝึกงานที่เปิดรับตอนนี้</h2>
+            <Link href="/jobs" className="text-sm font-semibold text-primary hover:underline">ดูประกาศทั้งหมด ›</Link>
+          </div>
+          {message && <p role="status" className="mt-3 text-sm text-ink-soft">{message}</p>}
+          {jobs.length > 0 && (
+            <ul className="mt-3 grid grid-cols-3 gap-4">
+              {jobs.map((job) => (
+                <li key={job.id} className="min-w-0">
+                  <JobResultCard job={job} rating={result?.ratings[job.company.id]} compact />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
       </Hero>
       {children}
-      <section aria-labelledby="jobs-title" className="bg-surface-muted px-4 py-16 sm:py-20">
+      <section aria-labelledby="jobs-title" className="bg-surface-muted px-4 py-16 sm:py-20 lg:hidden">
         <div className="mx-auto max-w-6xl">
           <div className="flex flex-wrap items-end justify-between gap-3">
             <h2 id="jobs-title" className="text-3xl font-semibold sm:text-[40px] sm:leading-tight">งานฝึกงานที่เปิดรับตอนนี้</h2>
             <Link href="/jobs" className="text-primary hover:underline">ดูทั้งหมด ›</Link>
           </div>
-          {failed && <p className="mt-8 text-sm text-ink-soft">โหลดประกาศไม่สำเร็จ กรุณาลองใหม่ภายหลัง</p>}
-          {!result && !failed && <p role="status" className="mt-8 text-sm text-ink-soft">กำลังโหลด…</p>}
-          {result && (jobs.length === 0
-            ? <p className="mt-8 text-sm text-ink-soft">ยังไม่มีประกาศที่เปิดรับ</p>
-            : <ul className="mt-8 grid gap-5 md:grid-cols-3">
-                {jobs.map((job) => (
-                  <li key={job.id} className="contents"><JobResultCard job={job} rating={result.ratings[job.company.id]} /></li>
-                ))}
-              </ul>)}
+          {message && <p role="status" className="mt-8 text-sm text-ink-soft">{message}</p>}
+          {jobs.length > 0 && (
+            <ul className="mt-8 grid gap-5 md:grid-cols-3">
+              {jobs.map((job) => (
+                <li key={job.id} className="contents"><JobResultCard job={job} rating={result?.ratings[job.company.id]} /></li>
+              ))}
+            </ul>
+          )}
         </div>
       </section>
     </>

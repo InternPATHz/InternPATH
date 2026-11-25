@@ -60,6 +60,7 @@ export function NoEvaluationList() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { request } = useAuth();
+  const [tab, setTab] = useState<'candidates' | 'unlock' | 'terminate'>(searchParams.get('terminate') ? 'terminate' : 'candidates');
   const filters = readFilters(new URLSearchParams(searchParams.toString()));
   const queryString = toQuery(filters);
 
@@ -146,8 +147,9 @@ export function NoEvaluationList() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold">ใบสมัครที่บริษัทไม่ประเมินผล</h1>
-      <p className="mt-1 text-sm text-ink-soft">
+      <h1 className="text-2xl font-semibold">ใบสมัครที่รอดำเนินการ</h1>
+      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="งานใบสมัคร">{([['candidates','บริษัทไม่ประเมินผล'],['unlock','ปลดล็อกสมัครซ้ำ'],['terminate','ยุติการฝึกงาน']] as const).map(([key, label]) => <button key={key} aria-pressed={tab === key} className="rounded-full border border-border px-4 py-2 text-sm aria-pressed:bg-primary-soft" onClick={() => setTab(key)}>{label}</button>)}</div>
+      {tab === 'candidates' && <><p className="mt-1 text-sm text-ink-soft">
         ใบสมัครที่ HR ไม่ประเมินเกิน 14 วัน ควรติดตามบริษัทก่อน ถ้ายังไม่ประเมินให้ยืนยัน &quot;บริษัทไม่ประเมิน&quot; เพื่อให้อาจารย์ที่ปรึกษาบันทึกผลวิชาได้ ยืนยันแล้วย้อนกลับไม่ได้
       </p>
 
@@ -188,7 +190,7 @@ export function NoEvaluationList() {
                   <td className="px-4 py-3 text-xs text-ink-soft whitespace-nowrap">
                     <p>{dateOrDash(item.actual_start_date ?? item.start_date)} – {dateOrDash(item.actual_end_date ?? item.end_date)}</p>
                   </td>
-                  <td className="px-4 py-3 whitespace-nowrap font-medium">{item.days_since_end} วัน</td>
+                  <td className="px-4 py-3 whitespace-nowrap font-medium">{item.days_since_end} วัน<span className="block text-xs font-normal text-ink-soft">นับจาก {dateOrDash(item.status === 'IN_PROGRESS' ? item.end_date : item.status === 'TERMINATED' ? item.actual_end_date : item.status_changed_at)}</span></td>
                   <td className="px-4 py-3 text-right">
                     <button type="button" onClick={() => toggle(item.id)} aria-expanded={openId === item.id}
                       className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-muted">
@@ -200,6 +202,8 @@ export function NoEvaluationList() {
                   <tr className="bg-surface-muted">
                     <td colSpan={5} className="px-4 py-4">
                       <form onSubmit={(event) => void confirm(event, item)} noValidate className="max-w-xl">
+                        <p className="mb-3 text-sm font-medium">{item.job_title} · {item.company_name}</p>
+                        <p className="mb-3 text-xs text-ink-soft">อาจารย์สามารถบันทึกผลวิชาต่อได้ ยืนยันแล้วย้อนกลับไม่ได้</p>
                         <ReasonField label="ผลการติดตามบริษัท" value={reason} onChange={setReason} />
                         {formError && <div className="mt-2"><Notice tone="error">{formError}</Notice></div>}
                         <div className="mt-3 flex gap-2">
@@ -228,7 +232,8 @@ export function NoEvaluationList() {
         </div>
       )}
 
-      <ApplicationActions onChanged={() => setReloadKey((key) => key + 1)} />
+      </>}
+      {tab !== 'candidates' && <ApplicationActions mode={tab} onChanged={() => setReloadKey((key) => key + 1)} />}
     </div>
   );
 }

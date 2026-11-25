@@ -4,6 +4,7 @@ import { Fragment, useCallback, useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import type { AuditLogEntry, Paginated } from '@internpath/contracts';
+import { AdminPicker } from '@/components/admin/identity/admin-picker';
 import { useAuth } from '@/auth/session';
 import { endOfDay, startOfDay } from '@/components/admin/audit/audit-meta';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
@@ -139,7 +140,7 @@ export function LifecycleAuditLog() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold">Audit log ของ Lifecycle</h1>
+        <h1 className="text-2xl font-semibold">บันทึกการดำเนินการ · การฝึกงาน</h1>
         <p className="mt-1 text-sm text-ink-soft">
           บันทึกการกระทำของ Admin กับใบสมัคร ใบรับรอง และสิทธิ์สมัครซ้ำ เรียงใหม่ไปเก่า ลบหรือแก้ไม่ได้ (Audit log ของ Verification และ Identity แยกอยู่ที่หน้าของ Service นั้น)
         </p>
@@ -156,11 +157,7 @@ export function LifecycleAuditLog() {
             <input id={`${fieldId}-target`} value={targetId} onChange={(event) => setTargetId(event.target.value)} spellCheck={false} maxLength={100}
               className={`${inputClass} font-mono text-xs`} />
           </div>
-          <div className="w-72 text-sm">
-            <label htmlFor={`${fieldId}-actor`} className="mb-1 block text-xs font-medium text-ink-soft">ผู้ดูแล (UUID)</label>
-            <input id={`${fieldId}-actor`} value={actor} onChange={(event) => setActor(event.target.value)} spellCheck={false} maxLength={36}
-              className={`${inputClass} font-mono text-xs`} />
-          </div>
+          <AdminPicker value={actor} onChange={setActor} />
           <div className="text-sm">
             <label htmlFor={`${fieldId}-from`} className="mb-1 block text-xs font-medium text-ink-soft">ตั้งแต่วันที่</label>
             <input id={`${fieldId}-from`} type="date" value={from} onChange={(event) => setFrom(event.target.value)} className={inputClass} />

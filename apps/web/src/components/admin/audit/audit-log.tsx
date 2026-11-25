@@ -193,7 +193,7 @@ export function AuditLog() {
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold">Audit log ของ Verification</h1>
+        <h1 className="text-2xl font-semibold">บันทึกการดำเนินการ · คิวตรวจและธงบริษัท</h1>
         <p className="mt-1 text-sm text-ink-soft">
           บันทึกการกระทำของ Admin ในส่วนตรวจสอบและความไว้วางใจ เรียงใหม่ไปเก่า ลบหรือแก้ไม่ได้ · ดู{' '}
           <Link href="/admin/identity-audit" className="text-primary hover:underline">Audit log ของ Identity</Link> และ{' '}

@@ -1,20 +1,28 @@
 'use client';
 
 import Link from 'next/link';
-import { Search, X } from 'lucide-react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Search } from 'lucide-react';
+import { useCatalogFilters } from '@/components/search/use-catalog-filters';
 import { useEffect, useState } from 'react';
 import type { JobCategory, JobTag, SearchJobsQuery, StudentProfile, WorkMode } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect } from '@/components/admin/filter-fields';
+import { AppliedFilters, CategoryButtons, filterLabel, filterPill, filterRow } from '@/components/search/catalog-filters';
+import { catalogHref } from '@/lib/catalog-navigation';
+import { SkillFilter } from '@/components/jobs/skill-filter';
 import { JobResultCard } from '@/components/jobs/job-result-card';
 import { CATEGORIES } from '@/lib/categories';
-import { PAGE_SIZE, listTags, searchJobs } from '@/lib/job-search';
+import { MAX_SEARCH_TAGS, PAGE_SIZE, listTags, searchJobs } from '@/lib/job-search';
 import type { JobSearchResult } from '@/lib/job-search';
 
 const CATEGORY_IDS = CATEGORIES.map((entry) => entry.id);
 const WORK_MODES: WorkMode[] = ['ONSITE', 'HYBRID', 'REMOTE'];
 const SORTS = ['newest', 'deadline'] as const;
+
+function readTags(value: string | null) {
+  const slugs = (value ?? '').toLowerCase().split(',').map((slug) => slug.trim());
+  return [...new Set(slugs.filter((slug) => /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug)))].slice(0, MAX_SEARCH_TAGS);
+}
 
 /** อ่านพารามิเตอร์จาก URL แล้วกรองค่าที่ไม่รู้จักทิ้ง (URL เป็นข้อมูลจากภายนอก) */
 function readQuery(params: URLSearchParams): { query: SearchJobsQuery; page: number } {
@@ -29,7 +37,7 @@ function readQuery(params: URLSearchParams): { query: SearchJobsQuery; page: num
       work_mode: WORK_MODES.includes(workMode as WorkMode) ? (workMode as WorkMode) : undefined,
       major: params.get('major')?.trim() || undefined,
       // slug ของ Tag คั่นด้วยจุลภาค — กรองเฉพาะรูปแบบที่ปลอดภัย (URL เป็นข้อมูลจากภายนอก)
-      tags: (params.get('tags') ?? '').split(',').map((slug) => slug.trim().toLowerCase()).filter((slug) => /^[a-z0-9-]{1,50}$/.test(slug)).join(',') || undefined,
+      tags: readTags(params.get('tags')).join(',') || undefined,
       allowance: params.get('allowance') === 'true' ? true : undefined,
       // ลิงก์จากหน้าบริษัท — ต้องเป็น UUID เท่านั้น (URL เป็นข้อมูลจากภายนอก)
       company_id: /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(params.get('company_id') ?? '') ? (params.get('company_id') as string) : undefined,
@@ -40,9 +48,7 @@ function readQuery(params: URLSearchParams): { query: SearchJobsQuery; page: num
 }
 
 export function JobSearchPage() {
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
+  const { searchParams, update } = useCatalogFilters();
   const { query, page } = readQuery(searchParams);
   const key = searchParams.toString();
 
@@ -82,6 +88,7 @@ export function JobSearchPage() {
   useEffect(() => {
     let cancelled = false;
     const current = readQuery(new URLSearchParams(key));
+    setResult(null);
     setFailed(false);
     searchJobs({ ...current.query, major: current.query.major ?? profileMajor }, current.page).then(
       (next) => { if (!cancelled) setResult(next); },
@@ -96,14 +103,11 @@ export function JobSearchPage() {
     setMajor(query.major ?? '');
   }, [query.q, query.major]);
 
-  function update(changes: Record<string, string | undefined>, keepPage = false) {
-    const next = new URLSearchParams(searchParams.toString());
-    for (const [name, value] of Object.entries(changes)) {
-      if (value) next.set(name, value); else next.delete(name);
-    }
-    if (!keepPage) next.delete('page');
-    const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  function toggleTag(slug: string) {
+    const current = readTags(new URLSearchParams(window.location.search).get('tags'));
+    if (!current.includes(slug) && current.length >= MAX_SEARCH_TAGS) return;
+    const next = current.includes(slug) ? current.filter((entry) => entry !== slug) : [...current, slug];
+    update({ tags: next.join(',') || undefined });
   }
 
   const selectedTags = (query.tags ?? '').split(',').filter(Boolean);
@@ -115,10 +119,13 @@ export function JobSearchPage() {
     { key: 'work_mode', label: workOptions.find(([value]) => value === query.work_mode)?.[1], changes: { work_mode: undefined } },
     { key: 'allowance', label: query.allowance ? 'มีค่าตอบแทน' : undefined, changes: { allowance: undefined } },
     { key: 'company_id', label: query.company_id ? 'บริษัทที่เลือก' : undefined, changes: { company_id: undefined } },
-    ...selectedTags.map((slug) => ({ key: slug, label: tags?.find((tag) => tag.slug === slug)?.name ?? slug,
+    ...selectedTags.map((slug) => ({ key: `tag:${slug}`, label: tags?.find((tag) => tag.slug === slug)?.name ?? slug,
       changes: { tags: selectedTags.filter((entry) => entry !== slug).join(',') || undefined } })),
   ].filter((filter) => filter.label);
-  const chipClass = (active: boolean) => `shrink-0 whitespace-nowrap rounded-full border px-4 py-2 text-sm ${active ? 'border-primary bg-primary-soft font-semibold text-primary' : 'border-border hover:border-primary'}`;
+  function clearFilters() {
+    update({ q: undefined, major: undefined, category: undefined, work_mode: undefined, allowance: undefined,
+      company_id: undefined, tags: undefined });
+  }
   const totalPages = result ? Math.max(1, Math.ceil(result.meta.total / PAGE_SIZE)) : 1;
 
   return (
@@ -132,13 +139,13 @@ export function JobSearchPage() {
           </div>
         </div>
       </nav>
-      <header className="bg-surface-muted px-4 py-12 sm:px-6">
+      <header className="bg-surface-muted px-4 py-12 sm:px-6 lg:py-7">
         <div className="mx-auto max-w-6xl">
           <h1 className="text-4xl font-semibold">ค้นหางานฝึกงาน</h1>
           <p className="mt-2 text-sm text-ink-soft">
             <span className="lg:hidden">เลือกจากประกาศที่ผ่านการตรวจสอบแล้ว</span>
             <span className="hidden lg:inline">ค้นหาประกาศจากบริษัทที่ผ่านการรับรอง</span>
-            {' '}กรองตามสายงาน รูปแบบการทำงาน และสาขาของคุณ
+            <span className="lg:hidden"> กรองตามสายงาน รูปแบบการทำงาน และสาขาของคุณ</span>
           </p>
 
           <form
@@ -160,13 +167,14 @@ export function JobSearchPage() {
           </form>
 
           {profileMajor && !query.major && (
-            <p className="mt-4 text-sm text-ink-soft">
+            <p className="mt-4 break-words text-sm text-ink-soft">
               เทียบกับสาขา <strong className="text-ink">{profileMajor}</strong> จากโปรไฟล์
               <Link href="/student/profile" className="ml-2 text-primary hover:underline">ดูโปรไฟล์ ›</Link>
             </p>
           )}
           <details className="mt-3 text-sm" open={query.major ? true : undefined}>
             <summary className="cursor-pointer text-primary">ระบุสาขาที่ต้องการเทียบ</summary>
+            <p className="mt-2 hidden text-ink-soft lg:block">ใช้สาขาเพื่อดูว่าตรงกับประกาศหรือไม่ คุณยังเห็นประกาศทุกสาขา</p>
             <form className="mt-2 flex flex-wrap gap-2" onSubmit={(event) => { event.preventDefault(); update({ major: major.trim() || undefined }); }}>
               <input type="text" value={major} onChange={(event) => setMajor(event.target.value)}
                 aria-label="สาขาของคุณ" placeholder="เช่น วิทยาการคอมพิวเตอร์"
@@ -177,34 +185,41 @@ export function JobSearchPage() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-6xl space-y-4 px-4 py-5 sm:px-6">
-        <div className="flex gap-2 overflow-x-auto p-1" role="group" aria-label="สายงาน">
-          <button type="button" aria-pressed={!query.category} className={chipClass(!query.category)} onClick={() => update({ category: undefined })}>ทุกสายงาน</button>
-          {CATEGORIES.map(({ id, label }) => (
-            <button key={id} type="button" aria-pressed={query.category === id} className={chipClass(query.category === id)}
-              onClick={() => update({ category: query.category === id ? undefined : id })}>{label}</button>
-          ))}
+      <div className="mx-auto max-w-6xl space-y-4 px-4 py-5 sm:px-6 lg:space-y-2 lg:py-3">
+        <div className={filterRow} role="group" aria-label="สายงาน">
+          <span className={filterLabel}>สายงาน</span>
+          <div className="flex gap-2 overflow-x-auto p-1 lg:flex-wrap lg:overflow-visible">
+            <CategoryButtons category={query.category} onChange={(id) => update({ category: id === query.category ? undefined : id })} />
+          </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto p-1" role="group" aria-label="รูปแบบการทำงานและค่าตอบแทน">
-          {workOptions.map(([value, label]) => (
-            <button key={value} type="button" aria-pressed={query.work_mode === value} className={chipClass(query.work_mode === value)}
-              onClick={() => update({ work_mode: query.work_mode === value ? undefined : value })}>{label}</button>
-          ))}
-          <button type="button" aria-pressed={query.allowance === true} className={chipClass(query.allowance === true)}
-            onClick={() => update({ allowance: query.allowance ? undefined : 'true' })}>มีค่าตอบแทน</button>
+        <div className={filterRow} role="group" aria-label="รูปแบบการทำงานและค่าตอบแทน">
+          <span className={filterLabel}>รูปแบบการทำงาน</span>
+          <div className="flex gap-2 overflow-x-auto p-1 lg:flex-wrap lg:items-center lg:overflow-visible">
+            {workOptions.map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={query.work_mode === value} className={filterPill(query.work_mode === value)}
+                onClick={() => update({ work_mode: query.work_mode === value ? undefined : value })}>{label}</button>
+            ))}
+            <button type="button" aria-pressed={query.allowance === true} className={`${filterPill(query.allowance === true)} lg:hidden`}
+              onClick={() => update({ allowance: query.allowance ? undefined : 'true' })}>มีค่าตอบแทน</button>
+            <label className="ml-2 hidden items-center gap-2 border-l border-border px-3 text-sm lg:flex">
+              <input type="checkbox" checked={!!query.allowance} className="accent-primary"
+                onChange={(event) => update({ allowance: event.target.checked ? 'true' : undefined })} />
+              มีค่าตอบแทน
+            </label>
+            <SkillFilter tags={tags} failed={tagsFailed} selected={selectedTags} toggle={toggleTag} />
+          </div>
         </div>
-        <div className="mt-4" role="group" aria-label="กรองตาม Tag ทักษะ">
+        <div className="mt-4 lg:hidden" role="group" aria-label="กรองตาม Tag ทักษะ">
           <span className="mb-1 block text-xs font-medium text-ink-soft">Tag ทักษะ (เลือกได้หลายรายการ — แสดงประกาศที่มี Tag ใดก็ได้)</span>
           <div className="flex flex-wrap gap-2">
             {tagsFailed && <span className="text-sm text-ink-soft">โหลดรายการ Tag ไม่สำเร็จ</span>}
             {!tags && !tagsFailed && <span className="text-sm text-ink-soft">กำลังโหลด…</span>}
             {tags?.length === 0 && <span className="text-sm text-ink-soft">ยังไม่มี Tag ทักษะ</span>}
             {tags?.map(({ slug, name }) => {
-              const selected = (query.tags ?? '').split(',').filter(Boolean);
-              const on = selected.includes(slug);
+              const on = selectedTags.includes(slug);
               return (
                 <button key={slug} type="button" aria-pressed={on}
-                  onClick={() => update({ tags: (on ? selected.filter((entry) => entry !== slug) : [...selected, slug]).join(',') || undefined })}
+                  disabled={!on && selectedTags.length >= MAX_SEARCH_TAGS} onClick={() => toggleTag(slug)}
                   className={`max-w-full rounded-full border px-3 py-1 text-sm [overflow-wrap:anywhere] ${on ? 'border-primary bg-primary-soft text-primary' : 'border-border hover:bg-surface-muted'}`}>
                   {name}
                 </button>
@@ -216,28 +231,20 @@ export function JobSearchPage() {
       </div>
       <section aria-labelledby="results-title" aria-busy={!result && !failed} className="bg-surface-muted px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-6xl">
-          <div className="flex flex-wrap items-end justify-between gap-3">
+          <div className="flex flex-wrap items-end justify-between gap-3 lg:items-center">
             <h2 id="results-title" className="text-xl font-semibold">
               {failed ? 'โหลดผลการค้นหาไม่สำเร็จ' : result ? `พบ ${result.meta.total} ประกาศ` : 'กำลังโหลด…'}
             </h2>
-            <FilterSelect
-              label="เรียงตาม" value={query.sort ?? 'newest'} onChange={(value) => update({ sort: value === 'newest' ? undefined : value })}
-              options={[['newest', 'ประกาศใหม่ล่าสุด'], ['deadline', 'ใกล้ปิดรับสมัคร']]}
-            />
-          </div>
-          {filters.length > 0 && (
-            <div className="mt-3 flex flex-wrap items-center gap-2" aria-label="ตัวกรองที่ใช้อยู่">
-              {filters.map(({ key, label, changes }) => (
-                <button key={key} type="button" onClick={() => update(changes)} aria-label={`เอาตัวกรอง ${label} ออก`}
-                  className="inline-flex max-w-full items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-sm hover:border-primary">
-                  <span className="min-w-0 [overflow-wrap:anywhere]">{label}</span>
-                  <X size={14} aria-hidden="true" className="shrink-0" />
-                </button>
-              ))}
-              <button type="button" onClick={() => router.replace(pathname, { scroll: false })} className="text-sm font-medium text-primary hover:underline">ล้างทั้งหมด</button>
+            <div className="order-last w-full empty:hidden lg:order-none lg:w-auto lg:min-w-0 lg:flex-1">
+              <AppliedFilters filters={filters.map(({ key, label, changes }) => ({ key, label, remove: () => update(changes) }))} onClear={clearFilters} />
             </div>
-          )}
-
+            <div className="ml-auto">
+              <FilterSelect
+                label="เรียงตาม" value={query.sort ?? 'newest'} onChange={(value) => update({ sort: value === 'newest' ? undefined : value })}
+                options={[['newest', 'ประกาศใหม่ล่าสุด'], ['deadline', 'ใกล้ปิดรับสมัคร']]}
+              />
+            </div>
+          </div>
           {failed && (
             <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger-text">
               ระบบค้นหาไม่พร้อมใช้งาน กรุณาลองใหม่ภายหลัง
@@ -254,7 +261,7 @@ export function JobSearchPage() {
           {result && result.jobs.length > 0 && (
             <ul className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {result.jobs.map((job) => (
-                <li key={job.id} className="contents"><JobResultCard job={job} rating={result.ratings[job.company.id]} /></li>
+                <li key={job.id} className="contents"><JobResultCard job={job} rating={result.ratings[job.company.id]} href={catalogHref('/jobs', searchParams, job.id)} /></li>
               ))}
             </ul>
           )}

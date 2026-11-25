@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import type { AdminJobItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
+import { CompanyPicker } from '@/components/admin/identity/company-picker';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { ApiError } from '@/lib/api';
@@ -89,27 +90,6 @@ export function AdminJobList() {
           });
         }}
       >
-        <FilterSelect
-          label="สถานะ"
-          value={filters.status}
-          options={statusOptions}
-          onChange={(status) => setFilters({ ...filters, status })}
-        />
-        <div className="w-full sm:w-64">
-          <label
-            htmlFor="admin-jobs-company"
-            className="mb-1 block text-xs font-medium text-ink-soft"
-          >
-            รหัสบริษัท (UUID)
-          </label>
-          <input
-            id="admin-jobs-company"
-            value={filters.company_id}
-            onChange={(event) => setFilters({ ...filters, company_id: event.target.value })}
-            className={INPUT}
-            autoComplete="off"
-          />
-        </div>
         <div className="min-w-48 flex-1">
           <label
             htmlFor="admin-jobs-search"
@@ -126,6 +106,14 @@ export function AdminJobList() {
             className={INPUT}
           />
         </div>
+        <FilterSelect
+          label="สถานะ"
+          value={filters.status}
+          options={statusOptions}
+          onChange={(status) => setFilters({ ...filters, status })}
+        />
+        {(filters.q || filters.company_id || filters.status || query.q || query.company_id || query.status) && <button type="button" className="text-sm text-primary" onClick={() => { setFilters(emptyFilters); setQuery({ ...emptyFilters, page: 1 }); }}>ล้างตัวกรอง</button>}
+        <CompanyPicker value={filters.company_id} onChange={(company_id) => setFilters({ ...filters, company_id })} />
         <button
           type="submit"
           className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white"

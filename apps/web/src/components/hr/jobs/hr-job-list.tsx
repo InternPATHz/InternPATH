@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import type { HrJobObject, JobStatus, Paginated } from '@internpath/contracts';
+import type { HrJobObject, JobStatus, Paginated, UserMeResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { JobStatusBadge, WORK_MODE_LABEL, formatDay, jobTitleOf } from '@/components/hr/jobs/job-ui';
@@ -12,7 +12,7 @@ import { HR_JOBS_PAGE_SIZE, hrJobsApi } from '@/lib/hr-jobs';
 import { JOB_STATUS } from '@/lib/status-map';
 
 const QUICK: Array<[string, JobStatus | '']> = [
-  ['ทั้งหมด', ''], ['ร่าง', 'DRAFT'], ['รอ Admin ตรวจ', 'PENDING_REVIEW'], ['เปิดรับสมัคร', 'PUBLISHED'], ['ถูกตีกลับ', 'ADMIN_REJECTED'], ['ปิดแล้ว', 'CLOSED'],
+  ['ทั้งหมด', ''], ['ร่าง', 'DRAFT'], ['รอ Admin ตรวจ', 'PENDING_REVIEW'], ['กำลังตรวจสอบ', 'VERIFYING'], ['เปิดรับสมัคร', 'PUBLISHED'], ['ถูกตีกลับ', 'ADMIN_REJECTED'], ['ปิดแล้ว', 'CLOSED'],
 ];
 
 type PageState = { key: string } & (
@@ -29,6 +29,12 @@ export function HrJobList() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { request } = useAuth();
+  const [company, setCompany] = useState<UserMeResponse['company']>();
+  useEffect(() => {
+    let active = true;
+    request<UserMeResponse>('/users/me').then((me) => { if (active) setCompany(me.company); }, () => {});
+    return () => { active = false; };
+  }, [request]);
   const api = useMemo(() => hrJobsApi(request), [request]);
   const statusParam = searchParams.get('status') ?? '';
   const status = Object.hasOwn(JOB_STATUS, statusParam) ? (statusParam as JobStatus) : undefined;
@@ -61,25 +67,11 @@ export function HrJobList() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-3xl font-semibold">ประกาศของฉัน</h1>
-          <p className="mt-2 text-sm text-ink-soft">สร้าง แก้ไข เผยแพร่ และปิดประกาศรับนักศึกษาฝึกงานของบริษัท</p>
+          <p className="mt-2 text-sm text-ink-soft">{company?.name}</p>
         </div>
-        <Link href="/hr/jobs/form" className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover">สร้างประกาศใหม่</Link>
+        <Link href={company?.status === 'VERIFIED' ? '/hr/jobs/form' : '/hr/company'} className="rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:bg-primary-hover">{company?.status === 'VERIFIED' ? 'สร้างประกาศใหม่' : 'ดูสถานะบริษัท'}</Link>
       </div>
 
-      {!!result?.data.length && (
-        <dl className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="สรุปประกาศในหน้านี้">
-          {[
-            ['เปิดรับในหน้านี้', result.data.filter((job) => job.status === 'PUBLISHED').length],
-            ['ตำแหน่งว่างในหน้านี้', result.data.filter((job) => job.status === 'PUBLISHED').reduce((sum, job) => sum + (job.quota_available ?? 0), 0)],
-            ['ถูกตีกลับในหน้านี้', result.data.filter((job) => job.status === 'ADMIN_REJECTED').length],
-          ].map(([label, count]) => (
-            <div key={label} className="rounded-xl bg-surface-muted p-4">
-              <dt className="text-sm text-ink-soft">{label}</dt>
-              <dd className="mt-1 text-3xl font-semibold tabular-nums">{count}</dd>
-            </div>
-          ))}
-        </dl>
-      )}
       <div role="group" aria-label="กรองตามสถานะ" className="mt-6 flex flex-wrap gap-2">
         {QUICK.map(([label, value]) => (
           <button key={label} type="button" onClick={() => { if ((status ?? '') !== value) navigate(value, 1); }} aria-pressed={(status ?? '') === value}
@@ -87,6 +79,8 @@ export function HrJobList() {
             {label}
           </button>
         ))}
+        <label className="flex items-center gap-2 text-sm">สถานะทั้งหมด<select value={status ?? ''} onChange={(event) => navigate(event.target.value as JobStatus | '', 1)} className="rounded-lg border border-border p-2">
+          <option value="">ทั้งหมด</option>{Object.entries(JOB_STATUS).map(([key, value]) => <option key={key} value={key}>{value.label}{key === 'AUTO_REJECTED' ? ' (ระบบ)' : key === 'ADMIN_REJECTED' ? ' (ผู้ดูแล)' : key === 'REMOVED' ? ' (นำออก)' : ''}</option>)}</select></label>
       </div>
 
       <section aria-busy={!result && !error} className="mt-6">
@@ -96,7 +90,7 @@ export function HrJobList() {
         {result && result.data.length === 0 && (
           <div className="rounded-xl border border-dashed border-border p-10 text-center">
             <p className="font-semibold">{total > 0 ? 'ไม่มีประกาศในหน้านี้' : status ? 'ไม่มีประกาศในสถานะนี้' : 'ยังไม่มีประกาศ'}</p>
-            {total === 0 && <Link href="/hr/jobs/form" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">สร้างประกาศแรก</Link>}
+            {total === 0 && company?.status === 'VERIFIED' && <Link href="/hr/jobs/form" className="mt-2 inline-block text-sm font-medium text-primary hover:underline">สร้างประกาศแรก</Link>}
           </div>
         )}
         {result && (pageCount > 1 || page > 1) && (
@@ -139,13 +133,14 @@ export function HrJobList() {
                   <th scope="col" className="p-4">สถานะ</th>
                   <th scope="col" className="p-4">ตำแหน่ง</th>
                   <th scope="col" className="p-4">ปิดรับสมัคร</th>
+                  <th className="p-4" scope="col">จัดการ</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
                 {result.data.map((job) => (
                   <tr key={job.id}>
                     <th scope="row" className={`border-l-4 p-4 font-medium ${job.status === 'ADMIN_REJECTED' ? 'border-l-danger' : 'border-l-transparent'}`}>
-                      <Link href={`/hr/jobs/item?id=${job.id}`} className="text-primary hover:underline">{jobTitleOf(job)}</Link>
+                      <Link href={`/hr/jobs/item?id=${job.id}`} className="text-primary hover:underline">{jobTitleOf(job)}</Link>{job.featured && <span className="ml-2 text-xs text-ink-soft">Featured</span>}
                       {job.location && <span className="mt-1 block text-xs text-ink-soft lg:hidden">{job.location}</span>}
                       <span className="mt-1 hidden text-[0.8125rem] font-normal text-ink-soft [overflow-wrap:anywhere] lg:block">
                         {jobLocationSummary(job)}
@@ -153,12 +148,13 @@ export function HrJobList() {
                     </th>
                     <td className="p-4"><JobStatusBadge status={job.status} /></td>
                     <td className="p-4">
-                      {job.quota === null || job.quota_available === null ? '–' : <>
+                      {job.status !== 'PUBLISHED' ? job.quota ?? '–' : job.quota === null || job.quota_available === null ? '–' : <>
                         <span>{job.quota_available} / {job.quota} ว่าง</span>
                         {job.quota > 0 && <meter className="mt-1 block h-2 w-20" min={0} max={job.quota} value={job.quota_available} aria-label="ตำแหน่งว่าง" />}
                       </>}
                     </td>
                     <td className="p-4">{job.application_deadline ? formatDay(job.application_deadline) : '–'}</td>
+                    <td className="p-4"><Link className="font-medium text-primary" href={`/hr/jobs/${job.status === 'DRAFT' ? 'form' : 'item'}?id=${job.id}`}>{job.status === 'DRAFT' ? 'แก้ไขร่าง' : job.status === 'ADMIN_REJECTED' ? 'ดูเหตุผล' : 'รายละเอียด'}</Link></td>
                   </tr>
                 ))}
               </tbody>

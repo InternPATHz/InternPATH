@@ -1,13 +1,12 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { CompanyInvitationItem, CompanyMemberItem, JobCategory, OwnerTransferPendingResponse, UserMeResponse } from '@internpath/contracts';
+import type { CompanyInvitationItem, CompanyMemberItem, Paginated, JobCategory, OwnerTransferPendingResponse, UserMeResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { Avatar } from '@/components/ui/avatar';
 import { ApiError } from '@/lib/api';
-import { asList } from '@/lib/list';
 import { CATEGORIES } from '@/lib/categories';
 
 const CATEGORY_LABEL = Object.fromEntries(CATEGORIES.map((entry) => [entry.id, entry.label])) as Record<JobCategory, string>;
@@ -46,6 +45,8 @@ function failure(cause: unknown): string {
  */
 export function TeamPage() {
   const { request, user } = useAuth();
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
   const [members, setMembers] = useState<CompanyMemberItem[]>([]);
   const [isOwner, setIsOwner] = useState(false);
   const [transfer, setTransfer] = useState<OwnerTransferPendingResponse | null>(null);
@@ -59,26 +60,32 @@ export function TeamPage() {
   const [inviteCategories, setInviteCategories] = useState<JobCategory[]>([]);
   const [editing, setEditing] = useState<{ userId: string; categories: JobCategory[] } | null>(null);
 
+  const sequence = useRef(0);
   const load = useCallback(async () => {
+    const version = ++sequence.current;
     try {
-      const [me, list] = await Promise.all([request<UserMeResponse>('/users/me'), request<CompanyMemberItem[] | { data: CompanyMemberItem[] }>('/companies/me/members')]);
+      const [me, list] = await Promise.all([request<UserMeResponse>('/users/me'), request<Paginated<CompanyMemberItem>>(`/companies/me/members?page=${page}&page_size=20`)]);
+      if (sequence.current !== version) return;
       const owner = me.company?.member_role === 'OWNER';
       setIsOwner(owner);
-      setMembers(asList(list as never));
+      setMembers(list.data);
+      setTotal(list.meta.total);
+      if (!list.data.length && page > 1) setPage(Math.max(1, Math.ceil(list.meta.total / 20)));
       const [pending, invites] = await Promise.allSettled([
         request<OwnerTransferPendingResponse>('/companies/me/owner-transfer'),
         owner ? request<{ data: CompanyInvitationItem[] }>('/companies/me/invitations') : Promise.resolve({ data: [] }),
       ]);
+      if (sequence.current !== version) return;
       setTransfer(pending.status === 'fulfilled' ? pending.value : null);
       setInvitations(invites.status === 'fulfilled' ? invites.value.data : []);
       const transferError = pending.status === 'rejected' && !(pending.reason instanceof ApiError && pending.reason.status === 404);
       setPendingError(transferError || invites.status === 'rejected');
       setLoadError(null);
-    } catch (cause) { setLoadError(failure(cause)); }
-    finally { setLoaded(true); }
-  }, [request]);
+    } catch (cause) { if (sequence.current === version) setLoadError(failure(cause)); }
+    finally { if (sequence.current === version) setLoaded(true); }
+  }, [request, page]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load(); return () => { sequence.current++; }; }, [load]);
 
   async function run(action: () => Promise<unknown>, success: string) {
     setBusy(true);
@@ -105,6 +112,8 @@ export function TeamPage() {
     if (!editing) return;
     if (editing.categories.length === 0) { setMessage({ tone: 'error', text: 'สมาชิกต้องมีอย่างน้อย 1 สายงาน' }); return; }
     const target = editing;
+    const member = members.find((person) => person.user_id === target.userId);
+    if (!member || !window.confirm(`บันทึกสายงานให้ ${member.full_name} · ${member.email}?`)) return;
     void run(async () => {
       await request(`/companies/me/members/${encodeURIComponent(target.userId)}/categories`, { method: 'PUT', body: { categories: target.categories } });
       setEditing(null);
@@ -119,7 +128,7 @@ export function TeamPage() {
       <h1 className="text-3xl font-semibold">ทีม HR</h1>
       <p className="mt-2 text-sm text-ink-soft">สมาชิกจัดการผู้สมัครได้เฉพาะประกาศในสายงานที่ได้รับกำหนด ส่วน Owner เห็นทุกสายงาน และเป็นผู้จัดการข้อมูลบริษัทกับสมาชิก</p>
       {message && <div className="mt-4"><Notice tone={message.tone}>{message.text}</Notice></div>}
-      {pendingError && <div className="mt-4"><Notice tone="error">โหลดคำเชิญหรือคำขอโอนสิทธิ์ไม่สำเร็จ</Notice></div>}
+      {pendingError && <div className="mt-4"><Notice tone="error">โหลดคำเชิญหรือคำขอโอนสิทธิ์ไม่สำเร็จ <button className="underline" onClick={() => void load()}>ลองอีกครั้ง</button></Notice></div>}
 
       {transfer && (
         <section aria-labelledby="transfer-title" className={`mt-6 rounded-xl p-5 ${transfer.direction === 'INCOMING' ? 'bg-tile text-white' : 'bg-surface-muted'}`}>
@@ -158,7 +167,7 @@ export function TeamPage() {
       )}
 
       <section aria-labelledby="members-title" className="mt-6">
-        <h2 id="members-title" className="text-lg font-semibold">สมาชิก ({members.length})</h2>
+        <h2 id="members-title" className="text-lg font-semibold">สมาชิก ({total})</h2>
         <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
           {members.map((member) => {
             const self = member.user_id === user?.id;
@@ -183,9 +192,9 @@ export function TeamPage() {
                   <div className="flex gap-3">
                     <button type="button" disabled={busy} onClick={() => setEditing({ userId: member.user_id, categories: [...(member.categories ?? [])] })}
                       className="font-medium text-primary hover:underline disabled:opacity-60">กำหนดสายงาน</button>
-                    <button type="button" disabled={busy} onClick={() => { if (window.confirm(`โอนสิทธิ์ Owner ให้ ${member.full_name}? ผู้รับต้องกดยืนยันก่อนจึงจะมีผล`)) void run(() => request('/companies/me/owner-transfer', { method: 'POST', body: { to_user_id: member.user_id } }), 'ส่งคำขอโอนสิทธิ์แล้ว รอผู้รับยืนยัน'); }}
+                    <button type="button" disabled={busy} onClick={() => { if (window.confirm(`โอนสิทธิ์ Owner ให้ ${member.full_name} · ${member.email}? ผู้รับต้องกดยืนยันก่อนจึงจะมีผล`)) void run(() => request('/companies/me/owner-transfer', { method: 'POST', body: { to_user_id: member.user_id } }), 'ส่งคำขอโอนสิทธิ์แล้ว รอผู้รับยืนยัน'); }}
                       className="font-medium text-primary hover:underline disabled:opacity-60">โอนสิทธิ์ Owner</button>
-                    <button type="button" disabled={busy} onClick={() => { if (window.confirm(`ลบ ${member.full_name} ออกจากทีม?`)) void run(() => request(`/companies/me/members/${encodeURIComponent(member.user_id)}`, { method: 'DELETE' }), 'ลบสมาชิกแล้ว'); }}
+                    <button type="button" disabled={busy} onClick={() => { if (window.confirm(`ลบ ${member.full_name} · ${member.email} ออกจากทีม?`)) void run(() => request(`/companies/me/members/${encodeURIComponent(member.user_id)}`, { method: 'DELETE' }), 'ลบสมาชิกแล้ว'); }}
                       className="font-medium text-danger-text hover:underline disabled:opacity-60">ลบ</button>
                   </div>
                 )}
@@ -193,6 +202,7 @@ export function TeamPage() {
             );
           })}
         </ul>
+        {total > 20 && <nav aria-label="หน้าสมาชิก" className="mt-3 flex items-center gap-3 text-sm"><button disabled={page <= 1} onClick={() => setPage(page - 1)}>ก่อนหน้า</button><span>หน้า {page} จาก {Math.ceil(total / 20)}</span><button disabled={page * 20 >= total} onClick={() => setPage(page + 1)}>ถัดไป</button></nav>}
       </section>
 
       {isOwner && invitations.length > 0 && (
@@ -203,7 +213,7 @@ export function TeamPage() {
               <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 p-4">
                 <span className="min-w-0 break-all text-sm">{item.email} · หมดอายุ {dateFormat.format(new Date(item.expires_at))}</span>
                 <button type="button" disabled={busy} onClick={() => {
-                  if (window.confirm('ยกเลิกคำเชิญนี้? ลิงก์เดิมจะใช้ไม่ได้')) void run(
+                  if (window.confirm(`ยกเลิกคำเชิญของ ${item.email}? ลิงก์เดิมจะใช้ไม่ได้`)) void run(
                     () => request(`/companies/me/invitations/${encodeURIComponent(item.id)}`, { method: 'DELETE' }), 'ยกเลิกคำเชิญแล้ว',
                   );
                 }} className="text-sm font-medium text-danger-text hover:underline">ยกเลิกคำเชิญ</button>

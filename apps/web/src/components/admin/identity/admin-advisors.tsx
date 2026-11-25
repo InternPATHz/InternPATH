@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { AdminAdvisorListItem, Paginated } from '@internpath/contracts';
+import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
@@ -11,6 +12,8 @@ const statusOptions: Array<[string, string]> = [['PENDING_APPROVAL', 'รออ�
 
 export function AdminAdvisors() {
   const { request } = useAuth();
+  const params = useSearchParams();
+  const [transfer, setTransfer] = useState(Boolean(params.get('student') || params.get('code')));
   const [status, setStatus] = useState('PENDING_APPROVAL');
   const [page, setPage] = useState(1);
   const [result, setResult] = useState<Paginated<AdminAdvisorListItem> | null>(null);
@@ -36,6 +39,8 @@ export function AdminAdvisors() {
 
   async function decide(id: string, action: 'approve' | 'reject') {
     if (action === 'reject' && !reason.trim()) { setError('กรุณาระบุเหตุผลที่ปฏิเสธ'); return; }
+    const advisor = result?.data.find((item) => item.id === id);
+    if (!advisor || !window.confirm(`${action === 'approve' ? 'อนุมัติ' : 'ปฏิเสธ'}บัญชี ${advisor.full_name} · ${advisor.email}?`)) return;
     setBusy(true); setError(''); setNotice('');
     try {
       await request(`/admin/advisors/${id}/actions/${action}`, { method: 'POST', body: action === 'reject' ? { reason: reason.trim() } : {} });
@@ -50,7 +55,11 @@ export function AdminAdvisors() {
     <div><h1 className="text-2xl font-semibold">อาจารย์ที่ปรึกษา</h1><p className="mt-1 text-sm text-ink-soft">พิจารณาบัญชีที่ยืนยันอีเมลแล้ว และย้ายนักศึกษาเมื่อจำเป็น</p></div>
     {error && <Notice tone="error">{error}</Notice>}
     {notice && <Notice tone="success">{notice}</Notice>}
-    <section className="rounded-xl border border-border bg-surface p-4">
+    <div className="flex gap-4 text-sm" role="group" aria-label="งานอาจารย์">
+      <button aria-pressed={!transfer} onClick={() => setTransfer(false)} className="rounded-lg px-4 py-2 aria-pressed:bg-primary-soft">บัญชีอาจารย์</button>
+      <button aria-pressed={transfer} onClick={() => setTransfer(true)} className="rounded-lg px-4 py-2 aria-pressed:bg-primary-soft">ย้ายอาจารย์ของนักศึกษา</button>
+    </div>
+    {!transfer && <section className="rounded-xl border border-border bg-surface p-4">
       <div className="flex items-end justify-between gap-3"><h2 className="text-lg font-semibold">บัญชีอาจารย์</h2>
         <FilterSelect label="สถานะ" value={status} options={statusOptions} onChange={(value) => { setStatus(value); setPage(1); }} /></div>
       {loading ? <p className="mt-4 text-sm text-ink-soft">กำลังโหลด…</p> : !result?.data.length ?
@@ -68,7 +77,7 @@ export function AdminAdvisors() {
             <button onClick={() => setRejectId(null)} className="rounded-lg border border-border px-3 py-2 text-sm">ยกเลิก</button></div>}
         </div>)}</div>}
       <div className="mt-4 flex items-center justify-end gap-3 text-sm"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="disabled:opacity-40">ก่อนหน้า</button><span>{page} / {lastPage}</span><button disabled={page >= lastPage} onClick={() => setPage(page + 1)} className="disabled:opacity-40">ถัดไป</button></div>
-    </section>
-    <AdvisorTransfer />
+    </section>}
+    {transfer && <AdvisorTransfer />}
   </div>;
 }

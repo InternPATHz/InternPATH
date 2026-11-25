@@ -58,6 +58,7 @@ export default function RegisterPage() {
   return <AuthShell title={registeredEmail ? 'ตรวจอีเมลของคุณ' : 'สร้างบัญชี InternPath'} subtitle={registeredEmail ? undefined : 'เลือกประเภทบัญชีเพื่อเริ่มใช้งาน'} icon={registeredEmail ? <Mail size={34} /> : undefined}>
     {registeredEmail ? <div className="space-y-4">
       <Notice>ส่งลิงก์ยืนยันไปที่ {registeredEmail} แล้ว กรุณาตรวจกล่องจดหมาย</Notice>
+      {role === 'company' && <p className="text-sm text-ink-soft">หลังยืนยันอีเมล ให้ส่งเอกสารบริษัทเพื่อขอรับการตรวจสอบ</p>}
       {role === 'advisor' && <p className="rounded-lg bg-surface-muted p-3 text-sm text-ink-soft">หลังยืนยันอีเมล บัญชีอาจารย์จะรอผู้ดูแลระบบอนุมัติ</p>}
       <div className="flex flex-wrap gap-4 text-sm">
         <Link href="/login" className="text-primary hover:underline">ไปหน้าเข้าสู่ระบบ</Link>
@@ -66,7 +67,7 @@ export default function RegisterPage() {
     </div> : <>
       <p className="mb-4 rounded-lg bg-surface-muted px-4 py-3 text-sm text-ink-soft">นักศึกษาไม่ต้องสมัครเอง อาจารย์ที่ปรึกษาจะเพิ่มบัญชีให้และส่งลิงก์ตั้งรหัสผ่านไปที่อีเมลสถาบัน</p>
       <div className="mb-6 grid gap-2 sm:grid-cols-2" role="group" aria-label="ประเภทบัญชี">
-        {roles.map((item) => <button key={item.id} type="button" onClick={() => {
+        {roles.map((item) => <button key={item.id} type="button" disabled={busy} onClick={() => {
           setRole(item.id); setError('');
         }}
           aria-pressed={role === item.id}
@@ -76,8 +77,8 @@ export default function RegisterPage() {
           <span className="mt-1 text-xs text-ink-soft">{item.description}</span>
         </button>)}
       </div>
-      <form key={role} onSubmit={submit} className="space-y-4">
-        {role === 'company' && <fieldset className="space-y-3">
+      {roles.map(({ id: formRole }) => <form key={formRole} hidden={formRole !== role} inert={formRole !== role} onSubmit={submit} className="space-y-4">
+        {formRole === 'company' && <fieldset className="space-y-3">
           <legend className="mb-2 font-semibold">ข้อมูลบริษัท</legend>
           <Field label="ชื่อบริษัท" name="company_name" required />
           <Field label="เลขทะเบียนนิติบุคคล" name="registration_no" inputMode="numeric"
@@ -88,14 +89,14 @@ export default function RegisterPage() {
         </fieldset>}
         <fieldset className="space-y-3">
           <legend className="mb-2 font-semibold">ข้อมูลบัญชี</legend>
-        <Field label={role === 'company' ? 'ชื่อผู้ดูแลบริษัท' : 'ชื่อ-นามสกุล'} name="full_name" autoComplete="name" required />
-        <Field label={role === 'company' ? 'อีเมลองค์กร' : 'อีเมลสถาบัน (.ac.th)'} name="email" type="email" autoComplete="email" required />
-        {role === 'advisor' && <Field label="ภาควิชา" name="department" required />}
+        <Field label={formRole === 'company' ? 'ชื่อผู้ดูแลบริษัท' : 'ชื่อ-นามสกุล'} name="full_name" autoComplete="name" required />
+        <Field label={formRole === 'company' ? 'อีเมลองค์กร' : 'อีเมลสถาบัน (.ac.th)'} name="email" type="email" autoComplete="email" required />
+        {formRole === 'advisor' && <Field label="ภาควิชา" name="department" required />}
         </fieldset>
-        {role === 'advisor' && <p className="rounded-lg bg-surface-muted p-3 text-sm text-ink-soft">ใช้อีเมลสถาบันเพื่อยืนยันบทบาท บัญชีจะรอผู้ดูแลระบบอนุมัติหลังยืนยันอีเมล</p>}
+        {formRole === 'advisor' && <p className="rounded-lg bg-surface-muted p-3 text-sm text-ink-soft">ใช้อีเมลสถาบันเพื่อยืนยันบทบาท บัญชีจะรอผู้ดูแลระบบอนุมัติหลังยืนยันอีเมล</p>}
         <fieldset className="space-y-3">
           <legend className="mb-2 font-semibold">รหัสผ่าน</legend>
-          <NewPasswordFields />
+          <NewPasswordFields active={formRole === role} />
         </fieldset>
         <label className="flex gap-2 text-sm text-ink-soft">
           <input type="checkbox" name="accept_privacy" required className="mt-1 accent-primary" />
@@ -103,7 +104,7 @@ export default function RegisterPage() {
         </label>
         {error && <Notice error>{error}</Notice>}
         <ActionButton busy={busy}>สมัครสมาชิก</ActionButton>
-      </form>
+      </form>)}
       <p className="mt-5 text-center text-sm text-ink-soft">มีบัญชีแล้ว? <Link href="/login" className="text-primary hover:underline">เข้าสู่ระบบ</Link></p>
     </>}
   </AuthShell>;

@@ -39,9 +39,10 @@ export function ApplicationSummary({ app }: { app: AdvisorApplicationItem }) {
         <p className="mt-1 text-xs text-ink-soft">
           {app.start_date && app.end_date ? `ช่วงฝึก ${formatDate(app.start_date)} – ${formatDate(app.end_date)}` : `สมัครเมื่อ ${formatDate(app.created_at)}`}
         </p>
+        {app.actual_start_date && <p className="mt-1 text-xs text-ink-soft">วันเริ่มฝึกจริง {formatDate(app.actual_start_date)}</p>}
         <div className="mt-2 flex flex-wrap gap-2">
           {app.major_mismatch && <StatusBadge tone="warning" icon={AlertTriangle}>สาขาไม่ตรงกับประกาศ</StatusBadge>}
-          {app.flagged_for_advisor && <StatusBadge tone="danger" icon={AlertTriangle}>ประกาศถูกตีกลับหรือบริษัทถูกระงับ</StatusBadge>}
+          {app.flagged_for_advisor && <StatusBadge tone="danger" icon={AlertTriangle}>มีธงเตือนสำหรับอาจารย์</StatusBadge>}
           {app.frozen && <StatusBadge tone="neutral">ประกาศถูกระงับชั่วคราว</StatusBadge>}
         </div>
       </div>
