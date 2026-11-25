@@ -88,17 +88,45 @@ export function AuditLog() {
   const [actor, setActor] = useState(filters.actor);
   const [from, setFrom] = useState(filters.from);
   const [to, setTo] = useState(filters.to);
-  const [admins, setAdmins] = useState<AdminUserListItem[]>([]);
+  const [adminNames, setAdminNames] = useState(() => new Map<string, string>());
+  const [adminsFailed, setAdminsFailed] = useState(false);
+  const [adminRetry, setAdminRetry] = useState(0);
   const [formError, setFormError] = useState('');
 
   useEffect(() => { setActor(filters.actor); setFrom(filters.from); setTo(filters.to); }, [filters.actor, filters.from, filters.to]);
 
   useEffect(() => {
-    let active = true;
-    void request<Paginated<AdminUserListItem>>('/admin/users?role=PLATFORM_ADMIN&page_size=100')
-      .then((data) => { if (active) setAdmins(data.data); }, () => undefined);
-    return () => { active = false; };
-  }, [request]);
+    const desktop = window.matchMedia('(min-width: 1024px)');
+    const getPage = (page: number) => request<Paginated<AdminUserListItem>>(
+      `/admin/users?role=PLATFORM_ADMIN&page_size=100&page=${page}`,
+    );
+    const firstPage = getPage(1);
+    let revision = 0;
+
+    async function loadAdmins() {
+      const current = ++revision;
+      const names = new Map<string, string>();
+      setAdminsFailed(false);
+      try {
+        let result = await firstPage;
+        for (let page = 1; current === revision; page++) {
+          for (const admin of result.data) names.set(admin.id, admin.full_name);
+          setAdminNames(new Map(names));
+          if (!desktop.matches || !result.data.length || page * result.meta.page_size >= result.meta.total) break;
+          result = await getPage(page + 1);
+        }
+      } catch {
+        if (current === revision && desktop.matches) setAdminsFailed(true);
+      }
+    }
+
+    void loadAdmins();
+    desktop.addEventListener('change', loadAdmins);
+    return () => {
+      revision++;
+      desktop.removeEventListener('change', loadAdmins);
+    };
+  }, [request, adminRetry]);
 
   useEffect(() => {
     let active = true;
@@ -140,7 +168,6 @@ export function AuditLog() {
     update({ from: dateKey.format(now - (days - 1) * 86_400_000), to: dateKey.format(now) });
   }
 
-  const adminNames = new Map(admins.map((admin) => [admin.id, admin.full_name]));
   const total = result?.meta.total ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const hasFilter = Boolean(filters.action || filters.target_type || filters.actor || filters.from || filters.to);
@@ -163,9 +190,15 @@ export function AuditLog() {
           options={[['', 'ทั้งหมด'], ...Object.entries(TARGET_LABEL).map(([code, label]): [string, string] => [code, label])]} />
         <form onSubmit={submitText} className="flex min-w-0 max-w-full flex-wrap items-end gap-3">
           <div className="w-full min-w-0 max-w-72 space-y-2">
-            {admins.length > 0 && (
+            {adminNames.size > 0 && (
               <FilterSelect label="ผู้ดูแล" value={adminNames.has(actor) ? actor : ''} onChange={setActor}
-                options={[['', 'ผู้ดูแลทั้งหมด'], ...admins.map((admin): [string, string] => [admin.id, admin.full_name])]} />
+                options={[['', 'ผู้ดูแลทั้งหมด'], ...adminNames]} />
+            )}
+            {adminsFailed && (
+              <p role="status" className="hidden text-xs text-ink-soft lg:block">
+                โหลดรายชื่อผู้ดูแลไม่ครบ{' '}
+                <button type="button" className="font-medium text-primary hover:underline" onClick={() => setAdminRetry((value) => value + 1)}>ลองอีกครั้ง</button>
+              </p>
             )}
             <details open={actor && !adminNames.has(actor) ? true : undefined} className="text-sm">
               <summary className="cursor-pointer text-primary">ใช้รหัสผู้ดูแล (UUID)</summary>
@@ -229,7 +262,7 @@ export function AuditLog() {
                     <Badge className="bg-surface-muted text-ink-soft">{targetLabel(entry.target_type)}</Badge>
                     <p className="mt-1 break-all font-mono text-xs text-ink-soft">{entry.target_id}</p>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs" title={entry.admin_id}>{adminNames.get(entry.admin_id) ?? `${entry.admin_id.slice(0, 8)}…`}</td>
+                  <td className="px-4 py-3 font-mono text-xs lg:[overflow-wrap:anywhere]" title={entry.admin_id}>{adminNames.get(entry.admin_id) ?? `${entry.admin_id.slice(0, 8)}…`}</td>
                   <td className="max-w-xs px-4 py-3 whitespace-pre-wrap break-words">{entry.reason ?? <span className="text-ink-soft">—</span>}</td>
                   <td className="px-4 py-3 text-right">
                     <button type="button" aria-expanded={openId === entry.id} onClick={() => setOpenId(openId === entry.id ? null : entry.id)}
