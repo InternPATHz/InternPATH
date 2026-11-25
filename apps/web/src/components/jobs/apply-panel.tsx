@@ -117,9 +117,9 @@ export function ApplyPanel({ job }: { job: SearchJobItem }) {
     return (
       <div className="space-y-3">
         <p className="rounded-lg bg-success-soft px-3 py-2 text-sm text-success-text">บัญชีพร้อมสมัคร · มีเรซูเม่ {loaded.resumes.length} ไฟล์</p>
-      <button type="button" onClick={() => setOpen(true)} className="w-full rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
-        สมัครงานนี้
-      </button>
+        <button type="button" onClick={() => setOpen(true)} className="w-full rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover">
+          เปิดแบบฟอร์มสมัคร
+        </button>
       </div>
     );
   }

@@ -12,6 +12,7 @@ import { Avatar } from '@/components/ui/avatar';
 import { RatingSummary, Stars } from '@/components/ui/rating';
 import { StatusBadge } from '@/components/ui/status-badge';
 import { ApiError, apiRequest } from '@/lib/api';
+import { WORK_MODE_LABEL } from '@/lib/work-mode';
 import { allowanceLabel } from '@/lib/allowance';
 import { externalHref } from '@/lib/external-url';
 
@@ -93,39 +94,47 @@ export function CompanyDetail() {
   const totalPages = reviews ? Math.max(1, Math.ceil(reviews.meta.total / PAGE_SIZE)) : 1;
   return (
     <main className="mx-auto max-w-5xl px-4 pb-10 sm:px-6">
-      <div className="frosted sticky top-12 z-20 -mx-4 flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-2 sm:-mx-6 sm:px-6">
+      <nav aria-label="เมนูรายละเอียดบริษัท" className="frosted sticky top-12 z-20 -mx-4 flex min-w-0 items-center justify-between gap-3 border-b border-border px-4 py-2 sm:-mx-6 sm:px-6">
         <div className="min-w-0">
           <Link href={backHref} className="text-xs font-medium text-primary hover:underline">← บริษัทและรีวิว</Link>
           <p className="truncate text-sm font-semibold">{company.name}</p>
         </div>
-        <Link href={`/jobs?company_id=${company.id}`} className="shrink-0 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover">ดูประกาศงาน</Link>
-      </div>
+        <Link href={`/jobs?company_id=${company.id}`} className="shrink-0 rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary-hover lg:hidden">ดูประกาศงาน</Link>
+        <div className="hidden shrink-0 gap-5 text-sm font-medium text-primary lg:flex">
+          <a href="#company-jobs-title" className="hover:underline">ประกาศที่เปิดรับ</a>
+          <a href="#reviews-title" className="hover:underline">รีวิวจากผู้ฝึกงาน</a>
+        </div>
+      </nav>
 
-      <header className="mt-4 grid grid-cols-1 justify-items-center gap-4 [overflow-wrap:anywhere] bg-surface py-12 text-center">
+      <header className="mt-4 grid grid-cols-1 justify-items-center gap-4 bg-surface py-12 text-center [overflow-wrap:anywhere] lg:mt-0 lg:grid-cols-[auto_minmax(0,1fr)_auto] lg:items-center lg:justify-items-start lg:border-b lg:border-border lg:py-8 lg:text-left">
         <Avatar name={company.name} src={company.logo_url} size="lg" />
         <div className="min-w-0">
-          <h1 className="text-4xl font-semibold sm:text-5xl">{company.name}</h1>
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <h1 className="text-4xl font-semibold sm:text-5xl lg:text-4xl">{company.name}</h1>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-2 lg:justify-start">
             <span className="inline-block rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success-text">Verified by Platform</span>
             {company.university_partner && <span className="inline-block rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success-text">University Partner</span>}
+            {externalHref(company.website) && <a href={externalHref(company.website)} target="_blank" rel="noopener noreferrer" className="hidden text-sm text-primary hover:underline lg:inline">เว็บไซต์บริษัท</a>}
           </div>
-
         </div>
+        <a href="#reviews-title" className="hidden border-l border-border pl-5 lg:block">
+          <RatingSummary average={company.rating_avg} count={company.review_count} />
+          <span className="mt-1 block text-sm font-medium text-primary hover:underline">ไปที่รีวิวจากผู้ฝึกงาน ↓</span>
+        </a>
       </header>
 
-      <div className="flex flex-wrap items-center justify-center gap-4 pb-10 text-sm">
+      <div className="flex flex-wrap items-center justify-center gap-4 pb-10 text-sm lg:hidden">
         <Link href={`/jobs?company_id=${company.id}`} className="rounded-full bg-primary px-5 py-2.5 font-semibold text-white hover:bg-primary-hover">ดูประกาศงานของบริษัท</Link>
         {externalHref(company.website) && <a href={externalHref(company.website)} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">เว็บไซต์บริษัท</a>}
       </div>
 
-      <section aria-label="สรุปคะแนนรีวิว" className="rounded-xl bg-surface-muted p-6">
+      <section aria-label="สรุปคะแนนรีวิว" className="rounded-xl bg-surface-muted p-6 lg:hidden">
         <h2 className="text-xl font-semibold">สรุปคะแนนรีวิว</h2>
         <div className="mt-2"><RatingSummary average={company.rating_avg} count={company.review_count} /></div>
       </section>
 
-      <section aria-labelledby="company-jobs-title" className="mt-10">
+      <section aria-labelledby="company-jobs-title" className="mt-10 lg:mt-7">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="company-jobs-title" className="text-xl font-semibold">ประกาศที่เปิดรับ</h2>
+          <h2 id="company-jobs-title" className="scroll-mt-32 text-xl font-semibold">ประกาศที่เปิดรับ</h2>
           <Link href={`/jobs?company_id=${company.id}`} className="text-sm font-medium text-primary hover:underline">ดูประกาศทั้งหมด ›</Link>
         </div>
         {jobsUnavailable && <p className="mt-3 text-sm text-ink-soft">โหลดประกาศไม่สำเร็จ</p>}
@@ -137,7 +146,7 @@ export function CompanyDetail() {
               <li key={job.id}>
                 <Link href={`/jobs/item?id=${job.id}`} className="block h-full rounded-xl bg-surface-muted p-4 [overflow-wrap:anywhere] hover:text-primary">
                   <p className="font-semibold">{job.job_title}</p>
-                  <p className="mt-1 text-sm text-ink-soft">{allowanceLabel(job.allowance)} · ปิดรับ {dateFormat.format(new Date(job.application_deadline))}</p>
+                  <p className="mt-1 text-sm text-ink-soft">{allowanceLabel(job.allowance)}<span className="hidden lg:inline"> · {WORK_MODE_LABEL[job.work_mode]}</span> · ปิดรับ {dateFormat.format(new Date(job.application_deadline))}</p>
                 </Link>
               </li>
             ))}
@@ -145,8 +154,8 @@ export function CompanyDetail() {
         )}
       </section>
 
-      <section aria-labelledby="reviews-title" className="mt-10">
-        <h2 id="reviews-title" className="text-xl font-semibold">รีวิวจากผู้ฝึกงาน</h2>
+      <section aria-labelledby="reviews-title" className="mt-10 lg:mt-7">
+        <h2 id="reviews-title" className="scroll-mt-32 text-xl font-semibold">รีวิวจากผู้ฝึกงาน</h2>
         <p className="mt-1 text-sm text-ink-soft">รีวิวทุกรายการแสดงผลการฝึกของผู้เขียนคู่กันเสมอ</p>
 
         {reviewError && <div className="mt-4"><Notice tone="error">{reviewError}</Notice></div>}
@@ -155,7 +164,7 @@ export function CompanyDetail() {
           <div className="mt-4 rounded-xl border border-dashed border-border p-8 text-center text-sm text-ink-soft">ยังไม่มีรีวิวที่เผยแพร่</div>
         )}
         {reviews && reviews.data.length > 0 && (
-          <ul className="mt-4 space-y-4">
+          <ul className="mt-4 space-y-4 [overflow-wrap:anywhere]">
             {reviews.data.map((review) => {
               const outcome = OUTCOME[review.outcome_label];
               return (

@@ -1,7 +1,7 @@
 'use client';
 
 import { BadgeCheck, CircleX, Search } from 'lucide-react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import { useEffect, useId, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { PublicCertificateResponse } from '@internpath/contracts';
@@ -23,17 +23,19 @@ type Lookup =
  */
 export function CertificateVerify() {
   const params = useSearchParams();
-  const router = useRouter();
-  const inputId = useId();
   const code = (params.get('code') ?? '').trim();
+  return <VerificationForm key={code} code={code} />;
+}
+
+function VerificationForm({ code }: { code: string }) {
+  const inputId = useId();
   const [input, setInput] = useState(code);
-  const [lookup, setLookup] = useState<Lookup>({ state: 'idle' });
+  const [attempt, setAttempt] = useState(0);
+  const [lookup, setLookup] = useState<Lookup>({ state: code ? 'loading' : 'idle' });
 
   useEffect(() => {
-    setInput(code);
-    if (!code) { setLookup({ state: 'idle' }); return; }
+    if (!code) return;
     let active = true;
-    setLookup({ state: 'loading' });
     apiRequest<PublicCertificateResponse>(`/public/certificates/${encodeURIComponent(code)}`)
       .then((certificate) => { if (active) setLookup({ state: 'found', certificate }); })
       .catch((cause) => {
@@ -43,27 +45,38 @@ export function CertificateVerify() {
         else setLookup({ state: 'error', text: cause instanceof ApiError ? cause.message : 'ตรวจสอบไม่สำเร็จ กรุณาลองใหม่' });
       });
     return () => { active = false; };
-  }, [code]);
+  }, [code, attempt]);
+
+  function retry() {
+    setLookup({ state: 'loading' });
+    setAttempt((value) => value + 1);
+  }
 
   function submit(event: FormEvent) {
     event.preventDefault();
     const value = input.trim();
     if (!value) return;
-    router.push(`/public/certificates?code=${encodeURIComponent(value)}`);
+    if (value === code) {
+      if (lookup.state !== 'loading') retry();
+      return;
+    }
+    setLookup({ state: 'loading' });
+    window.history.pushState(null, '', `/public/certificates?code=${encodeURIComponent(value)}`);
   }
 
   return (
-    <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6">
+    <main className="mx-auto max-w-2xl px-4 py-12 sm:px-6 lg:max-w-4xl">
       <h1 className="text-3xl font-semibold">ตรวจสอบใบรับรองการฝึกงาน</h1>
       <p className="mt-2 text-sm text-ink-soft">กรอกรหัสใบรับรอง (Certificate ID) ที่พิมพ์อยู่บนใบรับรอง หรือสแกน QR Code บนใบรับรอง</p>
 
-      <form onSubmit={submit} className="mt-6 flex flex-col gap-3 sm:flex-row">
-        <div className="flex-1">
-          <label htmlFor={inputId} className="sr-only">รหัสใบรับรอง</label>
-          <input id={inputId} value={input} onChange={(event) => setInput(event.target.value)} placeholder="รหัสใบรับรอง" autoComplete="off" spellCheck={false}
-            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft" />
+      <form onSubmit={submit} className="mt-6 flex flex-col gap-3 sm:flex-row lg:items-start lg:rounded-xl lg:border lg:border-border lg:bg-surface lg:p-5">
+        <div className="min-w-0 flex-1">
+          <label htmlFor={inputId} className="sr-only lg:not-sr-only lg:mb-2 lg:block lg:text-sm lg:font-semibold">รหัสใบรับรอง</label>
+          <input id={inputId} value={input} onChange={(event) => setInput(event.target.value)} placeholder="รหัสใบรับรอง" aria-describedby={`${inputId}-example`} autoComplete="off" spellCheck={false}
+            className="w-full rounded-lg border border-border bg-surface px-3 py-2.5 text-base lg:font-mono outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft" />
+          <p id={`${inputId}-example`} className="mt-2 hidden text-xs text-ink-soft lg:block">ตัวอย่างรหัส <span className="font-mono">IP-2026-7F3K92QD</span></p>
         </div>
-        <button type="submit" className="inline-flex items-center justify-center gap-2 rounded-full bg-primary px-6 py-2.5 font-semibold text-white hover:bg-primary-hover active:scale-[0.97]">
+        <button type="submit" disabled={!input.trim() || (input.trim() === code && lookup.state === 'loading')} className="inline-flex items-center justify-center gap-2 rounded-full bg-primary lg:mt-7 disabled:opacity-50 px-6 py-2.5 font-semibold text-white hover:bg-primary-hover active:scale-[0.97]">
           <Search aria-hidden="true" className="h-4 w-4" />ตรวจสอบ
         </button>
       </form>
@@ -76,7 +89,10 @@ export function CertificateVerify() {
             <p className="mt-3 text-sm text-ink-soft">ไม่พบใบรับรองที่ตรงกับรหัสนี้ ตรวจรหัสอีกครั้ง ถ้ายังไม่พบ ใบรับรองนี้อาจไม่ได้ออกโดย InternPath</p>
           </section>
         )}
-        {lookup.state === 'error' && <p role="alert" className="rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger-text">{lookup.text}</p>}
+        {lookup.state === 'error' && <section className="rounded-xl border border-border p-5">
+          <p role="alert" className="text-sm text-danger-text">{lookup.text}</p>
+          <button type="button" onClick={retry} className="mt-3 text-sm font-semibold text-primary hover:underline">ลองตรวจรหัสเดิมอีกครั้ง</button>
+        </section>}
         {lookup.state === 'found' && <CertificateCard code={code} certificate={lookup.certificate} />}
       </div>
     </main>
@@ -86,13 +102,15 @@ export function CertificateVerify() {
 function CertificateCard({ code, certificate }: { code: string; certificate: PublicCertificateResponse }) {
   const valid = certificate.status === 'VALID';
   return (
-    <section aria-labelledby="certificate-result" className="rounded-xl bg-surface-muted p-6">
+    <section aria-labelledby="certificate-result" className="overflow-hidden rounded-xl bg-surface-muted p-6 lg:border lg:border-border lg:bg-surface lg:p-0">
       <h2 id="certificate-result" className="sr-only">ผลการตรวจสอบ</h2>
-      {valid
-        ? <StatusBadge tone="success" icon={BadgeCheck}>ใบรับรองถูกต้อง</StatusBadge>
-        : <StatusBadge tone="danger" icon={CircleX}>ใบรับรองถูกเพิกถอนแล้ว</StatusBadge>}
-      {!valid && <p className="mt-3 text-sm text-danger-text">ใบรับรองนี้ถูกเพิกถอนและใช้อ้างอิงไม่ได้แล้ว</p>}
-      <dl className="mt-5 grid grid-cols-1 gap-4 [overflow-wrap:anywhere] sm:grid-cols-2">
+      <div className={`lg:px-6 lg:py-4 ${valid ? 'lg:bg-success-soft' : 'lg:bg-danger-soft'}`}>
+        {valid
+          ? <StatusBadge tone="success" icon={BadgeCheck}>ใบรับรองถูกต้อง</StatusBadge>
+          : <StatusBadge tone="danger" icon={CircleX}>ใบรับรองถูกเพิกถอนแล้ว</StatusBadge>}
+      </div>
+      {!valid && <p className="mt-3 text-sm text-danger-text lg:px-6">ใบรับรองนี้ถูกเพิกถอนและใช้อ้างอิงไม่ได้แล้ว</p>}
+      <dl className="mt-5 grid grid-cols-1 gap-4 [overflow-wrap:anywhere] sm:grid-cols-2 lg:mt-0 lg:p-6">
         <div className="sm:col-span-2"><dt className="text-xs text-ink-soft">ผู้ถือใบรับรอง</dt><dd className="mt-0.5 text-xl font-semibold">{certificate.holder_name}</dd></div>
         <div><dt className="text-xs text-ink-soft">บริษัท</dt><dd className="mt-0.5 font-medium">{certificate.company_name}</dd></div>
         <div><dt className="text-xs text-ink-soft">ตำแหน่ง</dt><dd className="mt-0.5 font-medium">{certificate.job_title}</dd></div>

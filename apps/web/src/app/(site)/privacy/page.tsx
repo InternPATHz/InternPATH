@@ -29,16 +29,19 @@ function List({ items }: { items: ReactNode[] }) {
 const summaries = [
   {
     icon: FileText,
+    link: { href: '#resume-access', label: 'ใครเข้าถึงเรซูเม่' },
     title: 'เรซูเม่ไปถึงบริษัทเมื่อคุณยินยอม',
     text: 'คุณต้องให้ความยินยอมก่อนที่เรซูเม่ของคุณจะถูกส่งให้บริษัทแต่ละแห่ง',
   },
   {
     icon: ShieldCheck,
+    link: { href: '#report-access', label: 'ใครเห็นรายงานปัญหา' },
     title: 'บริษัทมองไม่เห็นรายงานปัญหา',
     text: 'รายงานปัญหาระหว่างฝึกงานเห็นได้โดยคุณเอง อาจารย์ที่ปรึกษา และผู้ดูแลระบบ',
   },
   {
     icon: Ban,
+    link: { href: '#browser', label: 'ข้อมูลในเบราว์เซอร์' },
     title: 'เราไม่ขายข้อมูลของคุณ',
     text: 'ปัจจุบันเราไม่ใช้คุกกี้หรือเครื่องมือติดตามเพื่อการโฆษณาหรือการวิเคราะห์พฤติกรรม',
   },
@@ -46,7 +49,7 @@ const summaries = [
     icon: Trash2,
     title: 'ขอลบบัญชีได้',
     text: 'เมื่อคุณขอลบบัญชี ทุกบริการของระบบจะลบหรือทำให้ข้อมูลของคุณไม่ระบุตัวตน',
-    link: { href: '#retention', label: 'อ่านข้อ 6' },
+    link: { href: '#retention', label: 'เงื่อนไขการลบบัญชี' },
   },
 ];
 
@@ -70,11 +73,13 @@ export default function PrivacyPage() {
           <h2 id="privacy-summary" className="text-center text-2xl font-semibold sm:text-4xl">สรุปสั้น ๆ</h2>
           <ul className="mt-8 grid gap-4 min-[561px]:grid-cols-2 min-[1069px]:grid-cols-4">
             {summaries.map(({ icon: Icon, title, text, link }) => (
-              <li key={title} className="rounded-xl bg-tile-2 p-5 sm:p-6">
+              <li key={title} className="rounded-xl bg-tile-2 p-5 sm:p-6 lg:flex lg:flex-col lg:items-start">
                 <Icon aria-hidden="true" className="h-8 w-8" strokeWidth={1.4} />
                 <h3 className="mt-4 text-lg font-semibold">{title}</h3>
                 <p className="mt-2 text-sm leading-thai text-white/80">{text}</p>
-                {link && <a href={link.href} className="mt-2 inline-block text-sm text-primary-on-dark hover:underline">{link.label}</a>}
+                <a href={link.href} className={`mt-2 text-sm text-primary-on-dark hover:underline lg:mt-auto lg:pt-4 ${link.href === '#retention' ? 'inline-block' : 'hidden lg:inline-block'}`}>
+                  {link.label} <span aria-hidden="true">↓</span>
+                </a>
               </li>
             ))}
           </ul>
@@ -112,7 +117,7 @@ export default function PrivacyPage() {
                   <tr><th scope="col" className="px-4 py-3">ข้อมูล</th><th scope="col" className="px-4 py-3">ผู้ที่มองเห็น</th></tr>
                 </thead>
                 <tbody>
-                  <tr className="border-t border-border">
+                  <tr id="resume-access" className="scroll-mt-24 border-t border-border">
                     <th scope="row" className="w-2/5 px-4 py-3 align-top font-semibold">เรซูเม่และโปรไฟล์:</th>
                     <td className="px-4 py-3">คุณเอง HR ของบริษัทที่คุณส่งใบสมัครไป (หลังจากคุณให้ความยินยอม) และอาจารย์ที่ปรึกษาที่ผูกแล้ว ผู้ดูแลระบบดูได้เฉพาะกรณีที่ถูกยกระดับ</td>
                   </tr>
@@ -120,7 +125,7 @@ export default function PrivacyPage() {
                     <th scope="row" className="w-2/5 px-4 py-3 align-top font-semibold">ผลประเมินการฝึกงาน:</th>
                     <td className="px-4 py-3">คุณเอง HR ของบริษัทเจ้าของ และอาจารย์ที่ปรึกษา (ผู้ดูแลระบบดูได้เฉพาะกรณีที่ถูกยกระดับ)</td>
                   </tr>
-                  <tr className="border-t border-border">
+                  <tr id="report-access" className="scroll-mt-24 border-t border-border">
                     <th scope="row" className="w-2/5 px-4 py-3 align-top font-semibold">รายงานปัญหาระหว่างฝึกงาน:</th>
                     <td className="px-4 py-3">คุณเอง อาจารย์ที่ปรึกษา และผู้ดูแลระบบ — <strong className="text-ink">บริษัทมองไม่เห็น</strong></td>
                   </tr>

@@ -10,17 +10,16 @@ const shortcuts = [
 /** Tile แรกของหน้าแรก (DESIGN-apple: product-tile-light) — หัวข้อใหญ่ชิด, บรรทัดรอง, ช่องค้นหาแคปซูล, ปุ่มแคปซูลสีน้ำเงิน */
 export function Hero({ children }: { children?: ReactNode }) {
   return (
-    <section className="bg-surface px-4 pb-16 pt-14 text-center sm:pb-20 sm:pt-20">
-      <p className="text-lg font-semibold">InternPath</p>
-      <h1 className="mx-auto mt-3 max-w-3xl text-4xl font-semibold leading-[1.2] sm:text-[56px] sm:leading-[1.12]">
+    <section className="bg-surface px-4 pb-16 pt-14 text-center sm:pb-20 sm:pt-20 lg:px-6 lg:pb-7 lg:pt-9">
+      <p className="text-lg font-semibold lg:hidden">InternPath</p>
+      <h1 className="mx-auto mt-3 max-w-3xl text-4xl font-semibold leading-[1.2] sm:text-[56px] sm:leading-[1.12] lg:mt-0 lg:text-[46px] lg:leading-[1.18] lg:tracking-display">
         โอกาสฝึกงานที่ใช่<br />เริ่มจากข้อมูลที่ชัดเจน
       </h1>
-      <p className="mx-auto mt-4 max-w-2xl text-lg text-ink-soft sm:text-[21px] sm:leading-[1.45]">
-        <span className="lg:hidden">ดูประกาศที่ผ่านการตรวจสอบ ข้อมูลบริษัท</span>
-        <span className="hidden lg:inline">ค้นหางานฝึกงานจากบริษัทที่ผ่านการรับรอง ดูข้อมูลบริษัท</span>
-        {' '}เงื่อนไขงาน และรีวิวจากผู้ฝึกงานจริงก่อนตัดสินใจสมัคร
+      <p className="mx-auto mt-4 max-w-2xl text-lg text-ink-soft sm:text-[21px] sm:leading-[1.45] lg:mt-3 lg:text-base">
+        <span className="lg:hidden">ดูประกาศที่ผ่านการตรวจสอบ ข้อมูลบริษัท เงื่อนไขงาน และรีวิวจากผู้ฝึกงานจริงก่อนตัดสินใจสมัคร</span>
+        <span className="hidden lg:inline">ค้นหาประกาศจากบริษัทที่ผ่านการรับรอง ดูเงื่อนไขงานและรีวิวจากผู้ฝึกงานจริง</span>
       </p>
-      <form action="/jobs" method="get" role="search" className="mx-auto mt-8 flex max-w-2xl flex-col gap-3 sm:flex-row">
+      <form action="/jobs" method="get" role="search" className="mx-auto mt-8 flex max-w-2xl flex-col gap-3 sm:flex-row lg:mt-5 lg:max-w-[720px]">
         <label className="relative flex-1">
           <span className="sr-only">ค้นหาตำแหน่งหรือชื่อบริษัท</span>
           <Search aria-hidden="true" size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-ink-soft" />
@@ -35,9 +34,9 @@ export function Hero({ children }: { children?: ReactNode }) {
           ค้นหางาน
         </button>
       </form>
-      <ul className="mx-auto mt-4 flex max-w-2xl flex-wrap justify-center gap-2" aria-label="ค้นหายอดนิยม">
+      <ul className="mx-auto mt-4 flex max-w-2xl flex-wrap justify-center gap-2 lg:mt-3" aria-label="ค้นหายอดนิยม">
         {shortcuts.map(([label, query]) => (
-          <li key={label}><Link href={`/jobs?${query}`} className="inline-block rounded-full border border-border px-4 py-2 text-sm hover:border-primary hover:text-primary">{label}</Link></li>
+          <li key={label}><Link href={`/jobs?${query}`} className="inline-block rounded-full border border-border px-4 py-2 text-sm hover:border-primary hover:text-primary lg:px-3 lg:py-1">{label}</Link></li>
         ))}
       </ul>
       {children}

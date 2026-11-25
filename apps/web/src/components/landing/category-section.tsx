@@ -29,24 +29,28 @@ export function CategorySection() {
   }, []);
 
   return (
-    <section aria-labelledby="categories-title" className="bg-tile px-4 py-16 text-white sm:py-20">
+    <section aria-labelledby="categories-title" className="bg-tile px-4 py-16 text-white sm:py-20 lg:px-6 lg:py-6">
       <div className="mx-auto max-w-6xl text-center">
-        <h2 id="categories-title" className="text-3xl font-semibold sm:text-[40px] sm:leading-[1.1]">เลือกสายงานที่ใช่สำหรับคุณ</h2>
-        <p className="mt-3 text-lg text-white/75">สามสายงานหลักบนแพลตฟอร์ม</p>
-        <ul className="mt-10 grid gap-5 text-left sm:grid-cols-3">
+        <h2 id="categories-title" className="text-3xl font-semibold sm:text-[40px] sm:leading-[1.1] lg:text-xl">เลือกสายงานที่ใช่สำหรับคุณ</h2>
+        <p className="mt-3 text-lg text-white/75 lg:hidden">สามสายงานหลักบนแพลตฟอร์ม</p>
+        <ul className="mt-10 grid gap-5 text-left sm:grid-cols-3 lg:mx-auto lg:mt-4 lg:max-w-[1104px] lg:gap-4">
           {CATEGORIES.map((category) => (
             <li key={category.id}>
               <Link
                 href={`/jobs?category=${category.id}`}
-                className="group flex h-full flex-col rounded-xl border border-white/10 bg-white/5 p-6 hover:border-primary-on-dark"
+                className="group flex h-full flex-col rounded-xl border border-white/10 bg-white/5 p-6 hover:border-primary-on-dark lg:flex-row lg:items-baseline lg:justify-between lg:gap-2 lg:rounded-lg lg:px-4 lg:py-3"
               >
-                <svg aria-hidden viewBox="0 0 24 24" className="h-10 w-10 text-white" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <svg aria-hidden viewBox="0 0 24 24" className="h-10 w-10 text-white lg:hidden" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                   {icons[category.id]}
                 </svg>
-                <span className="mt-5 text-xl font-semibold">{category.label}</span>
-                <span className="mt-1 text-sm text-white/75">{category.description}</span>
-                {counts[category.id] !== undefined && <span className="mt-2 text-sm text-white/75">{counts[category.id]} ประกาศ</span>}
-                <span className="mt-4 text-sm text-primary-on-dark group-hover:underline">ดูงานในสายนี้ ›</span>
+                <span className="mt-5 text-xl font-semibold lg:mt-0 lg:text-sm">{category.label}</span>
+                <span className="mt-1 text-sm text-white/75 lg:hidden">{category.description}</span>
+                {counts[category.id] !== undefined && (
+                  <span className="mt-2 text-sm text-white/75 lg:mt-0 lg:whitespace-nowrap lg:text-xs">
+                    {counts[category.id]} ประกาศ<span className="ml-1 hidden lg:inline" aria-hidden="true">›</span>
+                  </span>
+                )}
+                <span className="mt-4 text-sm text-primary-on-dark group-hover:underline lg:hidden">ดูงานในสายนี้ ›</span>
               </Link>
             </li>
           ))}
