@@ -8,6 +8,7 @@ import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { ApplicationProgress, ApplicationStatusBadge, formatDate, isClosedApplication } from '@/components/student/application-ui';
 import { ApiError } from '@/lib/api';
+import { allPages } from '@/lib/list';
 import { APPLICATION_STATUS } from '@/lib/status-map';
 
 const PAGE_SIZE = 20;
@@ -18,25 +19,28 @@ export function ApplicationList() {
   const searchParams = useSearchParams();
   const { request } = useAuth();
   const statusParam = searchParams.get('status') ?? '';
-  const status = statusParam in APPLICATION_STATUS ? (statusParam as ApplicationStatus) : undefined;
+  const status = Object.hasOwn(APPLICATION_STATUS, statusParam) ? (statusParam as ApplicationStatus) : undefined;
   const pageParam = Number(searchParams.get('page'));
   const page = Number.isInteger(pageParam) && pageParam >= 1 ? pageParam : 1;
 
-  const [result, setResult] = useState<Paginated<StudentApplicationItem> | null>(null);
+  const group = searchParams.get('group') ?? '';
+  const [all, setAll] = useState<StudentApplicationItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setResult(null);
+    setAll(null);
     setError(null);
-    const query = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
-    if (status) query.set('status', status);
-    request<Paginated<StudentApplicationItem>>(`/me/applications?${query}`).then(
-      (data) => { if (!cancelled) setResult(data); },
+    allPages<StudentApplicationItem>((n) => {
+      const query = new URLSearchParams({ page: String(n), page_size: '100' });
+      if (status) query.set('status', status);
+      return request<Paginated<StudentApplicationItem>>(`/me/applications?${query}`);
+    }).then(
+      (data) => { if (!cancelled) setAll(data); },
       (cause) => { if (!cancelled) setError(cause instanceof ApiError ? cause.message : 'โหลดใบสมัครไม่สำเร็จ กรุณาลองใหม่'); },
     );
     return () => { cancelled = true; };
-  }, [request, status, page]);
+  }, [request, status]);
 
   function update(changes: Record<string, string | undefined>, keepPage = false) {
     const next = new URLSearchParams(searchParams.toString());
@@ -46,6 +50,9 @@ export function ApplicationList() {
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   }
 
+  const matched = all?.filter((app) => group === 'closed' ? isClosedApplication(app.status) : group === 'active' ? !isClosedApplication(app.status) : true);
+  const rank = (app: StudentApplicationItem) => app.status === 'HR_ACCEPTED' && !app.frozen ? 0 : isClosedApplication(app.status) ? 2 : 1;
+  const result = matched ? { data: matched.sort((a,b) => rank(a) - rank(b)).slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE), meta: { total: matched.length } } : null;
   const active = result?.data.filter((app) => !isClosedApplication(app.status)) ?? [];
   const closed = result?.data.filter((app) => isClosedApplication(app.status)) ?? [];
   const waitingForStudent = active.filter((app) => app.status === 'HR_ACCEPTED' && !app.frozen);
@@ -57,7 +64,9 @@ export function ApplicationList() {
       <h1 className="text-3xl font-semibold">ใบสมัครของฉัน</h1>
       <p className="mt-2 text-sm text-ink-soft">ติดตามสถานะใบสมัครและตอบรับข้อเสนอจากบริษัท</p>
 
-      <div className="mt-6">
+      <div className="mt-6 flex flex-wrap items-end gap-3">
+        <div className="flex flex-wrap gap-2" aria-label="กลุ่มใบสมัคร">{[['','ทั้งหมด'],['active','กำลังดำเนินการ'],['closed','จบแล้ว']].map(([value,label]) =>
+          <button key={value} aria-pressed={group === value} onClick={() => update({ group: value || undefined, status: undefined })} className="rounded-full border border-border px-4 py-2 text-sm aria-pressed:border-primary aria-pressed:text-primary">{label}</button>)}</div>
         <FilterSelect
           label="สถานะ" value={status ?? ''} onChange={(value) => update({ status: value || undefined })}
           options={[['', 'ทุกสถานะ'], ...Object.entries(APPLICATION_STATUS).map(([value, view]): [string, string] => [value, view.label])]}
@@ -96,9 +105,9 @@ export function ApplicationList() {
                       {compact ? 'อัปเดตล่าสุด' : 'สมัครเมื่อ'} {formatDate(compact ? app.status_changed_at : app.created_at)}
                       {app.frozen && ' · ประกาศถูกระงับชั่วคราว'}
                     </p>
-                    <Link href={`/student/applications/item?id=${app.id}`}
+                    <Link href={`/student/applications/item?${new URLSearchParams({ ...Object.fromEntries(searchParams), id: app.id })}`}
                       className={`text-sm font-semibold ${highlighted ? 'rounded-full bg-primary px-4 py-2 text-white hover:bg-primary-hover' : 'text-primary hover:underline'}`}>
-                      {highlighted ? 'พิจารณาข้อเสนอ' : 'ดูรายละเอียด ›'}
+                      {highlighted ? 'ดูข้อเสนอ' : 'ดูรายละเอียด ›'}
                     </Link>
                   </div>
                 </li>

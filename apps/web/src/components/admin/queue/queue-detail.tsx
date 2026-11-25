@@ -38,6 +38,7 @@ export function QueueDetail() {
   const { request } = useAuth();
   const [item, setItem] = useState<QueueItemDetail | null>(null);
   const [error, setError] = useState('');
+  const [choice, setChoice] = useState('');
   const [reason, setReason] = useState('');
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
@@ -81,6 +82,7 @@ export function QueueDetail() {
 
   const open = item.status !== 'RESOLVED';
   const actions = ACTIONS_BY_TYPE[item.type] ?? [];
+  const chosen = actions.find((option) => option.action === choice);
   // เรียงตามลำดับในฟอร์มประกาศ (ฟิลด์ที่ไม่รู้จักไปท้ายสุด) ไม่ใช่ลำดับของฐานข้อมูล
   const fieldOrder = Object.keys(FIELD_LABEL);
   const rank = (field: string) => { const index = fieldOrder.indexOf(field); return index === -1 ? fieldOrder.length : index; };
@@ -166,19 +168,18 @@ export function QueueDetail() {
         {open && actions.length > 0 && (
           <aside className="min-w-0 self-start lg:sticky lg:top-16">
           <Section title="ตัดสินรายการนี้">
+            <fieldset className="my-3 space-y-2"><legend className="mb-2 font-medium">เลือกผลการตัดสิน</legend>
+              {actions.map((option) => <label key={option.action} className="flex gap-2"><input type="radio" name="decision" checked={choice === option.action} onChange={() => {setChoice(option.action); setFormError('');}} />{option.label}</label>)}
+            </fieldset>
             <label className="block text-sm">
-              <span className="font-medium">เหตุผล {actions.some((a) => a.reasonRequired) && <span className="text-xs text-ink-soft">(จำเป็นเมื่อปฏิเสธ/ลบ)</span>}</span>
+              <span className="font-medium">เหตุผล {chosen?.reasonRequired && <span className="text-xs text-ink-soft">(จำเป็นเมื่อปฏิเสธ/ลบ)</span>}</span>
               <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={3} maxLength={REASON_MAX}
                 className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none focus:border-primary" />
             </label>
             {formError && <p role="alert" className="mt-3 rounded-lg bg-danger-soft px-4 py-3 text-sm text-danger-text">{formError}</p>}
             <div className="mt-4 flex flex-wrap gap-3">
-              {actions.map((spec) => (
-                <button key={spec.action} type="button" disabled={busy} onClick={() => void decide(spec.action, spec.reasonRequired)}
-                  className={`rounded-full px-4 py-2.5 text-sm font-semibold disabled:opacity-50 ${spec.tone === 'primary' ? 'bg-primary text-white hover:bg-primary-hover' : spec.tone === 'danger' ? 'bg-danger text-white hover:opacity-90' : 'border border-border text-ink hover:bg-surface-muted'}`}>
-                  {spec.label}
-                </button>
-              ))}
+              <button type="button" disabled={busy || !chosen || (chosen.reasonRequired && !reason.trim())} onClick={() => chosen && void decide(chosen.action, chosen.reasonRequired)}
+                className="rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">ยืนยัน{chosen?.label ?? 'การตัดสิน'}</button>
             </div>
           </Section>
           </aside>

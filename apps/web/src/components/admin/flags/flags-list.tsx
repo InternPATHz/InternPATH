@@ -1,14 +1,16 @@
 'use client';
 
+import Link from 'next/link';
+
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import type { CompanyFlagItem, DirectoryCompanyListItem, Paginated, SetCompanyFlagRequest, SetCompanyFlagResponse } from '@internpath/contracts';
+import type { CompanyFlagItem, Paginated, SetCompanyFlagRequest, SetCompanyFlagResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { Badge, formatDateTime } from '@/components/admin/queue/queue-ui';
 import { ApiError } from '@/lib/api';
-import { listCompanies } from '@/lib/directory';
+import { CompanyPicker } from '@/components/admin/identity/company-picker';
 
 const PAGE_SIZE = 20;
 const REASON_MAX = 500;
@@ -20,7 +22,7 @@ function readFilters(params: URLSearchParams): Filters {
   const page = Number(params.get('page'));
   const active = params.get('active');
   return {
-    active: active === 'true' || active === 'false' ? active : '',
+    active: active === 'all' ? 'all' : active === 'false' ? 'false' : 'true',
     q: params.get('q') ?? '',
     page: Number.isInteger(page) && page > 0 ? page : 1,
   };
@@ -65,10 +67,6 @@ export function FlagsList() {
   const [formError, setFormError] = useState('');
 
   const [newCompanyId, setNewCompanyId] = useState('');
-  const [companyName, setCompanyName] = useState('');
-  const [companySearch, setCompanySearch] = useState('');
-  const [companies, setCompanies] = useState<DirectoryCompanyListItem[] | null>(null);
-  const [companyError, setCompanyError] = useState('');
   const [newReason, setNewReason] = useState('');
   const [newError, setNewError] = useState('');
 
@@ -79,25 +77,14 @@ export function FlagsList() {
     setLoading(true);
     setError('');
     const apiQuery = new URLSearchParams(queryString);
+    if (filters.active === 'all') apiQuery.delete('active');
     apiQuery.set('page_size', String(PAGE_SIZE));
     request<Paginated<CompanyFlagItem>>(`/admin/flags/companies?${apiQuery.toString()}`)
       .then((data) => { if (active) setResult(data); })
       .catch((cause) => { if (active) { setResult(null); setError(failure(cause)); } })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [queryString, reloadKey, request]);
-
-  useEffect(() => {
-    if (!companySearch) return;
-    let active = true;
-    setCompanies(null);
-    setCompanyError('');
-    void listCompanies({ q: companySearch }, 1, 10).then(
-      ({ data }) => { if (active) setCompanies(data); },
-      () => { if (active) setCompanyError('ค้นหาบริษัทไม่สำเร็จ'); },
-    );
-    return () => { active = false; };
-  }, [companySearch]);
+  }, [queryString, filters.active, reloadKey, request]);
 
   const update = useCallback((patch: Partial<Filters>) => {
     const query = toQuery({ ...filters, page: 1, ...patch });
@@ -142,9 +129,6 @@ export function FlagsList() {
     try {
       await setFlag(id, true, newReason);
       setNewCompanyId('');
-      setCompanyName('');
-      setCompanySearch('');
-      setCompanies(null);
       setNewReason('');
     } catch (cause) { setNewError(cause instanceof Error ? cause.message : 'ดำเนินการไม่สำเร็จ'); }
     finally { setBusy(false); }
@@ -155,44 +139,16 @@ export function FlagsList() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold">ธงบริษัท (UNDER_REVIEW)</h1>
+      <h1 className="text-2xl font-semibold">จัดการธงบริษัท</h1>
       <p className="mt-1 text-sm text-ink-soft">
         บริษัทที่ติดธงจะมีประกาศใหม่เข้าคิวตรวจโดยอัตโนมัติ ธงตั้งจากระบบ (ประกาศถูกระงับตามเกณฑ์) หรือตั้งด้วยมือที่นี่ ต้องระบุเหตุผลทั้งตอนตั้งและตอนเคลียร์
       </p>
 
+      <details className="mt-4"><summary className="cursor-pointer font-semibold text-primary">ตั้งธงบริษัท</summary>
       <form onSubmit={(event) => void submitNew(event)} className="mt-5 rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-semibold">ตั้งธงให้บริษัท</h2>
+        <p className="text-sm text-ink-soft">ประกาศใหม่ของบริษัทที่ติดธงจะเข้าคิวตรวจ</p>
         <div className="mt-3 flex flex-wrap items-end gap-3">
-          <div className="min-w-0 flex-1 basis-64">
-            <label htmlFor="company-lookup" className="mb-1 block text-xs font-medium text-ink-soft">ค้นชื่อบริษัทที่ผ่านการรับรอง</label>
-            <div className="flex gap-2">
-              <input id="company-lookup" value={companyName} onChange={(event) => {
-                setCompanyName(event.target.value); setCompanySearch(''); setCompanies(null); setCompanyError(''); setNewCompanyId('');
-              }} className="min-w-0 flex-1 rounded-full border border-border px-3 py-2 text-sm" />
-              <button type="button" disabled={!companyName.trim()} onClick={() => setCompanySearch(companyName.trim())}
-                className="rounded-full border border-border px-4 text-sm disabled:opacity-50">ค้นหา</button>
-            </div>
-            {companyError && <p role="alert" className="mt-2 text-sm text-danger-text">{companyError}</p>}
-            {companySearch && !companies && !companyError && <p role="status" className="mt-2 text-sm text-ink-soft">กำลังค้นหา…</p>}
-            {companies?.length === 0 && <p className="mt-2 text-sm text-ink-soft">ไม่พบบริษัทที่ตรงกับชื่อ</p>}
-            {!!companies?.length && (
-              <ul aria-label="บริษัทที่พบ" className="mt-2 divide-y divide-border rounded-lg border border-border">
-                {companies.map((company) => (
-                  <li key={company.id}>
-                    <button type="button" aria-pressed={company.id === newCompanyId} onClick={() => setNewCompanyId(company.id)}
-                      className={`w-full px-3 py-2 text-left text-sm ${company.id === newCompanyId ? 'bg-primary-soft text-primary' : ''}`}>
-                      {company.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <details className="mt-2 text-sm">
-              <summary className="cursor-pointer text-primary">ใช้รหัสบริษัท</summary>
-              <input aria-label="รหัสบริษัท (UUID)" value={newCompanyId} onChange={(event) => setNewCompanyId(event.target.value)}
-                spellCheck={false} className="mt-2 w-full rounded-lg border border-border px-3 py-2 font-mono text-xs" />
-            </details>
-          </div>
+          <CompanyPicker value={newCompanyId} onChange={setNewCompanyId} />
           <label className="min-w-0 flex-[2] basis-64 text-sm">
             <span className="mb-1 block text-xs font-medium text-ink-soft">เหตุผล</span>
             <input value={newReason} onChange={(event) => setNewReason(event.target.value)} maxLength={REASON_MAX}
@@ -201,11 +157,11 @@ export function FlagsList() {
           <button type="submit" disabled={busy} className="rounded-full bg-danger px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">ตั้งธง</button>
         </div>
         {newError && <div className="mt-3"><Notice tone="error">{newError}</Notice></div>}
-      </form>
+      </form></details>
 
       <div className="mt-5 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
         <div role="group" aria-label="สถานะธง" className="flex flex-wrap gap-2">
-          {([['', 'ทั้งหมด'], ['true', 'ติดธงอยู่'], ['false', 'เคลียร์แล้ว']] as const).map(([active, label]) => (
+          {([['all', 'เคยติดธงทั้งหมด'], ['true', 'ติดธงอยู่'], ['false', 'เคลียร์แล้ว']] as const).map(([active, label]) => (
             <button key={label} type="button" aria-pressed={filters.active === active} onClick={() => update({ active })}
               className={`rounded-full border px-3 py-2 text-sm ${filters.active === active ? 'border-primary bg-primary-soft text-primary' : 'border-border'}`}>{label}</button>
           ))}
@@ -245,12 +201,13 @@ export function FlagsList() {
                 <tr className="border-t border-border align-top">
                   <td className="px-4 py-3">
                     <p className="font-medium">{item.company_name ?? 'ไม่ทราบชื่อ'}</p>
-                    <p className="font-mono text-xs text-ink-soft">{item.company_id}</p>
+                    <Link href={`/admin/company-stats?company_id=${encodeURIComponent(item.company_id)}`} className="text-xs font-medium text-primary hover:underline">ดูสถิติบริษัท</Link>
+                    <details className="text-xs text-ink-soft"><summary className="cursor-pointer">รหัสอ้างอิงบริษัท</summary>{item.company_id}</details>
                   </td>
                   <td className="px-4 py-3">
                     <Badge className={item.active ? 'bg-danger-soft text-danger-text' : 'bg-surface-muted text-ink-soft'}>{item.active ? 'ติดธงอยู่' : 'เคลียร์แล้ว'}</Badge>
                     {item.set_by && <p className="mt-1 text-xs text-ink-soft">โดย{SOURCE_LABEL[item.set_by]}</p>}
-                    {item.trigger_count !== null && <p className="text-xs text-ink-soft">ประกาศถูกระงับ {item.trigger_count} ครั้ง</p>}
+                    {item.trigger_count !== null && <p className="text-xs text-ink-soft">เหตุการณ์สะสม {item.trigger_count} ครั้ง</p>}
                   </td>
                   <td className="max-w-xs px-4 py-3 whitespace-pre-wrap break-words">{item.set_reason ?? <span className="text-ink-soft">—</span>}</td>
                   <td className="px-4 py-3 text-xs text-ink-soft whitespace-nowrap">
@@ -268,6 +225,7 @@ export function FlagsList() {
                   <tr className="bg-surface-muted">
                     <td colSpan={5} className="px-4 py-4">
                       <form onSubmit={(event) => void submitRow(event, item)} className="max-w-xl">
+                        <p className="mb-2 text-sm"><strong>{item.company_name ?? 'บริษัทที่เลือก'}</strong> · {item.active ? 'การปลดธงจะปิดเคสตรวจบัญชีบริษัทที่ยังเปิดอยู่' : 'ประกาศใหม่ของบริษัทจะเข้าคิวตรวจ'}</p>
                         <label className="block text-sm">
                           <span className="font-medium">เหตุผลที่{item.active ? 'เคลียร์ธง' : 'ตั้งธง'} (จำเป็น)</span>
                           <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} maxLength={REASON_MAX}

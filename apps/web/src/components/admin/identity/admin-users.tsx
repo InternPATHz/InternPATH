@@ -23,6 +23,7 @@ export function AdminUsers() {
   const [result, setResult] = useState<Paginated<AdminUserListItem> | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [selectedId, setSelectedId] = useState('');
   const [actionId, setActionId] = useState<string | null>(null);
   const [reason, setReason] = useState('');
   const [error, setError] = useState('');
@@ -31,6 +32,7 @@ export function AdminUsers() {
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setActionId(null);
     const query = new URLSearchParams({ page: String(page) });
     if (q) query.set('q', q);
     if (role) query.set('role', role);
@@ -46,6 +48,7 @@ export function AdminUsers() {
   async function changeStatus(item: AdminUserListItem) {
     const action = item.status === 'SUSPENDED' ? 'unsuspend' : 'suspend';
     if (action === 'suspend' && !reason.trim()) { setError('กรุณาระบุเหตุผลที่ระงับบัญชี'); return; }
+    if (!window.confirm(`${action === 'suspend' ? 'ระงับ' : 'ยกเลิกการระงับ'}บัญชี ${item.full_name} · ${item.email}?`)) return;
     setBusy(true); setError(''); setNotice('');
     try {
       await request(`/admin/users/${item.id}/actions/${action}`, { method: 'POST', body: action === 'suspend' ? { reason: reason.trim() } : {} });
@@ -55,6 +58,7 @@ export function AdminUsers() {
     finally { setBusy(false); }
   }
 
+  const selected = result?.data.find((item) => item.id === selectedId);
   const lastPage = Math.max(1, Math.ceil((result?.meta.total ?? 0) / 20));
   return <div className="space-y-5">
     <div><h1 className="text-2xl font-semibold">ผู้ใช้</h1><p className="mt-1 text-sm text-ink-soft">ค้นหาบัญชี ตรวจสถานะ และจัดการการระงับบัญชี</p></div>
@@ -64,26 +68,37 @@ export function AdminUsers() {
         <label className="flex-1 text-sm">ชื่อ อีเมล หรือรหัสนักศึกษา<input value={search} onChange={(event) => setSearch(event.target.value)} maxLength={100} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
         <button className="rounded-lg border border-border px-3 py-2 text-sm">ค้นหา</button>
       </form>
+      <span className="text-sm text-ink-soft">{result && `พบ ${result.meta.total} บัญชี`}</span>
+      {(q || role || status || universityId || search) && <button className="text-sm text-primary" onClick={() => { setQ(''); setSearch(''); setRole(''); setStatus(''); setUniversityId(''); setPage(1); }}>ล้างตัวกรอง</button>}
       <FilterSelect label="บทบาท" value={role} options={roles} onChange={(value) => { setRole(value); setPage(1); }} />
       <FilterSelect label="สถานะ" value={status} options={statuses} onChange={(value) => { setStatus(value); setPage(1); }} />
       <FilterSelect label="มหาวิทยาลัย" value={universityId} options={universityOptions} onChange={(value) => { setUniversityId(value); setPage(1); }} />
     </div>
     <div className="rounded-xl border border-border bg-surface p-4">
       {loading ? <p className="text-sm text-ink-soft">กำลังโหลด…</p> : !result?.data.length ? <p className="text-sm text-ink-soft">ไม่พบบัญชีที่ตรงกับตัวกรอง</p> :
-        <div className="divide-y divide-border">{result.data.map((item) => <div key={item.id} className="py-4 first:pt-0 last:pb-0">
-          <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0"><p className="font-medium">{item.full_name}</p>
-            <p className="text-sm text-ink-soft">{item.email}</p><p className="mt-1 text-xs text-ink-soft">{labelOf(ROLE_LABEL, item.role)} · {labelOf(USER_STATUS_LABEL, item.status)}{item.student_code ? ` · รหัสนักศึกษา ${item.student_code}` : ''}</p>
-            {item.university_name && <p className="mt-1 text-xs text-ink-soft">มหาวิทยาลัย {item.university_name}</p>}
-            <p className="mt-1 break-all text-xs text-ink-soft">รหัสบัญชี <span className="font-mono">{item.id}</span></p>
-            {/* API ส่งแค่รหัสบัญชีอาจารย์ (ไม่มีชื่อ) — ใช้รหัสนี้ในฟอร์มย้ายอาจารย์ */}
-            {item.advisor_id && <p className="mt-1 break-all text-xs text-ink-soft">รหัสบัญชีอาจารย์ที่ปรึกษา <span className="font-mono">{item.advisor_id}</span></p>}</div>
-            <div className="flex gap-2">{item.role === 'STUDENT' && item.status === 'ACTIVE' && <a href={`/admin/advisors?${new URLSearchParams({ student: item.id, code: item.student_code ?? '' })}#move-student`} className="rounded-lg border border-border px-3 py-2 text-sm">ย้ายอาจารย์</a>}
-              {(item.status === 'ACTIVE' || item.status === 'SUSPENDED') && <button disabled={busy} onClick={() => { if (item.status === 'SUSPENDED') void changeStatus(item); else { setActionId(item.id); setReason(''); } }} className="rounded-lg border border-border px-3 py-2 text-sm disabled:opacity-50">{item.status === 'SUSPENDED' ? 'ยกเลิกการระงับ' : 'ระงับ'}</button>}</div></div>
-          {actionId === item.id && <div className="mt-3 flex flex-wrap gap-2"><input aria-label="เหตุผลที่ระงับบัญชี" value={reason} onChange={(event) => setReason(event.target.value)} maxLength={1000} placeholder="เหตุผลที่ระงับบัญชี" className="min-w-60 flex-1 rounded-lg border border-border px-3 py-2 text-sm" />
-            <button disabled={busy} onClick={() => void changeStatus(item)} className="rounded-lg bg-danger px-3 py-2 text-sm font-medium text-white disabled:opacity-50">ยืนยันการระงับ</button>
-            <button onClick={() => setActionId(null)} className="rounded-lg border border-border px-3 py-2 text-sm">ยกเลิก</button></div>}
-        </div>)}</div>}
-      <div className="mt-4 flex items-center justify-end gap-3 text-sm"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="disabled:opacity-40">ก่อนหน้า</button><span>{page} / {lastPage}</span><button disabled={page >= lastPage} onClick={() => setPage(page + 1)} className="disabled:opacity-40">ถัดไป</button></div>
+        <div className="overflow-x-auto"><table className="w-full text-left text-sm">
+          <thead className="bg-surface-muted text-ink-soft"><tr>{['ชื่อและอีเมล', 'บทบาท', 'สถานะ', 'มหาวิทยาลัย', 'รหัสนักศึกษา', 'จัดการ'].map((label) => <th key={label} scope="col" className="p-3">{label}</th>)}</tr></thead>
+          <tbody className="divide-y divide-border">{result.data.map((item) => <tr key={item.id} className={item.id === selectedId ? 'bg-primary-soft' : ''}>
+            <th scope="row" className="max-w-xs p-3 [overflow-wrap:anywhere]">{item.full_name}<span className="block font-normal text-ink-soft">{item.email}</span></th>
+            <td className="p-3">{labelOf(ROLE_LABEL, item.role)}</td><td className="p-3">{labelOf(USER_STATUS_LABEL, item.status)}</td><td className="p-3">{item.university_name || '—'}</td><td className="p-3">{item.student_code || '—'}</td>
+            <td className="p-3"><button aria-label={`จัดการ ${item.full_name} ${item.email}`} onClick={() => { setSelectedId(item.id); setActionId(null); setReason(''); }} className="text-primary">จัดการ</button></td>
+          </tr>)}</tbody>
+        </table></div>}
+      {!loading && selected && <section aria-label="รายละเอียดบัญชีที่เลือก" className="mt-4 space-y-3 rounded-xl bg-surface-muted p-4 [overflow-wrap:anywhere]">
+        <h2 className="font-semibold">{selected.full_name}</h2>
+        <p className="text-sm">{selected.email} · {labelOf(ROLE_LABEL, selected.role)} · {labelOf(USER_STATUS_LABEL, selected.status)}</p>
+        <details className="text-xs text-ink-soft"><summary className="cursor-pointer">รหัสอ้างอิงระบบ</summary><p>บัญชี {selected.id}</p>{selected.university_id && <p>มหาวิทยาลัย {selected.university_id}</p>}{selected.advisor_id && <p>อาจารย์ {selected.advisor_id}</p>}</details>
+        <div className="flex flex-wrap gap-3 text-sm">
+          {selected.role === 'STUDENT' && selected.status === 'ACTIVE' && <a className="text-primary" href={`/admin/advisors?${new URLSearchParams({ student: selected.id, code: selected.student_code || selected.email })}#move-student`}>ย้ายอาจารย์</a>}
+          {selected.status === 'ACTIVE' && actionId !== selected.id && <button className="text-danger-text" onClick={() => setActionId(selected.id)}>ระงับบัญชี</button>}
+          {selected.status === 'SUSPENDED' && <button disabled={busy} className="text-primary" onClick={() => void changeStatus(selected)}>ยกเลิกการระงับ</button>}
+        </div>
+        {actionId === selected.id && <form onSubmit={(event) => { event.preventDefault(); void changeStatus(selected); }} className="flex flex-wrap items-end gap-3 text-sm">
+          <label>เหตุผลที่ระงับบัญชี<input required maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} className="block rounded-lg border border-border p-2" /></label>
+          <button disabled={busy || !reason.trim()} className="rounded-lg bg-danger px-3 py-2 text-white">ยืนยันการระงับ</button><button type="button" onClick={() => setActionId(null)}>ยกเลิก</button>
+        </form>}
+      </section>}
+      {lastPage > 1 && <div className="mt-4 flex items-center justify-end gap-3 text-sm"><button disabled={page <= 1} onClick={() => setPage(page - 1)} className="disabled:opacity-40">ก่อนหน้า</button><span>{page} / {lastPage}</span><button disabled={page >= lastPage} onClick={() => setPage(page + 1)} className="disabled:opacity-40">ถัดไป</button></div>}
     </div>
   </div>;
 }

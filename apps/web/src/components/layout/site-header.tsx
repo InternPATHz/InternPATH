@@ -10,8 +10,8 @@ import { BrandLogo } from '@/components/ui/brand-logo';
 import { PUBLIC_NAV, ROLE_NAV } from './site-nav';
 import type { NavItem } from './site-nav';
 
-function NavLink({ item, onClick }: { item: NavItem; onClick?: () => void }) {
-  return <Link href={item.href} onClick={onClick} className="whitespace-nowrap text-ink/80 hover:text-ink">{item.label}</Link>;
+function NavLink({ item, active, onClick }: { item: NavItem; active: boolean; onClick?: () => void }) {
+  return <Link href={item.href} onClick={onClick} aria-current={active ? 'page' : undefined} className="whitespace-nowrap text-ink/80 hover:text-ink aria-[current=page]:font-semibold aria-[current=page]:text-primary aria-[current=page]:underline aria-[current=page]:underline-offset-4">{item.label}</Link>;
 }
 
 /** เมนูด้านบนของทุกหน้าฝั่งผู้ใช้: เมนูสาธารณะ + เมนูตามบทบาทเมื่อล็อกอินแล้ว */
@@ -36,8 +36,8 @@ export function SiteHeader() {
           <Link href="/" aria-label="InternPath หน้าแรก" className="text-[15px] font-semibold tracking-wide text-ink">
             <BrandLogo />
           </Link>
-          <nav aria-label="เมนูหลัก" className="hidden gap-4 text-[13px] lg:flex">
-            {items.map((item) => <NavLink key={item.href} item={item} />)}
+          <nav aria-label="เมนูหลัก" className="hidden flex-wrap gap-x-3 gap-y-1 text-[13px] lg:flex">
+            {items.map((item) => <NavLink key={item.href} item={item} active={item.href === pathname} />)}
           </nav>
         </div>
         <div className="flex shrink-0 items-center gap-2 text-[13px]">
@@ -63,7 +63,7 @@ export function SiteHeader() {
       </div>
       <nav id="site-mobile-nav" aria-label="เมนูหลักบนมือถือ"
         className={`${menuOpen ? 'grid' : 'hidden'} max-h-[70vh] gap-4 overflow-y-auto border-t border-black/5 px-4 py-4 text-sm lg:hidden`}>
-        {items.map((item) => <NavLink key={item.href} item={item} onClick={() => setMenuOpen(false)} />)}
+        {items.map((item) => <NavLink key={item.href} item={item} active={item.href === pathname} onClick={() => setMenuOpen(false)} />)}
         {ready && !user && pathname !== '/register' && <Link href="/register" onClick={() => setMenuOpen(false)}>สมัครสมาชิก</Link>}
         {ready && user && <button type="button" onClick={() => void signOut()} className="justify-self-start text-ink/80 hover:text-ink">ออกจากระบบ</button>}
       </nav>

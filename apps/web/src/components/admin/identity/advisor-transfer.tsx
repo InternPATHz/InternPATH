@@ -9,18 +9,18 @@ import { USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PAGE_SIZE = 100;
-const MAX_PAGES = 10;
+
 
 type Request = ReturnType<typeof useAuth>['request'];
 
 /** ดึง /admin/users ทุกหน้า (page_size สูงสุด 100) — กันคนที่ตรงรหัสหลุดไปอยู่หน้าถัดไป */
 async function fetchAllUsers(request: Request, filters: Record<string, string>): Promise<AdminUserListItem[]> {
   const rows: AdminUserListItem[] = [];
-  for (let page = 1; page <= MAX_PAGES; page += 1) {
+  for (let page = 1; ; page += 1) {
     const query = new URLSearchParams({ ...filters, page: String(page), page_size: String(PAGE_SIZE) });
     const result = await request<Paginated<AdminUserListItem>>(`/admin/users?${query}`);
     rows.push(...result.data);
-    if (!result.data.length || rows.length >= result.meta.total) break;
+    if (!result.data.length || page * result.meta.page_size >= result.meta.total) break;
   }
   return rows;
 }
@@ -64,11 +64,10 @@ export function AdvisorTransfer() {
     setSearching(true);
     try {
       const rows = await fetchAllUsers(request, { role: 'STUDENT', q: value });
-      const exact = rows.filter((row) => row.student_code === value);
-      setMatches(exact); setSearchedCode(value);
-      const preferred = preferId ? exact.find((row) => row.id === preferId) : undefined;
+      setMatches(rows); setSearchedCode(value);
+      const preferred = preferId ? rows.find((row) => row.id === preferId) : undefined;
       if (preferred) setStudentId(preferred.id);
-      else if (exact.length === 1) setStudentId(exact[0].id);
+      else if (rows.length === 1) setStudentId(rows[0].id);
     } catch (cause) { setMatches(null); setError(failure(cause, 'ค้นหานักศึกษาไม่สำเร็จ')); }
     finally { setSearching(false); }
   }, [request]);
@@ -95,6 +94,7 @@ export function AdvisorTransfer() {
   async function move(event: React.FormEvent) {
     event.preventDefault();
     if (!student || !target) { setError('กรุณาเลือกนักศึกษาและอาจารย์คนใหม่'); return; }
+    if (!window.confirm(`ย้าย ${student.full_name} (${student.student_code || student.email}) ไปอยู่กับ ${advisorLabel(target)}?`)) return;
     setBusy(true); setError(''); setNotice('');
     try {
       await request(`/admin/students/${student.id}/advisor`, { method: 'POST', body: { advisor_id: target.id } });
@@ -111,16 +111,16 @@ export function AdvisorTransfer() {
     {(error || notice) && <div className="mt-3">{error ? <Notice tone="error">{error}</Notice> : <Notice tone="success">{notice}</Notice>}</div>}
 
     <form role="search" onSubmit={(event) => { event.preventDefault(); void search(code); }} className="mt-4 flex flex-wrap items-end gap-3">
-      <label className="min-w-64 flex-1 text-sm">รหัสนักศึกษา
+      <label className="min-w-64 flex-1 text-sm">ชื่อ อีเมล หรือรหัสนักศึกษา
         <input value={code} onChange={(event) => setCode(event.target.value)} maxLength={100} autoComplete="off"
           className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
       <button disabled={searching} className="rounded-lg border border-border px-4 py-2 text-sm disabled:opacity-50">{searching ? 'กำลังค้นหา…' : 'ค้นหา'}</button>
     </form>
 
-    {matches && !matches.length && <p role="status" className="mt-4 text-sm text-ink-soft">ไม่พบนักศึกษารหัส {searchedCode}</p>}
+    {matches && !matches.length && <p role="status" className="mt-4 text-sm text-ink-soft">ไม่ผลการค้นหา {searchedCode}</p>}
 
     {matches && matches.length > 1 && <fieldset className="mt-4">
-      <legend className="text-sm font-medium">พบนักศึกษารหัส {searchedCode} {matches.length} คน (ต่างมหาวิทยาลัย) — เลือกคนที่ต้องการย้าย</legend>
+      <legend className="text-sm font-medium">ผลการค้นหา {searchedCode} {matches.length} คน — เลือกคนที่ต้องการย้าย</legend>
       <div className="mt-2 divide-y divide-border rounded-lg border border-border">
         {matches.map((row) => <label key={row.id} className="flex cursor-pointer items-start gap-3 p-3 text-sm has-[:checked]:bg-surface-muted">
           <input type="radio" name={`${formId}-student`} value={row.id} checked={studentId === row.id}

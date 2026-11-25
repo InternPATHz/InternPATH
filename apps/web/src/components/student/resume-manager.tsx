@@ -91,7 +91,7 @@ export function ResumeManager({ onCountChange }: { onCountChange: (count: number
   const full = (resumes?.length ?? 0) >= MAX_FILES;
   return (
     <section aria-labelledby="resume-title" className="mt-10">
-      <h2 id="resume-title" className="text-xl font-semibold">เรซูเม่</h2>
+      <h2 id="resume-title" className="scroll-mt-20 text-xl font-semibold">เรซูเม่</h2>
       <p className="mt-1 text-sm text-ink-soft">ไฟล์ PDF ไม่เกิน 5 MB มีได้สูงสุด {MAX_FILES} ไฟล์ ไฟล์แรกที่อัปโหลดเป็นไฟล์หลักโดยอัตโนมัติ บริษัทจะเห็นเรซูเม่เมื่อคุณยินยอมตอนสมัครเท่านั้น</p>
 
       <div className="mt-4 rounded-xl border border-dashed border-border bg-surface-muted p-5 text-center"
@@ -134,7 +134,7 @@ export function ResumeManager({ onCountChange }: { onCountChange: (count: number
                     <p>ใบสมัครที่ใช้ไฟล์นี้จะเปิดเรซูเม่ไม่ได้อีก</p>
                     <div className="mt-2 flex gap-3">
                       <button type="button" onClick={() => setConfirmId(null)} className="font-medium text-primary">ยกเลิก</button>
-                      <button type="button" disabled={busy} onClick={() => void remove(resume)} className="font-medium text-danger-text">ยืนยันลบไฟล์</button>
+                      <button type="button" disabled={busy} onClick={() => void remove(resume)} className="font-medium text-danger-text">ยืนยันลบไฟล์ {formatSize(resume.size_bytes)} · {dateFormat.format(new Date(resume.uploaded_at))}</button>
                     </div>
                   </div>
                 )}

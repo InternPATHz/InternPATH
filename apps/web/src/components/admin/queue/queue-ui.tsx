@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 
 export const TYPE_LABEL: Record<QueueItemType, string> = {
   JOB_REVIEW: 'ตรวจประกาศ',
-  COMPANY_ACCOUNT: 'ธงบริษัท',
+  COMPANY_ACCOUNT: 'ตรวจบริษัทที่ติดธง',
   JOB_REPORT: 'รายงานประกาศ',
   REVIEW_REPORT: 'รายงานรีวิว',
 };

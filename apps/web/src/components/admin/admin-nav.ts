@@ -10,8 +10,8 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     title: 'ตรวจสอบและความไว้วางใจ', owner: 'PM',
     items: [
       { label: 'คิวตรวจ', href: '/admin/queue' },
-      { label: 'ธงบริษัท', href: '/admin/flags' },
-      { label: 'Audit log', href: '/admin/audit' },
+      { label: 'จัดการธงบริษัท', href: '/admin/flags' },
+      { label: 'บันทึกการดำเนินการ', href: '/admin/audit' },
     ],
   },
   {
@@ -20,7 +20,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { label: 'บริษัท', href: '/admin/companies' },
       { label: 'อาจารย์ที่ปรึกษา', href: '/admin/advisors' },
       { label: 'ผู้ใช้', href: '/admin/users' },
-      { label: 'Audit log (Identity)', href: '/admin/identity-audit' },
     ],
   },
   {
@@ -30,7 +29,6 @@ export const ADMIN_NAV: AdminNavGroup[] = [
       { label: 'รายงานปัญหา', href: '/admin/problem-reports' },
       { label: 'ใบรับรอง', href: '/admin/certificates' },
       { label: 'สถิติบริษัท', href: '/admin/company-stats' },
-      { label: 'Audit log (Lifecycle)', href: '/admin/lifecycle-audit' },
     ],
   },
   {

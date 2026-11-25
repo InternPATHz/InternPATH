@@ -11,6 +11,7 @@ import {
 } from '@/components/hr/jobs/job-ui';
 import { ApiError } from '@/lib/api';
 import { hrJobsApi, missingRequired } from '@/lib/hr-jobs';
+import { daysToDeadline } from '@/components/jobs/job-result-card';
 import { CATEGORIES } from '@/lib/categories';
 
 const failure = (cause: unknown) => (cause instanceof ApiError || cause instanceof Error ? cause.message : 'ดำเนินการไม่สำเร็จ กรุณาลองใหม่');
@@ -24,7 +25,7 @@ function TextSection({ title, text }: { title: string; text: string | null }) {
   return (
     <section className="mt-6">
       <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="mt-2 whitespace-pre-line text-ink-soft">{text}</p>
+      <p className="mt-2 whitespace-pre-line text-ink-soft [overflow-wrap:anywhere]">{text}</p>
     </section>
   );
 }
@@ -89,6 +90,8 @@ export function HrJobDetail() {
     : allowance ? (allowance.text || 'ไม่มีเบี้ยเลี้ยง') : '-';
   const canSubmit = SUBMITTABLE_STATUSES.includes(status);
   const missing = canSubmit ? missingRequired(job as unknown as Record<string, unknown>) : [];
+  const reopenReason = !job.application_deadline || daysToDeadline(job.application_deadline) < 0
+    ? 'ปรับวันปิดรับสมัครก่อนเปิดใหม่' : (job.quota_available ?? 0) <= 0 ? 'ปรับโควตาให้มีตำแหน่งว่างก่อนเปิดใหม่' : '';
   const showApplicants = status === 'PUBLISHED' || status === 'CLOSED';
   return (
     <main className="mx-auto max-w-5xl px-4 py-10 sm:px-6">
@@ -97,7 +100,7 @@ export function HrJobDetail() {
       <header className="mt-3 flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 [overflow-wrap:anywhere]">
           <h1 className="text-3xl font-semibold">{jobTitleOf(job)}</h1>
-          <p className="mt-1 text-sm text-ink-soft">{[category, job.work_mode ? WORK_MODE_LABEL[job.work_mode] : null, job.location].filter(Boolean).join(' · ')}</p>
+          <p className="mt-1 text-sm text-ink-soft">{[job.company.name, category, job.work_mode ? WORK_MODE_LABEL[job.work_mode] : null, job.location].filter(Boolean).join(' · ')}</p>
         </div>
         <JobStatusBadge status={status} />
       </header>
@@ -109,7 +112,7 @@ export function HrJobDetail() {
 
       <div className="mt-4 flex flex-wrap gap-3">
         {EDITABLE_STATUSES.includes(status) && (
-          <Link href={`/hr/jobs/form?id=${job.id}`} className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted">แก้ไข</Link>
+          <Link href={`/hr/jobs/form?id=${job.id}`} className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted">แก้ไขประกาศ</Link>
         )}
         {canSubmit && (
           <button type="button" disabled={busy || missing.length > 0} onClick={() => void act(() => api.submit(job.id), 'เผยแพร่ประกาศแล้ว')}
@@ -122,7 +125,7 @@ export function HrJobDetail() {
             className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">ปิดประกาศ</button>
         )}
         {status === 'CLOSED' && (
-          <button type="button" disabled={busy} onClick={() => void act(() => api.reopen(job.id), 'เปิดประกาศอีกครั้งแล้ว')}
+          <button type="button" disabled={busy || Boolean(reopenReason)} onClick={() => void act(() => api.reopen(job.id), 'เปิดประกาศอีกครั้งแล้ว')}
             className="rounded-full border border-border px-5 py-2.5 text-sm font-semibold hover:bg-surface-muted disabled:opacity-60">เปิดประกาศอีกครั้ง</button>
         )}
         {showApplicants && (
@@ -130,6 +133,7 @@ export function HrJobDetail() {
         )}
       </div>
       {showApplicants && <Link href={`/jobs/item?id=${job.id}`} className="mt-3 inline-block text-sm font-medium text-primary hover:underline">ดูแบบที่นักศึกษาเห็น ›</Link>}
+      {status === 'CLOSED' && reopenReason && <p className="mt-2 text-sm text-ink-soft">{reopenReason}</p>}
       {canSubmit && missing.length > 0 && <p className="mt-2 text-xs text-ink-soft">ยังกรอกไม่ครบ จึงเผยแพร่ไม่ได้ กด "แก้ไข" เพื่อกรอกข้อมูลบังคับให้ครบ</p>}
 
       {status === 'ADMIN_REJECTED' && (
@@ -146,9 +150,6 @@ export function HrJobDetail() {
           <dl className="mt-3 grid grid-cols-2 gap-4 rounded-xl bg-surface-muted p-4 sm:grid-cols-3">
             <Fact label="เบี้ยเลี้ยง">{allowanceLabel}</Fact>
             <Fact label="ชั่วโมงต่อสัปดาห์">{job.hours_per_week ?? '-'}</Fact>
-            <Fact label="จำนวนที่รับ">{job.quota !== null ? `${job.quota} ตำแหน่ง${job.quota_available !== null ? ` (เหลือ ${job.quota_available})` : ''}` : '-'}</Fact>
-            <Fact label="ช่วงฝึกงาน">{job.period.start && job.period.end ? `${formatDay(job.period.start)} – ${formatDay(job.period.end)}` : '-'}</Fact>
-            <Fact label="ปิดรับสมัคร">{job.application_deadline ? formatDay(job.application_deadline) : '-'}</Fact>
             <Fact label="สาขาที่เปิดรับ">{job.target_majors && job.target_majors.length > 0 ? job.target_majors.join(', ') : '-'}</Fact>
             <Fact label="Tag ทักษะ">{job.tags && job.tags.length > 0 ? job.tags.map((tag) => tag.name).join(', ') : '-'}</Fact>
           </dl>
@@ -158,8 +159,12 @@ export function HrJobDetail() {
           <TextSection title="คุณสมบัติผู้สมัคร" text={job.qualifications} />
         </div>
         <aside className="self-start rounded-xl bg-surface-muted p-5">
-          <h2 className="text-lg font-semibold">สถานะประกาศ</h2>
-          <div className="mt-3"><JobStatusBadge status={status} /></div>
+          <h2 className="text-lg font-semibold">การรับสมัครและโควตา</h2>
+          <dl className="mt-3 space-y-3 text-sm">
+            <Fact label="จำนวนที่รับ">{job.quota !== null ? `${job.quota} ตำแหน่ง${job.quota_available !== null ? ` (เหลือ ${job.quota_available})` : ''}` : '-'}</Fact>
+            <Fact label="ช่วงฝึกงาน">{job.period.start && job.period.end ? `${formatDay(job.period.start)} – ${formatDay(job.period.end)}` : '-'}</Fact>
+            <Fact label="ปิดรับสมัคร">{job.application_deadline ? formatDay(job.application_deadline) : '-'}</Fact>
+          </dl>
           {'published_at' in job && job.published_at && <p className="mt-3 text-sm text-ink-soft">เผยแพร่เมื่อ {formatDay(job.published_at)}</p>}
         </aside>
       </div>

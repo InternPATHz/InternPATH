@@ -1,8 +1,7 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import type { UserMeResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/auth/ui';
@@ -14,110 +13,82 @@ import { RequireAuth } from '@/components/layout/require-auth';
 import { ROLE_HOME } from '@/components/layout/site-nav';
 import { ADVISOR_LINK_LABEL, ROLE_LABEL, USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
 
+const link = 'font-medium text-primary hover:underline';
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return <div className="grid gap-1 border-b border-border py-3 sm:grid-cols-[10rem_minmax(0,1fr)]"><dt className="text-ink-soft">{label}</dt><dd>{children}</dd></div>;
+}
+
 export default function AccountPage() {
   return <RequireAuth><AccountContent /></RequireAuth>;
 }
 
 function AccountContent() {
-  const router = useRouter();
-  const { user, logout, request } = useAuth();
-  const userId = user?.id;
+  const { user, request } = useAuth();
   const [profile, setProfile] = useState<UserMeResponse | null>(null);
   const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
-
-  // ผูกกับ user.id ไม่ใช่ object user: การ refresh token สร้าง object ใหม่ทุกครั้ง
-  // ถ้าอิง object จะโหลดซ้ำวน (และวนไม่รู้จบเมื่อ /users/me ตอบ 401 ซ้ำ)
+  const [message, setMessage] = useState('');
   useEffect(() => {
-    if (!userId) return;
     let active = true;
-    void request<UserMeResponse>('/users/me')
-      .then((data) => { if (active) setProfile(data); })
-      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : 'โหลดข้อมูลบัญชีไม่สำเร็จ'); });
+    setError('');
+    request<UserMeResponse>('/users/me').then((data) => { if (active) setProfile(data); },
+      (cause) => { if (active) setError(cause instanceof Error ? cause.message : 'โหลดข้อมูลบัญชีไม่สำเร็จ'); });
     return () => { active = false; };
-  }, [userId, request]);
+  }, [user?.id, request, retry]);
 
-  async function signOut() {
+  useEffect(() => {
+    if (profile && window.location.hash === '#advisor') document.getElementById('advisor')?.scrollIntoView();
+  }, [profile?.id]);
+
+  async function save(event: FormEvent) {
+    event.preventDefault();
+    if (!name.trim() || busy) return;
     setBusy(true);
-    try { await logout(); }
-    catch { /* The local session is cleared even if the server is offline. */ }
-    router.replace('/login');
+    setMessage('');
+    try {
+      const updated = await request<UserMeResponse>('/users/me', { method: 'PATCH', body: { full_name: name.trim() } });
+      setProfile(updated); setEditing(false); setMessage('บันทึกชื่อแล้ว');
+    } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'บันทึกชื่อไม่สำเร็จ'); }
+    finally { setBusy(false); }
   }
 
-  const role = profile?.role ?? user?.role;
-
-  return (
-    <div className="flex min-h-screen flex-col">
-      <SiteHeader />
-      <main className="mx-auto grid w-full max-w-5xl flex-1 gap-8 px-4 py-12 sm:px-6 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
-        <header>
-          <Avatar name={profile?.full_name ?? user?.full_name} size="lg" />
-          <h1 className="mt-4 break-words text-3xl font-semibold">{profile?.full_name ?? user?.full_name ?? 'บัญชีของฉัน'}</h1>
-          {role && <p className="mt-1 text-sm text-ink-soft">{labelOf(ROLE_LABEL, role)}</p>}
-          <button type="button" disabled={busy} onClick={signOut}
-            className="mt-5 rounded-full border border-border px-4 py-2 text-sm font-medium hover:bg-surface-muted disabled:opacity-50">
-            {busy ? 'กำลังออกจากระบบ…' : 'ออกจากระบบ'}
-          </button>
+  const student = profile?.student;
+  return <div className="flex min-h-screen flex-col"><SiteHeader />
+    <main className="mx-auto w-full max-w-3xl flex-1 space-y-7 px-4 py-9 [overflow-wrap:anywhere] sm:px-6">
+      <h1 className="text-3xl font-semibold">บัญชีของฉัน</h1>
+      {error ? <Notice error>{error} <button onClick={() => setRetry((r) => r + 1)} className={link}>ลองอีกครั้ง</button></Notice> : !profile && <p role="status">กำลังโหลดข้อมูลบัญชี…</p>}
+      {profile && <>
+        <header className="flex items-center gap-4"><Avatar name={profile.full_name} size="lg" />
+          <div className="min-w-0"><h2 className="text-2xl font-semibold">{profile.full_name}</h2>
+            <p className="text-sm text-ink-soft">{labelOf(ROLE_LABEL, profile.role)} · {labelOf(USER_STATUS_LABEL, profile.status)}</p></div>
         </header>
-        <div className="min-w-0 space-y-6">
-          {!profile && !error && <p role="status" className="text-sm text-ink-soft">กำลังโหลดข้อมูลบัญชี…</p>}
-          {error && <Notice error>{error}</Notice>}
-          {profile && (
-            <section aria-labelledby="account-info">
-              <h2 id="account-info" className="text-lg font-semibold">ข้อมูลบัญชี</h2>
-              <dl className="mt-2 divide-y divide-border rounded-xl bg-surface-muted px-4 text-sm">
-                {([
-                  ['ชื่อ', profile.full_name],
-                  ['อีเมล', profile.email],
-                  ...(profile.student ? [['รหัสนักศึกษา', profile.student.student_code]] : []),
-                  ...(profile.university ? [['มหาวิทยาลัย', profile.university.name]] : []),
-                  ['บทบาท', labelOf(ROLE_LABEL, profile.role)],
-                  ['สถานะบัญชี', labelOf(USER_STATUS_LABEL, profile.status)],
-                ] as Array<[string, string]>).map(([label, value]) => (
-                  <div key={label} className="flex flex-wrap justify-between gap-x-4 gap-y-1 py-3">
-                    <dt className="text-ink-soft">{label}</dt>
-                    <dd className="break-all font-medium">{value}</dd>
-                  </div>
-                ))}
-                {/* รหัสบัญชี (UUID) คือรหัสที่ Admin ใช้ในฟอร์มย้ายอาจารย์ที่ปรึกษา — แจ้ง Admin ได้โดยไม่ต้องค้นเอง */}
-                <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-3">
-                  <dt className="text-ink-soft">รหัสบัญชี</dt>
-                  <dd className="flex min-w-0 items-center gap-2">
-                    <span className="break-all font-mono text-xs">{profile.id}</span>
-                    <CopyButton value={profile.id} label="คัดลอกรหัสบัญชี" />
-                  </dd>
-                </div>
-              </dl>
-            </section>
-          )}
-          {(profile?.student || profile?.company || profile?.advisor) && (
-            <section aria-labelledby="account-training">
-              <h2 id="account-training" className="text-lg font-semibold">การฝึกงาน</h2>
-              <ul className="mt-2 divide-y divide-border rounded-xl bg-surface-muted px-4 text-sm">
-                {profile.student && <>
-                  <li className="flex flex-wrap justify-between gap-2 py-3"><span>สถานะอาจารย์ที่ปรึกษา</span><span className="font-medium">{labelOf(ADVISOR_LINK_LABEL, profile.student.advisor_link_status)}</span></li>
-                  <li><Link href="/student/profile" className="block py-3 text-primary hover:underline">โปรไฟล์และเรซูเม่ ›</Link></li>
-                </>}
-                {profile.company && <>
-                  <li><Link href="/hr/company" className="block py-3 text-primary hover:underline">บริษัทของฉัน · {profile.company.name} ›</Link></li>
-                  <li><Link href="/hr/team" className="block py-3 text-primary hover:underline">ทีม HR ›</Link></li>
-                </>}
-                {profile.advisor?.department && <li className="py-3">ภาควิชา · {profile.advisor.department}</li>}
-              </ul>
-            </section>
-          )}
-          <section aria-labelledby="account-privacy">
-            <h2 id="account-privacy" className="text-lg font-semibold">ความปลอดภัยและความเป็นส่วนตัว</h2>
-            <ul className="mt-2 divide-y divide-border rounded-xl bg-surface-muted px-4 text-sm">
-              <li><Link href="/forgot-password" className="block py-3 text-primary hover:underline">ขอลิงก์ตั้งรหัสผ่านใหม่ ›</Link></li>
-              <li><Link href="/privacy" className="block py-3 text-primary hover:underline">นโยบายความเป็นส่วนตัว ›</Link></li>
-              <li><Link href="/account/delete" className="block py-3 text-danger-text hover:underline">ลบบัญชี ›</Link></li>
-            </ul>
-          </section>
-          <Link href={role ? ROLE_HOME[role] : '/'} className="inline-block text-sm text-primary hover:underline">กลับหน้าหลัก</Link>
-        </div>
-      </main>
-      <SiteFooter />
-    </div>
-  );
+        <nav aria-label="ส่วนของบัญชี" className="flex flex-wrap gap-4 text-sm text-primary"><a href="#account-info">ข้อมูลบัญชี</a>
+          {student && <a href="#advisor">อาจารย์ที่ปรึกษา</a>}<a href="#security">ความปลอดภัย</a><a href="#privacy">ความเป็นส่วนตัว</a></nav>
+        <section id="account-info" className="scroll-mt-20"><h2 className="text-lg font-semibold">ข้อมูลบัญชี</h2>
+          <dl className="text-sm"><Row label="อีเมล">{profile.email} · {profile.email_verified ? 'ยืนยันแล้ว' : 'รอยืนยัน'}</Row>
+            {student && <><Row label="รหัสนักศึกษา">{student.student_code}</Row><Row label="สาขาและชั้นปี">{student.major} · ชั้นปี {student.year_level}</Row></>}
+            {profile.university && <Row label="มหาวิทยาลัย">{profile.university.name}</Row>}
+            {profile.advisor?.department && <Row label="ภาควิชา">{profile.advisor.department}</Row>}
+            {profile.company && <><Row label="บริษัท"><Link href="/hr/company" className={link}>{profile.company.name}</Link></Row>
+              <Row label="บทบาทในทีม"><Link href="/hr/team" className={link}>{profile.company.member_role === 'OWNER' ? 'เจ้าของบัญชีบริษัท' : 'สมาชิก HR'}</Link></Row></>}
+          </dl>
+          <details className="mt-3 text-sm"><summary className="cursor-pointer">รหัสอ้างอิงบัญชี</summary><p className="mt-2 flex items-center gap-2 font-mono">{profile.id}<CopyButton value={profile.id} label="คัดลอกรหัสบัญชี" /></p></details>
+          {editing ? <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={save}><label className="text-sm">ชื่อและนามสกุล<input autoFocus required value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block rounded-lg border border-border px-3 py-2" /></label>
+            <button disabled={busy || !name.trim()} className={link}>บันทึกชื่อ</button><button type="button" disabled={busy} onClick={() => { setEditing(false); setMessage(''); }}>ยกเลิก</button></form>
+            : <button className={link + ' mt-3 text-sm'} onClick={() => { setName(profile.full_name); setEditing(true); setMessage(''); }}>แก้ไขชื่อ</button>}
+          {message && <p role="status" className="mt-2 text-sm">{message}</p>}
+        </section>
+        {student && <section id="advisor" className="scroll-mt-20 rounded-xl bg-surface-muted p-5"><h2 className="text-lg font-semibold">อาจารย์ที่ปรึกษา</h2>
+          <p className="mt-2">{labelOf(ADVISOR_LINK_LABEL, student.advisor_link_status)}</p><p className="mt-1 text-sm">{student.advisor_link_status === 'LINKED' ? 'หลังคุณยืนยันข้อเสนอ อาจารย์จะพิจารณาอนุมัติการฝึกงาน' : 'กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบของสถาบันเพื่อตรวจสอบการเชื่อมบัญชี'}</p>
+          <div className="mt-3 flex gap-4 text-sm"><Link className={link} href="/student/profile">โปรไฟล์และเรซูเม่</Link>{student.advisor_link_status === 'LINKED' && <Link className={link} href="/jobs">ค้นหางาน</Link>}</div></section>}
+        <section id="security" className="scroll-mt-20"><h2 className="mb-2 text-lg font-semibold">ความปลอดภัย</h2><Link href="/forgot-password" className={link}>ขอลิงก์ตั้งรหัสผ่านใหม่ ›</Link></section>
+        <section id="privacy" className="scroll-mt-20"><h2 className="mb-2 text-lg font-semibold">ความเป็นส่วนตัว</h2><Link href="/privacy" className={link}>นโยบายความเป็นส่วนตัว ›</Link>
+          <div className="mt-4 border-t border-border pt-4"><Link href="/account/delete" className="font-medium text-danger-text">ลบบัญชี ›</Link></div></section>
+        <Link href={ROLE_HOME[profile.role]} className={link}>กลับหน้าหลัก</Link>
+      </>}
+    </main><SiteFooter /></div>;
 }

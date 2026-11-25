@@ -20,6 +20,7 @@ export type JobSearchResult = {
 };
 
 export const PAGE_SIZE = 6;
+export const MAX_SEARCH_TAGS = 10;
 const DIRECTORY_IDS_MAX = 50;
 
 /** คะแนนดาวเป็นข้อมูลเสริม — Directory ล่มต้องไม่ทำให้ผลค้นหาหายทั้งหน้า (การ์ดจะแสดงว่ายังไม่มีคะแนน) */
@@ -64,5 +65,10 @@ export async function getJob(id: string): Promise<JobDetailResult | null> {
 
 /** Tag ทักษะที่เปิดใช้งานทั้งหมด (เรียงตามชื่อ) สำหรับตัวกรองหน้าค้นหา */
 export async function listTags(): Promise<JobTag[]> {
-  return (await apiRequest<Paginated<JobTag>>('/tags?page_size=100')).data;
+  const tags: JobTag[] = [];
+  for (let page = 1; ; page++) {
+    const result = await apiRequest<Paginated<JobTag>>(`/tags?page=${page}&page_size=100`);
+    tags.push(...result.data);
+    if (!result.data.length || page * result.meta.page_size >= result.meta.total) return tags;
+  }
 }

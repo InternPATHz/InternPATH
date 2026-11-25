@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { HrJobDetail, JobCategory, JobStatus, JobTag, JobWritableFields, WorkMode } from '@internpath/contracts';
+import type { HrJobDetail, UserMeResponse, JobCategory, JobStatus, JobTag, JobWritableFields, WorkMode } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { EDITABLE_STATUSES, JobStatusBadge } from '@/components/hr/jobs/job-ui';
@@ -31,7 +31,7 @@ function JobOptions({ label, name, value, options, disabled, onChange }: {
       <div className="mt-2 flex flex-wrap gap-2">
         {options.map(([option, text]) => (
           <label key={option} className={`rounded-full border px-3 py-2 text-sm focus-within:ring-2 focus-within:ring-primary ${option === value ? 'border-primary bg-primary-soft text-primary' : 'border-border'} ${disabled ? 'opacity-60' : 'cursor-pointer'}`}>
-            <input type="radio" name={name} checked={option === value} onChange={() => onChange(option)} className="sr-only" />
+            <input data-job-field={name === 'work-mode' ? 'work_mode' : name === 'allowance-type' ? 'allowance' : name} type="radio" name={name} checked={option === value} onChange={() => onChange(option)} className="sr-only" />
             {text}
           </label>
         ))}
@@ -114,6 +114,23 @@ export function HrJobForm() {
   const { request } = useAuth();
   const api = useMemo(() => hrJobsApi(request), [request]);
 
+  const [createdId, setCreatedId] = useState('');
+  const [memberCategories, setMemberCategories] = useState<JobCategory[] | null>(null);
+  const [companyStatus, setCompanyStatus] = useState<string | null>(null);
+  const [companyRetry, setCompanyRetry] = useState(0);
+  useEffect(() => {
+    let active = true;
+    request<UserMeResponse>('/users/me').then(
+      (me) => {
+        if (!active) return;
+        setCompanyStatus(me.company?.status ?? 'UNKNOWN');
+        setMemberCategories(me.company?.member_role === 'MEMBER' ? me.company.categories ?? [] : null);
+      },
+      () => { if (active) setCompanyStatus('ERROR'); },
+    );
+    return () => { active = false; };
+  }, [id, request, companyRetry]);
+
   const [form, setForm] = useState<FormState>(EMPTY);
   const [loaded, setLoaded] = useState<HrJobDetail | null>(null);
   const [ready, setReady] = useState(!id);
@@ -121,14 +138,20 @@ export function HrJobForm() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [tagOptions, setTagOptions] = useState<JobTag[] | null>(null);
+  const [tagsFailed, setTagsFailed] = useState(false);
+  const [tagAttempt, setTagAttempt] = useState(0);
   const activeTagIds = new Set(tagOptions?.map((tag) => tag.id));
   const previousTags = (loaded?.tags ?? []).filter((tag) => !activeTagIds.has(tag.id) && form.tagIds.includes(tag.id));
 
   useEffect(() => {
     let cancelled = false;
-    api.tags().then((list) => { if (!cancelled) setTagOptions(list); }, () => undefined);
+    setTagsFailed(false);
+    api.tags().then(
+      (list) => { if (!cancelled) setTagOptions(list); },
+      () => { if (!cancelled) setTagsFailed(true); },
+    );
     return () => { cancelled = true; };
-  }, [api]);
+  }, [api, tagAttempt]);
 
   useEffect(() => {
     if (!id) return;
@@ -159,6 +182,7 @@ export function HrJobForm() {
   if (loaded?.tags.length && !fields.tag_ids) diff.tag_ids = [];
 
   function validate(forSubmit: boolean): string | null {
+    if (memberCategories && !memberCategories.includes(form.category as JobCategory)) return 'กรุณาเลือกสายงานที่ได้รับมอบหมาย';
     if (tagOptions && diff.tag_ids?.some((id) => !activeTagIds.has(id))) return 'กรุณานำ Tag ที่ปิดใช้งานออกก่อนบันทึกการเปลี่ยนแปลง Tag';
     if (diff.tag_ids?.length === 0) return 'เลือก Tag ทักษะอย่างน้อย 1 รายการ';
     if (form.tagIds.length > TAG_MAX) return `เลือก Tag ทักษะได้ไม่เกิน ${TAG_MAX} รายการ`;
@@ -176,18 +200,27 @@ export function HrJobForm() {
 
   /** บันทึก (สร้างหรือแก้) แล้วคืน id ของประกาศ */
   async function save(): Promise<string> {
-    if (!id) {
+    const target = id || createdId;
+    if (!target) {
       const created = await api.create(fields);
+      setCreatedId(created.id);
+      // Keep the saved draft reachable when publishing fails or is retried.
+      router.replace(`/hr/jobs/form?id=${encodeURIComponent(created.id)}`);
       return created.id;
     }
-    if (Object.keys(diff).length > 0) await api.update(id, diff);
-    return id;
+    if (Object.keys(diff).length > 0) await api.update(target, diff);
+    return target;
   }
 
   async function run(forSubmit: boolean, event?: FormEvent) {
     event?.preventDefault();
     const problem = validate(forSubmit);
-    if (problem) { setMessage({ tone: 'error', text: problem }); return; }
+    if (problem) {
+      setMessage({ tone: 'error', text: problem });
+      const first = Object.keys(FIELD_LABEL).find((key) => forSubmit && missing.has(key));
+      if (first) document.querySelector<HTMLElement>(`[data-job-field="${first}"]`)?.focus();
+      return;
+    }
     setMessage(null);
     if (id && !forSubmit && Object.keys(diff).length === 0) return;
     setBusy(true);
@@ -198,7 +231,7 @@ export function HrJobForm() {
         router.push(`/hr/jobs/item?id=${savedId}`);
         return;
       }
-      if (!id) { router.replace(`/hr/jobs/form?id=${savedId}`); return; }
+      if (!id) return;
       const fresh = await api.get(savedId);
       setLoaded(fresh);
       setForm(fromJob(fresh));
@@ -208,6 +241,11 @@ export function HrJobForm() {
     } finally { setBusy(false); }
   }
 
+  if (!id && companyStatus !== 'VERIFIED') return <main className="mx-auto max-w-xl px-4 py-10">
+    <h1 className="text-2xl font-semibold">สร้างประกาศใหม่</h1>
+    {companyStatus === null ? <p role="status">กำลังตรวจสอบสถานะบริษัท…</p> : companyStatus === 'ERROR' ? <button className="text-primary" onClick={() => setCompanyRetry((n) => n + 1)}>โหลดสถานะบริษัทอีกครั้ง</button>
+      : <p className="mt-3 text-sm">บริษัทต้องผ่านการรับรองก่อนสร้างประกาศ <Link className="text-primary" href="/hr/company">ดูสถานะบริษัท</Link></p>}
+  </main>;
   if (loadError) {
     return (
       <main className="mx-auto max-w-md px-4 py-16 text-center">
@@ -247,33 +285,33 @@ export function HrJobForm() {
         <form onSubmit={(event) => void run(false, event)} noValidate className="min-w-0 space-y-5">
           <h2 id="position" className="scroll-mt-24 text-xl font-semibold">ตำแหน่ง</h2>
           <JobOptions label="สายงาน" name="category" value={form.category} disabled={lockedField('category')}
-            options={[[ '', 'ยังไม่ระบุ' ], ...CATEGORIES.map(({ id, label }): [string, string] => [id, label])]}
+            options={[...(memberCategories ? [] : [['', 'ยังไม่ระบุ'] as [string, string]]), ...CATEGORIES.filter(({ id }) => !memberCategories || memberCategories.includes(id)).map(({ id, label }): [string, string] => [id, label])]}
             onChange={(value) => set('category')({ target: { value } })} />
           {status !== 'DRAFT' && <p className="text-xs text-ink-soft">หากต้องการเปลี่ยนสายงาน ให้ปิดประกาศนี้แล้วสร้างประกาศใหม่</p>}
           <label className="block text-sm font-medium">ชื่อตำแหน่ง
-            <input value={form.job_title} onChange={set('job_title')} disabled={lockedField('job_title')} className={inputClass} placeholder="เช่น Software Engineer Intern" />
+            <input data-job-field="job_title" value={form.job_title} onChange={set('job_title')} disabled={lockedField('job_title')} className={inputClass} placeholder="เช่น Software Engineer Intern" />
           </label>
           <h2 id="description" className="scroll-mt-24 border-t border-border pt-5 text-xl font-semibold">รายละเอียดงาน</h2>
           <label className="block text-sm font-medium">รายละเอียดงาน
-            <textarea value={form.description} onChange={set('description')} disabled={lockedField('description')} rows={4} className={inputClass} />
+            <textarea data-job-field="description" value={form.description} onChange={set('description')} disabled={lockedField('description')} rows={4} className={inputClass} />
           </label>
           <label className="block text-sm font-medium">หน้าที่ความรับผิดชอบ
-            <textarea value={form.responsibilities} onChange={set('responsibilities')} disabled={lockedField('responsibilities')} rows={4} className={inputClass} />
+            <textarea data-job-field="responsibilities" value={form.responsibilities} onChange={set('responsibilities')} disabled={lockedField('responsibilities')} rows={4} className={inputClass} />
           </label>
           <label className="block text-sm font-medium">คุณสมบัติผู้สมัคร
-            <textarea value={form.qualifications} onChange={set('qualifications')} disabled={lockedField('qualifications')} rows={3} className={inputClass} />
+            <textarea data-job-field="qualifications" value={form.qualifications} onChange={set('qualifications')} disabled={lockedField('qualifications')} rows={3} className={inputClass} />
           </label>
 
           <h2 id="conditions" className="scroll-mt-24 border-t border-border pt-5 text-xl font-semibold">เงื่อนไข</h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium">สถานที่ฝึกงาน
-              <input value={form.location} onChange={set('location')} disabled={lockedField('location')} className={inputClass} />
+              <input data-job-field="location" value={form.location} onChange={set('location')} disabled={lockedField('location')} className={inputClass} />
             </label>
             <JobOptions label="รูปแบบการทำงาน" name="work-mode" value={form.work_mode} disabled={lockedField('work_mode')}
               options={[['', 'ยังไม่ระบุ'], ['ONSITE', 'On-Site'], ['HYBRID', 'Hybrid'], ['REMOTE', 'Remote']]}
               onChange={(value) => set('work_mode')({ target: { value } })} />
             <label className="block text-sm font-medium">ชั่วโมงต่อสัปดาห์
-              <input type="number" min={1} max={168} value={form.hours} onChange={set('hours')} disabled={lockedField('hours_per_week')} className={inputClass} />
+              <input type="number" min={1} max={168} data-job-field="hours_per_week" value={form.hours} onChange={set('hours')} disabled={lockedField('hours_per_week')} className={inputClass} />
             </label>
           </div>
 
@@ -297,18 +335,20 @@ export function HrJobForm() {
           </fieldset>
 
           <label className="block text-sm font-medium">สาขาที่เปิดรับ
-            <input value={form.majors} onChange={set('majors')} disabled={lockedField('target_majors')} className={inputClass} placeholder="คั่นด้วยเครื่องหมายจุลภาค เช่น วิทยาการคอมพิวเตอร์, สถิติ" />
+            <input data-job-field="target_majors" value={form.majors} onChange={set('majors')} disabled={lockedField('target_majors')} className={inputClass} placeholder="คั่นด้วยเครื่องหมายจุลภาค เช่น วิทยาการคอมพิวเตอร์, สถิติ" />
             <span className="mt-1 block text-xs font-normal text-ink-soft">{parseMajors(form.majors).length} สาขา (อย่างน้อย 1 สาขาก่อนเผยแพร่)</span>
           </label>
           <fieldset className="min-w-0 rounded-xl border border-border p-4">
             <legend className="px-1 text-sm font-medium">Tag ทักษะ (1–{TAG_MAX} รายการ)</legend>
+            {tagsFailed && <p role="alert" className="text-sm">โหลด Tag ทักษะไม่สำเร็จ <button type="button" onClick={() => setTagAttempt((n) => n + 1)} className="font-medium text-primary underline">ลองโหลด Tag อีกครั้ง</button></p>}
+            {!tagsFailed && !tagOptions && <p role="status" className="text-xs text-ink-soft">กำลังโหลด Tag ทักษะ…</p>}
             {tagOptions?.length === 0 && <p className="text-xs text-ink-soft">ยังไม่มี Tag ให้เลือก</p>}
             <div className="flex flex-wrap gap-2">
               {[...(tagOptions ?? []), ...previousTags].map((tag) => {
                 const checked = form.tagIds.includes(tag.id);
                 return (
-                  <label key={tag.id} className={`max-w-full cursor-pointer rounded-full border px-3 py-1 text-sm [overflow-wrap:anywhere] ${checked ? 'border-primary bg-primary-soft text-primary' : 'border-border'} ${lockedField('tag_ids') ? 'opacity-60' : ''}`}>
-                    <input type="checkbox" className="sr-only" checked={checked} disabled={lockedField('tag_ids')}
+                  <label key={tag.id} className={`max-w-full cursor-pointer rounded-full border px-3 py-1 text-sm [overflow-wrap:anywhere] focus-within:ring-2 focus-within:ring-primary ${checked ? 'border-primary bg-primary-soft text-primary' : 'border-border'} ${lockedField('tag_ids') ? 'opacity-60' : ''}`}>
+                    <input type="checkbox" data-job-field="tag_ids" className="sr-only" checked={checked} disabled={lockedField('tag_ids') || !tagOptions || (!checked && form.tagIds.length >= TAG_MAX)}
                       onChange={() => setForm((current) => ({ ...current, tagIds: checked ? current.tagIds.filter((tagId) => tagId !== tag.id) : [...current.tagIds, tag.id] }))} />
                     {tag.name}{tagOptions && !activeTagIds.has(tag.id) ? ' (ปิดใช้งาน)' : ''}
                   </label>
@@ -326,19 +366,19 @@ export function HrJobForm() {
             <legend className="px-1 text-sm font-medium">ช่วงเวลาและการรับสมัคร</legend>
             <div className="grid gap-4 sm:grid-cols-3">
               <label className="block text-sm font-medium">เริ่มฝึก
-                <input type="date" value={form.periodStart} onChange={set('periodStart')} disabled={lockedField('period')} className={inputClass} />
+                <input type="date" data-job-field="period" value={form.periodStart} onChange={set('periodStart')} disabled={lockedField('period')} className={inputClass} />
               </label>
               <label className="block text-sm font-medium">สิ้นสุดการฝึก
                 <input type="date" value={form.periodEnd} onChange={set('periodEnd')} disabled={lockedField('period')} className={inputClass} />
               </label>
               <label className="block text-sm font-medium">ปิดรับสมัคร
-                <input type="date" value={form.deadline} onChange={set('deadline')} disabled={lockedField('application_deadline')} className={inputClass} />
+                <input type="date" data-job-field="application_deadline" value={form.deadline} onChange={set('deadline')} disabled={lockedField('application_deadline')} className={inputClass} />
               </label>
             </div>
           </fieldset>
 
             <label className="block text-sm font-medium">จำนวนที่รับ (ตำแหน่ง)
-              <input type="number" min={1} value={form.quota} onChange={set('quota')} disabled={lockedField('quota')} className={inputClass} />
+              <input type="number" min={1} data-job-field="quota" value={form.quota} onChange={set('quota')} disabled={lockedField('quota')} className={inputClass} />
             </label>
 
           {message && <Notice tone={message.tone}>{message.text}</Notice>}

@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { Paginated, PublicReviewItem, ReplyReviewRequest, ReplyReviewResponse, UserMeResponse } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
@@ -27,6 +27,10 @@ export function HrReviews() {
   const [companyId, setCompanyId] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [reviews, setReviews] = useState<Paginated<PublicReviewItem> | null>(null);
+  const [selectedId, setSelectedId] = useState('');
+  const [revision, setRevision] = useState(0);
+  const [notice, setNotice] = useState('');
+  const sequence = useRef(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -36,43 +40,60 @@ export function HrReviews() {
       (cause) => { if (!cancelled) setError(cause instanceof ApiError ? cause.message : 'โหลดข้อมูลบริษัทไม่สำเร็จ กรุณาลองใหม่'); },
     );
     return () => { cancelled = true; };
-  }, [request]);
+  }, [request, revision]);
 
   const load = useCallback(async () => {
     if (!companyId) return;
+    const version = ++sequence.current;
     try {
-      setReviews(await request<Paginated<PublicReviewItem>>(`/companies/${encodeURIComponent(companyId)}/reviews?page=${page}&page_size=${PAGE_SIZE}`));
+      const next = await request<Paginated<PublicReviewItem>>(`/companies/${encodeURIComponent(companyId)}/reviews?page=${page}&page_size=${PAGE_SIZE}`);
+      if (version !== sequence.current) return;
+      setReviews(next);
       setError(null);
     } catch (cause) {
+      if (version !== sequence.current) return;
       setError(cause instanceof ApiError ? cause.message : 'โหลดรีวิวไม่สำเร็จ กรุณาลองใหม่');
     }
   }, [companyId, page, request]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setReviews(null); }, [companyId, page]);
+  useEffect(() => { void load(); return () => { sequence.current++; }; }, [load, revision]);
+
+  function recordReply(reply: ReplyReviewResponse) {
+    setReviews((current) => current && {
+      ...current,
+      data: current.data.map((item) => item.id === reply.review_id ? { ...item, reply } : item),
+    });
+  }
 
   const totalPages = reviews ? Math.max(1, Math.ceil(reviews.meta.total / PAGE_SIZE)) : 1;
   const waiting = reviews?.data.filter((review) => !review.reply).length ?? 0;
 
+  const selected = reviews?.data.find((item) => item.id === selectedId) ?? reviews?.data[0];
   return (
-    <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
+    <main className="mx-auto max-w-6xl [overflow-wrap:anywhere] px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-semibold">รีวิวบริษัท</h1>
       <p className="mt-2 text-sm text-ink-soft">
         รีวิวจากผู้ฝึกงานที่เผยแพร่แล้ว ตอบได้รีวิวละ 1 ครั้ง คำตอบแสดงต่อสาธารณะในหน้าบริษัทและแก้ไขภายหลังไม่ได้
         {companyId && <> · <Link href={`/companies/item?id=${companyId}`} className="font-medium text-primary hover:underline">ดูหน้าบริษัทแบบสาธารณะ</Link></>}
       </p>
 
-      {error && <div className="mt-6"><Notice tone="error">{error}</Notice></div>}
+      {notice && <p role="status">{notice}</p>}
+      {error && <div className="mt-6"><Notice tone="error">{error} <button onClick={() => setRevision((r) => r + 1)} className="underline">ลองอีกครั้ง</button></Notice></div>}
       {!reviews && !error && <p className="mt-6 text-sm text-ink-soft">กำลังโหลด…</p>}
       {reviews && <p role="status" className="mt-6 text-sm text-ink-soft">ทั้งหมด {reviews.meta.total} รีวิว · หน้านี้รอตอบ {waiting} รีวิว</p>}
       {reviews && reviews.data.length === 0 && (
         <div className="mt-4 rounded-xl border border-dashed border-border p-8 text-center text-sm text-ink-soft">ยังไม่มีรีวิวที่เผยแพร่</div>
       )}
       {reviews && reviews.data.length > 0 && (
-        <ul className="mt-4 space-y-4">
-          {reviews.data.map((review) => (
-            <ReviewCard key={review.id} review={review} onReplied={load} />
-          ))}
-        </ul>
+        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
+          <ul aria-label="เลือกรีวิว" className="hidden min-w-0 self-start divide-y divide-border rounded-xl border border-border lg:block">
+            {reviews.data.map((review) => <li key={review.id}><button onClick={() => { setSelectedId(review.id); setNotice(''); }} aria-pressed={selected?.id === review.id} className="w-full min-w-0 p-3 text-left aria-pressed:bg-primary-soft">
+              <span className="block truncate font-semibold">{review.title || reviewerLabel(review)}</span><span className="text-sm">{review.rating}/5 · {review.reply ? 'ตอบแล้ว' : 'รอตอบ'} · {reviewDateFormat.format(new Date(review.published_at))}</span>
+            </button></li>)}
+          </ul>
+          <ul className="min-w-0 space-y-4">{reviews.data.map((review) => <ReviewCard key={review.id} review={review} selected={selected?.id === review.id} onReplied={recordReply} onConflict={() => setRevision((value) => value + 1)} notify={setNotice} />)}</ul>
+        </div>
       )}
       {reviews && reviews.meta.total > PAGE_SIZE && (
         <nav aria-label="เลือกหน้ารีวิว" className="mt-6 flex items-center justify-center gap-4 text-sm">
@@ -85,10 +106,16 @@ export function HrReviews() {
   );
 }
 
-function ReviewCard({ review, onReplied }: { review: PublicReviewItem; onReplied: () => Promise<void> }) {
+type ReplyActions = {
+  notify: (message: string) => void;
+  onReplied: (reply: ReplyReviewResponse) => void;
+  onConflict: () => void;
+};
+
+function ReviewCard({ review, selected, onReplied, onConflict, notify }: ReplyActions & { review: PublicReviewItem; selected: boolean }) {
   const outcome = OUTCOME[review.outcome_label];
   return (
-    <li className="rounded-xl border border-border bg-surface p-5">
+    <li className={`rounded-xl border border-border bg-surface p-5 ${selected ? '' : 'lg:hidden'}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Stars value={review.rating} />
         <StatusBadge tone={outcome.tone} icon={outcome.icon}>{outcome.label}</StatusBadge>
@@ -102,15 +129,16 @@ function ReviewCard({ review, onReplied }: { review: PublicReviewItem; onReplied
           <p className="mt-1 whitespace-pre-line">{review.reply.body}</p>
         </div>
       ) : (
-        <ReplyForm reviewId={review.id} onReplied={onReplied} />
+        <ReplyForm reviewId={review.id} notify={notify} onReplied={onReplied} onConflict={onConflict} />
       )}
     </li>
   );
 }
 
-function ReplyForm({ reviewId, onReplied }: { reviewId: string; onReplied: () => Promise<void> }) {
+function ReplyForm({ reviewId, onReplied, onConflict, notify }: ReplyActions & { reviewId: string }) {
   const { request } = useAuth();
   const fieldId = useId();
+  const [preview, setPreview] = useState(false);
   const [body, setBody] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -119,17 +147,19 @@ function ReplyForm({ reviewId, onReplied }: { reviewId: string; onReplied: () =>
     event.preventDefault();
     const value = body.trim();
     if (!value) { setMessage('กรุณาพิมพ์คำตอบก่อนส่ง'); return; }
+    if (!preview) { setPreview(true); setMessage(null); return; }
     setBusy(true);
     setMessage(null);
     try {
       const payload: ReplyReviewRequest = { body: value };
-      await request<ReplyReviewResponse>(`/hr/reviews/${encodeURIComponent(reviewId)}/reply`, { method: 'POST', body: payload });
-      setBody('');
-      await onReplied();
+      const reply = await request<ReplyReviewResponse>(`/hr/reviews/${encodeURIComponent(reviewId)}/reply`, { method: 'POST', body: payload });
+      onReplied(reply);
+      notify('เผยแพร่คำตอบแล้ว');
     } catch (cause) {
-      if (cause instanceof ApiError && cause.code === 'ALREADY_REPLIED') {
+      if (cause instanceof ApiError && (cause.code === 'ALREADY_REPLIED' || cause.status === 404)) {
+        notify(cause.status === 404 ? 'รีวิวนี้ไม่พร้อมให้ตอบแล้ว' : 'สมาชิกทีมตอบรีวิวนี้แล้ว');
         // มีสมาชิกคนอื่นตอบไปแล้ว — โหลดใหม่เพื่อแสดงคำตอบนั้นแทนฟอร์ม
-        await onReplied();
+        onConflict();
         return;
       }
       setMessage(cause instanceof ApiError ? cause.message : 'ส่งคำตอบไม่สำเร็จ กรุณาลองใหม่');
@@ -139,12 +169,13 @@ function ReplyForm({ reviewId, onReplied }: { reviewId: string; onReplied: () =>
   return (
     <form onSubmit={(event) => void submit(event)} noValidate className="mt-4 space-y-2 border-t border-border pt-4 text-sm">
       <label htmlFor={`${fieldId}-reply`} className="block font-medium">ตอบรีวิวนี้ในนามบริษัท</label>
-      <textarea id={`${fieldId}-reply`} value={body} onChange={(event) => setBody(event.target.value)} rows={3} maxLength={REPLY_MAX}
+      <textarea readOnly={preview} id={`${fieldId}-reply`} value={body} onChange={(event) => setBody(event.target.value)} rows={3} maxLength={REPLY_MAX}
         aria-describedby={`${fieldId}-reply-hint`} aria-invalid={message ? true : undefined} className={inputClass} />
       <p id={`${fieldId}-reply-hint`} className="text-xs text-ink-soft">{body.length}/{REPLY_MAX} · ตอบได้ครั้งเดียวและแก้ไขภายหลังไม่ได้</p>
+      {preview && <p className="text-sm">ตรวจคำตอบก่อนเผยแพร่ <button type="button" className="text-primary" onClick={() => setPreview(false)}>กลับไปแก้ไข</button></p>}
       {message && <Notice tone="error">{message}</Notice>}
       <button type="submit" disabled={busy} className="rounded-full bg-primary px-5 py-2 font-semibold text-white hover:bg-primary-hover disabled:opacity-60">
-        {busy ? 'กำลังส่ง…' : 'ส่งคำตอบ'}
+        {busy ? 'กำลังส่ง…' : preview ? 'ยืนยันเผยแพร่คำตอบ' : 'ดูตัวอย่างคำตอบ'}
       </button>
     </form>
   );

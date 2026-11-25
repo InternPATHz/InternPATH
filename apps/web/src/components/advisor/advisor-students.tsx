@@ -67,6 +67,10 @@ export function AdvisorStudents() {
   const [loading, setLoading] = useState(true);
 
   const [pending, setPending] = useState<AdvisorStudentItem[]>([]);
+  const [pendingPage, setPendingPage] = useState(1);
+  const [pendingTotal, setPendingTotal] = useState(0);
+  const [pendingError, setPendingError] = useState('');
+  const [pendingRetry, setPendingRetry] = useState(0);
   const [pendingMessage, setPendingMessage] = useState<{ tone: 'error' | 'success'; text: string } | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -87,11 +91,17 @@ export function AdvisorStudents() {
 
   useEffect(() => {
     let active = true;
-    request<Paginated<AdvisorStudentItem>>('/advisor-links/students?activation=PENDING&page_size=100')
-      .then((data) => { if (active) setPending(data.data); })
-      .catch(() => { if (active) setPending([]); });
+    setPendingError('');
+    request<Paginated<AdvisorStudentItem>>(`/advisor-links/students?activation=PENDING&page_size=${PAGE_SIZE}&page=${pendingPage}`)
+      .then((data) => {
+        if (!active) return;
+        setPending(data.data); setPendingTotal(data.meta.total);
+        if (!data.data.length && pendingPage > 1) setPendingPage(Math.max(1, Math.ceil(data.meta.total / PAGE_SIZE)));
+      })
+      .catch((cause) => { if (active) { setPending([]); setPendingError(failure(cause)); } });
     return () => { active = false; };
-  }, [reload, request]);
+  }, [reload, request, pendingPage, pendingRetry]);
+
 
   const set = (key: keyof typeof EMPTY_FORM) => (event: { target: { value: string } }) => setForm((current) => ({ ...current, [key]: event.target.value }));
 
@@ -107,14 +117,14 @@ export function AdvisorStudents() {
       };
       const created = await request<CreateStudentResponse>('/advisor-links/students', { method: 'POST', body });
       setForm(EMPTY_FORM);
-      setFormMessage({ tone: 'success', text: `เพิ่มนักศึกษาแล้ว ส่งคำเชิญไปที่ ${created.email} (ลิงก์ใช้ได้ถึง ${dateTime.format(new Date(created.invitation_expires_at))})` });
+      setFormMessage({ tone: 'success', text: `สร้างบัญชีแล้ว รอการตั้งรหัสผ่านโดย ${created.email} (ลิงก์ใช้ได้ถึง ${dateTime.format(new Date(created.invitation_expires_at))})` });
       setReload((key) => key + 1);
     } catch (cause) { setFormMessage({ tone: 'error', text: failure(cause) }); }
     finally { setFormBusy(false); }
   }
 
   const act = useCallback(async (student: AdvisorStudentItem, kind: 'resend' | 'cancel') => {
-    if (kind === 'cancel' && !window.confirm(`ยกเลิกบัญชีของ ${student.full_name}? (ใช้ได้เฉพาะคนที่ยังไม่ตั้งรหัสผ่าน)`)) return;
+    if (!window.confirm(kind === 'resend' ? `ส่งคำเชิญใหม่ให้ ${student.full_name} · ${student.student_code} · ${student.email}? ลิงก์เดิมจะใช้ไม่ได้` : `ยกเลิกบัญชีของ ${student.full_name} · ${student.student_code} · ${student.email}? (ใช้ได้เฉพาะคนที่ยังไม่ตั้งรหัสผ่าน)`)) return;
     setBusyId(student.user_id);
     setPendingMessage(null);
     try {
@@ -126,7 +136,7 @@ export function AdvisorStudents() {
         setPendingMessage({ tone: 'success', text: `ยกเลิกบัญชีของ ${student.full_name} แล้ว` });
       }
       setReload((key) => key + 1);
-    } catch (cause) { setPendingMessage({ tone: 'error', text: failure(cause) }); }
+    } catch (cause) { setPendingMessage({ tone: 'error', text: failure(cause) }); if (cause instanceof ApiError && cause.code === 'STATE_CONFLICT') setPendingRetry((n) => n + 1); }
     finally { setBusyId(null); }
   }, [request]);
 
@@ -140,16 +150,18 @@ export function AdvisorStudents() {
         นักศึกษาไม่ต้องสมัครสมาชิกเอง อาจารย์เพิ่มนักศึกษาที่นี่ นักศึกษาจะได้อีเมลลิงก์เพื่อตั้งรหัสผ่าน แล้วสมัครฝึกงานด้วยตนเองได้ตามปกติ
       </p>
 
+          {pendingMessage && <div className="mt-3"><Notice tone={pendingMessage.tone}>{pendingMessage.text}</Notice></div>}
+      {pendingError && <Notice tone="error">{pendingError} <button className="underline" onClick={() => setPendingRetry((n) => n + 1)}>โหลดคำเชิญอีกครั้ง</button></Notice>}
       {pending.length > 0 && (
         <section aria-labelledby="pending-title" className="mt-8">
-          <h2 id="pending-title" className="text-lg font-semibold">รอตั้งรหัสผ่าน ({pending.length})</h2>
-          {pendingMessage && <div className="mt-3"><Notice tone={pendingMessage.tone}>{pendingMessage.text}</Notice></div>}
+          <h2 id="pending-title" className="text-lg font-semibold">รอตั้งรหัสผ่าน ({pendingTotal})</h2>
+
           <ul className="mt-3 divide-y divide-border rounded-xl border border-border">
             {pending.map((student) => (
               <li key={student.user_id} className="flex flex-wrap items-center gap-3 p-4 text-sm">
                 <div className="min-w-0 flex-1">
                   <p className="font-medium">{student.full_name} <span className="text-xs text-ink-soft">({student.student_code})</span></p>
-                  <p className="truncate text-xs text-ink-soft">
+                  <p className="[overflow-wrap:anywhere] text-xs text-ink-soft">
                     {student.email}{student.invitation_expires_at && ` · ลิงก์หมดอายุ ${dateTime.format(new Date(student.invitation_expires_at))}`}
                   </p>
                 </div>
@@ -160,6 +172,11 @@ export function AdvisorStudents() {
               </li>
             ))}
           </ul>
+          {pendingTotal > PAGE_SIZE && <nav aria-label="หน้าคำเชิญ" className="mt-3 flex items-center gap-3 text-sm">
+            <button disabled={pendingPage <= 1} onClick={() => setPendingPage(pendingPage - 1)}>ก่อนหน้า</button>
+            <span>หน้า {pendingPage} จาก {Math.ceil(pendingTotal / PAGE_SIZE)}</span>
+            <button disabled={pendingPage * PAGE_SIZE >= pendingTotal} onClick={() => setPendingPage(pendingPage + 1)}>ถัดไป</button>
+          </nav>}
         </section>
       )}
 

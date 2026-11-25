@@ -14,7 +14,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  * ตรวจรูปแบบ UUID และเหตุผลก่อนยิง API • ถาม `window.confirm` ก่อนทำเพราะย้อนกลับไม่ได้
  * `onSubmit` คืนข้อความสำเร็จ หรือโยน Error ที่มีข้อความสำหรับแสดง
  */
-export function IdActionForm({ title, description, idLabel, reasonLabel, submitLabel, confirmText, initialId = '', onSubmit }: {
+export function IdActionForm({ title, description, idLabel, reasonLabel, submitLabel, confirmText, initialId = '', targetLabel, onSubmit }: {
   title: string;
   description: string;
   idLabel: string;
@@ -22,6 +22,7 @@ export function IdActionForm({ title, description, idLabel, reasonLabel, submitL
   submitLabel: string;
   confirmText: (id: string) => string;
   initialId?: string;
+  targetLabel?: string;
   onSubmit: (id: string, reason: string) => Promise<string>;
 }) {
   const fieldId = useId();
@@ -33,7 +34,7 @@ export function IdActionForm({ title, description, idLabel, reasonLabel, submitL
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    const id = targetId.trim();
+    const id = (initialId || targetId).trim();
     const text = reason.trim();
     setError('');
     setSuccess('');
@@ -58,12 +59,12 @@ export function IdActionForm({ title, description, idLabel, reasonLabel, submitL
       <h2 id={`${fieldId}-title`} className="text-base font-semibold">{title}</h2>
       <p className="mt-1 text-sm text-ink-soft">{description}</p>
       <div className="mt-3 space-y-3">
-        <div className="text-sm">
+        {targetLabel ? <p className="text-sm font-medium">{targetLabel}</p> : <div className="text-sm">
           <label htmlFor={`${fieldId}-id`} className="font-medium">{idLabel} (UUID) <span className="text-danger-text">(จำเป็น)</span></label>
-          <input id={`${fieldId}-id`} value={targetId} onChange={(event) => setTargetId(event.target.value)} spellCheck={false} autoComplete="off"
+          <input id={`${fieldId}-id`} value={initialId || targetId} readOnly={Boolean(initialId)} onChange={(event) => setTargetId(event.target.value)} spellCheck={false} autoComplete="off"
             aria-required="true" maxLength={36}
             className="mt-1.5 w-full rounded-lg border border-border bg-surface px-3 py-2 font-mono text-xs outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft" />
-        </div>
+        </div>}
         <ReasonField label={reasonLabel} value={reason} onChange={setReason} required rows={2} />
       </div>
       {error && <div className="mt-2"><Notice tone="error">{error}</Notice></div>}

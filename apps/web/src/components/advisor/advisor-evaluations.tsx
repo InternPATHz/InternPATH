@@ -57,18 +57,35 @@ function allowedResults(status: ApplicationStatus): AcademicResult[] {
  * 2. บันทึกผลทางวิชาการ — `GET /advisor/applications?status=&academic_recorded=false|true` → `POST /advisor/applications/{id}/academic-result`
  */
 export function AdvisorEvaluations() {
+  const [tab, setTab] = useState<View | 'disputes'>('disputes');
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('view') === 'pending' || params.get('status')) setTab('pending');
+  }, []);
   return (
     <main className="mx-auto max-w-4xl px-4 py-10 sm:px-6">
       <h1 className="text-3xl font-semibold">ประเมินผลการฝึกงาน</h1>
       <p className="mt-2 text-sm text-ink-soft">ตัดสินคำโต้แย้งผลประเมินของนักศึกษา และบันทึกผลทางวิชาการเมื่อการฝึกงานสิ้นสุด</p>
-      <DisputeQueue />
-      <AcademicResults />
+      <div className="mt-5 flex flex-wrap gap-2" role="group" aria-label="งานประเมินผล">
+        {([['disputes', 'คำโต้แย้ง'], ...VIEWS] as const).map(([key, label]) => <button key={key} aria-pressed={tab === key} className="rounded-full border border-border px-4 py-2 text-sm aria-pressed:bg-primary-soft" onClick={() => setTab(key)}>{label}</button>)}
+      </div>
+      {tab === 'disputes' ? <DisputeQueue /> : <AcademicResults key={tab} view={tab} />}
     </main>
   );
 }
 
+function EvaluationPicker({ rows, selected, onSelect }: { rows: AdvisorApplicationItem[]; selected?: string; onSelect: (id: string) => void }) {
+  return <ul aria-label="เลือกใบสมัครที่จะประเมิน" className="hidden min-w-0 self-start divide-y divide-border lg:block">
+    {rows.map((app) => <li key={app.id}><button type="button" aria-pressed={selected === app.id} onClick={() => onSelect(app.id)}
+      className="w-full rounded-lg p-3 text-left text-sm [overflow-wrap:anywhere] aria-pressed:bg-primary-soft">
+      <strong className="block">{app.student_name}</strong>{app.job_title} · {app.company_name}
+    </button></li>)}
+  </ul>;
+}
+
 function DisputeQueue() {
   const { request } = useAuth();
+  const [selectedId, setSelectedId] = useState('');
   const [page, setPage] = useState(1);
   const [list, setList] = useState<Paginated<AdvisorDisputeItem> | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -87,6 +104,7 @@ function DisputeQueue() {
 
   useEffect(() => { void load(); }, [load]);
 
+  const selected = list?.data.find((item) => item.id === selectedId) ?? list?.data[0];
   const { busyId, decide, message } = useAdvisorDisputeDecision(load);
 
   return (
@@ -95,9 +113,11 @@ function DisputeQueue() {
       {loadError && <div className="mt-3"><Notice tone="error">{loadError}</Notice></div>}
       {message && <div className="mt-3"><Notice tone={message.tone}>{message.text}</Notice></div>}
       {list && list.data.length === 0 && <p className="mt-3 rounded-xl bg-surface-muted p-6 text-center text-sm text-ink-soft">ไม่มีคำโต้แย้งที่รอตัดสิน</p>}
-      <ul className="mt-3 space-y-4">
+      <div className="mt-3 grid gap-4 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
+      <EvaluationPicker rows={list?.data ?? []} selected={selected?.id} onSelect={setSelectedId} />
+      <ul className="min-w-0 space-y-4">
         {list?.data.map((item) => (
-          <li key={item.id} className="rounded-xl border border-border bg-surface p-5">
+          <li key={item.id} className={`rounded-xl border border-border bg-surface p-5 ${item.id === selected?.id ? '' : 'lg:hidden'}`}>
             <ApplicationSummary app={item} />
             <dl className="mt-4 grid gap-3 rounded-xl bg-surface-muted p-4 text-sm sm:grid-cols-2">
               <div>
@@ -111,31 +131,31 @@ function DisputeQueue() {
             </dl>
             <label className="mt-4 block text-sm font-medium">
               หมายเหตุถึงบริษัทและนักศึกษา (ไม่บังคับ)
-              <textarea value={notes[item.id] ?? ''} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} rows={2} className={inputClass} />
+              <textarea maxLength={2000} value={notes[item.id] ?? ''} onChange={(event) => setNotes((current) => ({ ...current, [item.id]: event.target.value }))} rows={2} className={inputClass} />
             </label>
             <div className="mt-3 flex flex-wrap gap-3">
-              {item.evaluation?.round !== 2 && (
+              {item.evaluation?.round === 1 && (
                 <button type="button" disabled={busyId !== null} onClick={() => void decide(item, 'request-reevaluation', notes[item.id] ?? '')} className={primaryButton}>ให้บริษัทประเมินใหม่</button>
               )}
               <button type="button" disabled={busyId !== null} onClick={() => void decide(item, 'uphold-fail', notes[item.id] ?? '')} className={secondaryButton}>ยืนยันผลไม่ผ่าน</button>
             </div>
           </li>
         ))}
-      </ul>
+      </ul></div>
       {list && <Pager page={page} total={list.meta.total} onPage={setPage} />}
     </section>
   );
 }
 
-function AcademicResults() {
+function AcademicResults({ view }: { view: View }) {
   const { request } = useAuth();
-  const [view, setView] = useState<View>('pending');
   const [status, setStatus] = useState<ApplicationStatus>('EVALUATED_PASS');
+  const [selectedId, setSelectedId] = useState('');
   const [page, setPage] = useState(1);
   const [list, setList] = useState<Paginated<AdvisorApplicationItem> | null>(null);
   const [message, setMessage] = useState<Message | null>(null);
   const [editing, setEditing] = useState<string | null>(null);
-  const [result, setResult] = useState<AcademicResult>('ACADEMIC_PASS');
+  const [result, setResult] = useState<AcademicResult | ''>('');
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -157,20 +177,19 @@ function AcademicResults() {
 
   useEffect(() => { void load(); }, [load]);
 
+  useEffect(() => {
+    const preset = new URLSearchParams(window.location.search).get('status');
+    if (PENDING_STATUSES.some(([key]) => key === preset)) setStatus(preset as ApplicationStatus);
+  }, []);
+
+  const selected = list?.data.find((app) => app.id === selectedId) ?? list?.data[0];
   const pending = view === 'pending' ? list?.data ?? [] : [];
   const recorded = view === 'recorded' ? list?.data ?? [] : [];
   const total = list?.meta.total ?? 0;
 
-  function changeView(next: View) {
-    setView(next);
-    if (next === 'pending' && status === 'COMPLETED') setStatus('EVALUATED_PASS');
-    setPage(1);
-    setEditing(null);
-  }
-
   function open(app: AdvisorApplicationItem) {
     setEditing(app.id);
-    setResult(allowedResults(app.status)[0]);
+    setResult('');
     setNote('');
     setMessage(null);
   }
@@ -179,7 +198,8 @@ function AcademicResults() {
     event.preventDefault();
     const value = note.trim();
     if (value.length > NOTE_MAX) { setMessage({ tone: 'error', text: `หมายเหตุต้องไม่เกิน ${NOTE_MAX} ตัวอักษร` }); return; }
-    if (!window.confirm(`บันทึกผล "${ACADEMIC_LABEL[result]}" ให้ ${app.student_name}? บันทึกแล้วแก้ไม่ได้`)) return;
+    if (!result || !allowedResults(app.status).includes(result)) return;
+    if (!window.confirm(`บันทึกผล "${ACADEMIC_LABEL[result]}" ให้ ${app.student_name}?${value ? `\nหมายเหตุ: ${value}` : ''} บันทึกแล้วแก้ไม่ได้`)) return;
     setBusy(true);
     setMessage(null);
     try {
@@ -204,10 +224,9 @@ function AcademicResults() {
   return (
     <section aria-labelledby="academic-title" className="mt-12">
       <h2 id="academic-title" className="text-xl font-semibold">บันทึกผลทางวิชาการ</h2>
-      <p className="mt-1 text-sm text-ink-soft">ถ้าบริษัทประเมินไม่ผ่าน บันทึกได้เฉพาะ "ไม่ผ่านรายวิชา" หรือ "ต้องฝึกซ้ำ" • บันทึกได้ครั้งเดียว ดูรายการที่บันทึกแล้วได้จากตัวเลือก "แสดง"</p>
+      <p className="mt-1 text-sm text-ink-soft">ถ้าบริษัทประเมินไม่ผ่าน บันทึกได้เฉพาะ "ไม่ผ่านรายวิชา" หรือ "ต้องฝึกซ้ำ" • บันทึกได้ครั้งเดียว ดูรายการที่ผ่านมาได้ในแท็บบันทึกผลแล้ว</p>
       <div className="mt-3 flex flex-wrap items-end gap-3 rounded-xl bg-surface-muted p-4">
-        <FilterSelect label="แสดง" value={view} onChange={(value) => changeView(value as View)} options={VIEWS} />
-        <FilterSelect label="ผลจากบริษัท" value={status} onChange={(value) => { setStatus(value as ApplicationStatus); setPage(1); setEditing(null); }}
+        <FilterSelect label="สถานะใบสมัคร" value={status} onChange={(value) => { setStatus(value as ApplicationStatus); setPage(1); setEditing(null); }}
           options={view === 'pending' ? PENDING_STATUSES : RECORDABLE} />
       </div>
       {message && <div className="mt-3"><Notice tone={message.tone}>{message.text}</Notice></div>}
@@ -216,10 +235,13 @@ function AcademicResults() {
           {view === 'pending' ? 'ไม่มีรายการรอบันทึกผลในสถานะนี้' : 'ยังไม่มีรายการที่บันทึกผลในสถานะนี้'}
         </p>
       )}
+      <div className="mt-4 grid items-start gap-4 lg:grid-cols-[minmax(14rem,1fr)_minmax(0,2fr)]">
+        <EvaluationPicker rows={list?.data ?? []} selected={selected?.id} onSelect={(id) => { setSelectedId(id); setEditing(null); }} />
+        <div className="min-w-0">
       {pending.length > 0 && <h3 className="mt-6 text-base font-semibold">รอบันทึกผล ({total})</h3>}
       <ul className="mt-3 space-y-4">
         {pending.map((app) => (
-          <li key={app.id} className="rounded-xl border border-border bg-surface p-5">
+          <li key={app.id} className={`rounded-xl border border-border bg-surface p-5 ${app.id === selected?.id ? '' : 'lg:hidden'}`}>
             <ApplicationSummary app={app} />
             {editing === app.id ? (
               <form onSubmit={(event) => void submit(event, app)} noValidate className="mt-4 space-y-3 rounded-xl bg-surface-muted p-4 text-sm">
@@ -236,10 +258,10 @@ function AcademicResults() {
                 </fieldset>
                 <label className="block font-medium">
                   หมายเหตุ (ไม่บังคับ)
-                  <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} className={inputClass} />
+                  <textarea maxLength={NOTE_MAX} value={note} onChange={(event) => setNote(event.target.value)} rows={2} className={inputClass} />
                 </label>
                 <div className="flex gap-3">
-                  <button type="submit" disabled={busy} className={primaryButton}>{busy ? 'กำลังบันทึก…' : 'บันทึกผล'}</button>
+                  <button type="submit" disabled={busy || !result} className={primaryButton}>{busy ? 'กำลังบันทึก…' : 'บันทึกผล'}</button>
                   <button type="button" onClick={() => setEditing(null)} className={secondaryButton}>ยกเลิก</button>
                 </div>
               </form>
@@ -254,7 +276,7 @@ function AcademicResults() {
           <h3 className="mt-6 text-base font-semibold">บันทึกผลแล้ว ({total})</h3>
           <ul className="mt-3 space-y-4">
             {recorded.map((app) => (
-              <li key={app.id} className="rounded-xl border border-border bg-surface-muted p-5">
+              <li key={app.id} className={`rounded-xl border border-border bg-surface-muted p-5 ${app.id === selected?.id ? '' : 'lg:hidden'}`}>
                 <ApplicationSummary app={app} />
                 <p className="mt-4 flex flex-wrap items-center gap-2 text-sm">
                   <span className="text-ink-soft">ผลทางวิชาการ</span>
@@ -265,6 +287,7 @@ function AcademicResults() {
           </ul>
         </>
       )}
+        </div></div>
       {list && <Pager page={page} total={list.meta.total} onPage={setPage} />}
     </section>
   );

@@ -20,8 +20,8 @@ import {
  */
 export const ADMIN_NAV_ICONS: Record<string, LucideIcon> = {
   'คิวตรวจ': Inbox,
-  'ธงบริษัท': Flag,
-  'Audit log': ScrollText,
+  'จัดการธงบริษัท': Flag,
+  'บันทึกการดำเนินการ': ScrollText,
   'บริษัท': Building2,
   'อาจารย์ที่ปรึกษา': GraduationCap,
   'ผู้ใช้': Users,

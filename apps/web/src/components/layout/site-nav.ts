@@ -20,6 +20,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { label: 'โปรไฟล์และเรซูเม่', href: '/student/profile', ready: true },
   ],
   COMPANY_HR: [
+    { label: 'ภาพรวม', href: '/hr', ready: true },
     { label: 'ประกาศของฉัน', href: '/hr/jobs', ready: true },
     { label: 'ผู้สมัคร', href: '/hr/applicants', ready: true },
     { label: 'บริษัทของฉัน', href: '/hr/company', ready: true },
@@ -39,7 +40,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
 /** หน้าแรกของแต่ละบทบาท — ใช้พาไปหลังล็อกอินเมื่อไม่มี `?next=` */
 export const ROLE_HOME: Record<Role, string> = {
   STUDENT: '/jobs',
-  COMPANY_HR: '/hr/jobs',
+  COMPANY_HR: '/hr',
   ADVISOR: '/advisor',
   PLATFORM_ADMIN: '/admin/queue',
 };
