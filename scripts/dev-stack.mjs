@@ -136,16 +136,25 @@ async function stopApps(pid = readStack()) {
   rmSync(statePath, { force: true });
 }
 
+/**
+ * เวลารอให้แต่ละ Service พร้อม — `nest start --watch` คอมไพล์ใหม่ทั้งหมดทุกครั้ง (`deleteOutDir`, ไม่ incremental)
+ * บนเครื่องที่ช้าอาจเกิน 60 วินาที (Identity คอมไพล์ 48 วิ + บูต) ⇒ ค่าเริ่มต้น 180 วิ ปรับได้ด้วย `INTERNPATH_STARTUP_TIMEOUT_SECONDS`
+ */
+const startupTimeoutMs = (() => {
+  const seconds = Number(process.env.INTERNPATH_STARTUP_TIMEOUT_SECONDS);
+  return (Number.isFinite(seconds) && seconds > 0 ? seconds : 180) * 1000;
+})();
+
 async function waitForHttp(port, path) {
   const url = `http://127.0.0.1:${port}${path}`;
-  const deadline = Date.now() + 60_000;
+  const deadline = Date.now() + startupTimeoutMs;
   while (Date.now() < deadline) {
     const response = await fetch(url, { signal: AbortSignal.timeout(2_000) }).catch(() => null);
     await response?.body?.cancel();
     if (response?.ok) return;
     await delay(500);
   }
-  throw new Error(`Timed out waiting for ${url}.`);
+  throw new Error(`Timed out waiting for ${url} after ${startupTimeoutMs / 1000}s (set INTERNPATH_STARTUP_TIMEOUT_SECONDS to wait longer).`);
 }
 
 function checkPort(port) {

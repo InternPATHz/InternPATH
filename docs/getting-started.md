@@ -44,7 +44,7 @@ pnpm keys:generate            # พิมพ์ JWT_PRIVATE_KEY / JWT_PUBLIC_KEY
 | `pnpm dev:down` | หยุดแอปที่คำสั่งเปิดไว้และ containers ของ InternPATH เก็บ Docker volumes ไว้ และปิด Docker Desktop เมื่อไม่มี container อื่นทำงาน |
 | `pnpm dev:migrate` | ใช้กับฐานข้อมูลใหม่ครั้งแรกหรือหลังอัปเดตโค้ดแล้วมี migration ค้าง ถ้าระบบรันอยู่ให้ใช้ `dev:down` ก่อน คำสั่งเปิด Postgres แล้วรัน migrations จากโค้ดที่ checkout อยู่ |
 
-`dev:up` เตรียมคิว RabbitMQ และ Prisma Client ให้ การรัน migration ต้องสั่ง `dev:migrate` แยก หลังเปิดระบบครั้งแรกให้รัน `pnpm infra:init-buckets` เพื่อสร้าง bucket สำหรับไฟล์ อ่าน log ด้วย `Get-Content .internpath-dev/stack.log -Tail 40` หากมีไฟล์ `.env.internpath-current` ในเครื่อง ค่าจากไฟล์นี้จะใช้กับทั้งการเปิดแอปและ migration
+`dev:up` เตรียมคิว RabbitMQ และ Prisma Client ให้ การรัน migration ต้องสั่ง `dev:migrate` แยก หลังเปิดระบบครั้งแรกให้รัน `pnpm infra:init-buckets` เพื่อสร้าง bucket สำหรับไฟล์ อ่าน log ด้วย `Get-Content .internpath-dev/stack.log -Tail 40` หากมีไฟล์ `.env.internpath-current` ในเครื่อง ค่าจากไฟล์นี้จะใช้กับทั้งการเปิดแอปและ migration แต่ละ Service มีเวลาเปิดให้พร้อม 180 วินาที (คอมไพล์ใหม่ทุกครั้ง) ถ้าเครื่องช้ากว่านั้นให้ตั้ง `INTERNPATH_STARTUP_TIMEOUT_SECONDS` เช่น `$env:INTERNPATH_STARTUP_TIMEOUT_SECONDS=300; pnpm dev:up`
 
 ### รันทีละส่วน
 
