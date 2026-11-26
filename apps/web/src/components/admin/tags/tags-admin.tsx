@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import type { AdminTag, CreateTagRequest, Paginated, UpdateTagRequest } from '@internpath/contracts';
+import type { AdminTag, CreateTagRequest, MergeTagRequest, Paginated, UpdateTagRequest } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { Badge } from '@/components/admin/queue/queue-ui';
@@ -40,6 +40,21 @@ export function TagsAdmin() {
   const [editError, setEditError] = useState('');
   const [editName, setEditName] = useState('');
   const [busy, setBusy] = useState(false);
+  // รวม Tag ซ้ำ: ค้นหา Tag ปลายทาง (เฉพาะที่ใช้งานอยู่) แล้วเลือก
+  const [mergeQ, setMergeQ] = useState('');
+  const [mergeOptions, setMergeOptions] = useState<AdminTag[]>([]);
+  const [mergeInto, setMergeInto] = useState('');
+
+  useEffect(() => {
+    if (!editing) return;
+    let active = true;
+    const query = new URLSearchParams({ active: 'true', page_size: '20' });
+    if (mergeQ.trim()) query.set('q', mergeQ.trim());
+    request<Paginated<AdminTag>>(`/admin/tags?${query.toString()}`)
+      .then((data) => { if (active) setMergeOptions(data.data.filter((tag) => tag.id !== editing.id)); })
+      .catch(() => { if (active) setMergeOptions([]); });
+    return () => { active = false; };
+  }, [editing, mergeQ, request]);
 
   useEffect(() => {
     let active = true;
@@ -115,6 +130,28 @@ export function TagsAdmin() {
     } finally { setBusy(false); }
   }
 
+  /** รวม Tag: ประกาศทุกใบที่ติด Tag นี้ย้ายไปติด Tag ปลายทาง แล้ว Tag นี้ถูกลบ */
+  async function merge() {
+    const target = mergeOptions.find((tag) => tag.id === mergeInto);
+    if (!editing || !target) return;
+    if (!window.confirm(`รวม "${editing.name}" เข้ากับ "${target.name}"? ประกาศ ${editing.job_count} รายการจะย้ายไปใช้ "${target.name}" และ "${editing.name}" จะถูกลบ (ย้อนกลับไม่ได้)`)) return;
+    setBusy(true);
+    setNotice('');
+    setError('');
+    try {
+      const body: MergeTagRequest = { into_tag_id: target.id };
+      await request<AdminTag>(`/admin/tags/${encodeURIComponent(editing.id)}/merge`, { method: 'POST', body });
+      setNotice(`รวม "${editing.name}" เข้ากับ "${target.name}" แล้ว`);
+      dialog.current?.close();
+      reload();
+    } catch (cause) {
+      const issues = cause instanceof ApiError ? cause.issues : [];
+      setEditError(issues.includes('TAG_INACTIVE') ? 'Tag ปลายทางถูกปิดใช้งาน ให้เปิดใช้งานก่อน'
+        : cause instanceof ApiError && cause.status === 404 ? 'ไม่พบ Tag (อาจถูกลบหรือรวมไปแล้ว)' : failure(cause));
+      if (cause instanceof ApiError && cause.status === 404) reload();
+    } finally { setBusy(false); }
+  }
+
   const total = result?.meta.total ?? 0;
   const lastPage = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -180,7 +217,7 @@ export function TagsAdmin() {
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap justify-end gap-2">
                     <button type="button" aria-label={`จัดการ Tag ${tag.name}`} className="text-sm text-primary"
-                      onClick={() => { setEditing(tag); setEditActive(tag.active); setEditName(tag.name); setEditError(''); dialog.current?.showModal(); }}>จัดการ</button>
+                      onClick={() => { setEditing(tag); setEditActive(tag.active); setEditName(tag.name); setEditError(''); setMergeQ(''); setMergeInto(''); dialog.current?.showModal(); }}>จัดการ</button>
                   </div>
                 </td>
               </tr>
@@ -202,6 +239,20 @@ export function TagsAdmin() {
               ? <p className="text-ink-soft">ลบไม่ได้ — มีประกาศใช้ Tag นี้ {editing.job_count} รายการ (ปิดใช้งานแทนได้)</p>
               : <button type="button" disabled={busy} onClick={() => void remove()} className="font-medium text-danger-text disabled:opacity-50">ลบ Tag นี้</button>}
           </div>
+          <fieldset className="space-y-2 border-t border-border pt-3 text-sm">
+            <legend className="pt-3 font-medium">รวมเข้ากับ Tag อื่น (Tag ซ้ำ)</legend>
+            <p className="text-ink-soft">ประกาศที่ใช้ Tag นี้จะย้ายไปใช้ Tag ที่เลือก แล้ว Tag นี้จะถูกลบ</p>
+            <label className="block">ค้นหา Tag ปลายทาง
+              <input type="search" value={mergeQ} onChange={(event) => { setMergeQ(event.target.value); setMergeInto(''); }} placeholder="เช่น React"
+                className="mt-1 block w-full rounded-lg border border-border p-2" /></label>
+            <label className="block">Tag ปลายทาง
+              <select value={mergeInto} onChange={(event) => setMergeInto(event.target.value)} className="mt-1 block w-full rounded-lg border border-border p-2">
+                <option value="">{mergeOptions.length ? 'เลือก Tag' : 'ไม่พบ Tag ที่ใช้งานอยู่'}</option>
+                {mergeOptions.map((tag) => <option key={tag.id} value={tag.id}>{tag.name} ({tag.job_count} ประกาศ)</option>)}
+              </select></label>
+            <button type="button" disabled={busy || !mergeInto} onClick={() => void merge()}
+              className="rounded-full border border-border px-4 py-1.5 font-medium hover:bg-surface-muted disabled:opacity-50">รวม Tag</button>
+          </fieldset>
           <div className="flex justify-end gap-3"><button type="button" disabled={busy} onClick={() => dialog.current?.close()}>ยกเลิก</button>
             <button disabled={busy || !editName.trim() || (editName.trim() === editing.name && editActive === editing.active)} className="rounded-full bg-primary px-4 py-2 text-white disabled:opacity-50">บันทึก</button></div>
         </form>}

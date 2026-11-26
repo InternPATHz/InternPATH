@@ -9,6 +9,7 @@ import type { HrApplicationDetail, HrJobDetail, HrStartResponse, ResumeUrlRespon
 import { useAuth } from '@/auth/session';
 import { Notice } from '@/components/admin/filter-fields';
 import { ApplicantHistory, ApplicantProgress, ApplicantTrainingPeriod } from '@/components/hr/applicant-progress';
+import { HrConductReports } from '@/components/hr/hr-conduct-reports';
 import { HrEvaluationForm } from '@/components/hr/hr-evaluation-form';
 import { Avatar } from '@/components/ui/avatar';
 import { StatusBadge } from '@/components/ui/status-badge';
@@ -62,6 +63,8 @@ export function ApplicantDetail({ applicationId, onChanged }: {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [actualDate, setActualDate] = useState('');
+  // ช่วงฝึกงานของประกาศ — วันเริ่ม/จบที่ตอบรับต้องอยู่ในช่วงนี้ (Lifecycle ตรวจซ้ำ: BEFORE_JOB_PERIOD / AFTER_JOB_PERIOD)
+  const [jobPeriod, setJobPeriod] = useState<{ start?: string; end?: string } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -89,11 +92,16 @@ export function ApplicantDetail({ applicationId, onChanged }: {
     setStartDate(app?.start_date ?? '');
     setEndDate(app?.end_date ?? '');
     setActualDate(todayBangkok());
-    // ส่งข้อเสนอครั้งแรก: เติมช่วงฝึกจากประกาศให้ HR แก้ต่อได้ (โหลดไม่ได้ก็ปล่อยว่างให้กรอกเอง)
-    if (kind === 'accept' && app && !app.start_date && !app.end_date) {
+    // ส่งข้อเสนอ: โหลดช่วงฝึกของประกาศ — ครั้งแรกเติมเป็นค่าเริ่มต้นให้ HR แก้ต่อได้ (โหลดไม่ได้ก็ปล่อยว่างให้กรอกเอง)
+    if ((kind === 'accept' || kind === 'start') && app) {
+      setJobPeriod(null);
+      const fill = kind === 'accept' && !app.start_date && !app.end_date;
       void request<HrJobDetail>(`/hr/jobs/${encodeURIComponent(app.job_id)}`).then((job) => {
-        setStartDate((current) => current || job.period.start || '');
-        setEndDate((current) => current || job.period.end || '');
+        setJobPeriod({ start: job.period.start || undefined, end: job.period.end || undefined });
+        if (fill) {
+          setStartDate((current) => current || job.period.start || '');
+          setEndDate((current) => current || job.period.end || '');
+        }
       }, () => undefined);
     }
   }
@@ -158,6 +166,8 @@ export function ApplicantDetail({ applicationId, onChanged }: {
     } else if (form === 'accept') {
       if (!startDate || !endDate) return bad('กรุณาระบุวันเริ่มและวันสิ้นสุด');
       if (daysBetween(startDate, endDate) < MIN_DAYS) return bad(`ระยะฝึกงานต้องไม่น้อยกว่า ${MIN_DAYS} วัน`);
+      if (jobPeriod?.start && startDate < jobPeriod.start) return bad(`วันเริ่มต้องไม่ก่อนช่วงฝึกงานของประกาศ (${formatDate(jobPeriod.start)})`);
+      if (jobPeriod?.end && endDate > jobPeriod.end) return bad(`วันสิ้นสุดต้องไม่เกินช่วงฝึกงานของประกาศ (${formatDate(jobPeriod.end)})`);
       void act('accept', { start_date: startDate, end_date: endDate }, 'ส่งข้อเสนอแล้ว รอนักศึกษายืนยัน');
     } else if (form === 'reject') {
       void act('reject', value ? { reason: value } : {}, 'ปฏิเสธใบสมัครแล้ว');
@@ -322,6 +332,8 @@ export function ApplicantDetail({ applicationId, onChanged }: {
             </section>
           )}
 
+          <HrConductReports applicationId={app.id} inProgress={app.status === 'IN_PROGRESS'} />
+
           {showActions && (
             <section aria-labelledby="actions-title" className="mt-8">
               <h2 id="actions-title" className="scroll-mt-20 text-lg font-semibold">ตัวเลือกและการดำเนินการ</h2>
@@ -359,9 +371,14 @@ export function ApplicantDetail({ applicationId, onChanged }: {
                   {form === 'accept' && (
                     <>
                       <p className="text-xs text-ink-soft">ระยะฝึกงานต้องไม่น้อยกว่า {MIN_DAYS} วัน การส่งข้อเสนอจะจองโควตาของประกาศ</p>
+                      {(jobPeriod?.start || jobPeriod?.end) && (
+                        <p className="text-xs text-ink-soft">
+                          วันเริ่มและวันสิ้นสุดต้องอยู่ในช่วงฝึกงานของประกาศ: {jobPeriod.start ? formatDate(jobPeriod.start) : 'ไม่กำหนด'} ถึง {jobPeriod.end ? formatDate(jobPeriod.end) : 'ไม่กำหนด'}
+                        </p>
+                      )}
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <label className="block font-medium">วันเริ่ม<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className={inputClass} /></label>
-                        <label className="block font-medium">วันสิ้นสุด<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className={inputClass} /></label>
+                        <label className="block font-medium">วันเริ่ม<input type="date" value={startDate} min={jobPeriod?.start} max={jobPeriod?.end} onChange={(event) => setStartDate(event.target.value)} className={inputClass} /></label>
+                        <label className="block font-medium">วันสิ้นสุด<input type="date" value={endDate} min={jobPeriod?.start} max={jobPeriod?.end} onChange={(event) => setEndDate(event.target.value)} className={inputClass} /></label>
                       </div>
                     </>
                   )}

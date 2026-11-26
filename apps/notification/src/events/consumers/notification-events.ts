@@ -7,6 +7,7 @@ import {
   type CertificateRevokedPayload,
   type CompanyFlagChangedPayload,
   type CompanyStatusChangedPayload,
+  type ConductReportCreatedPayload,
   type EventEnvelope,
   type JobStatusChangedPayload,
   type ProblemReportCreatedPayload,
@@ -390,6 +391,15 @@ export class NotificationEvents implements OnModuleInit {
           title: 'นักศึกษารายงานปัญหาการฝึกงาน',
           body: 'มีรายงานปัญหาใหม่ที่ต้องพิจารณา',
           recipients: [{ id: p.advisor_user_id }, ...(await admins())],
+        };
+      }
+      case 'ConductReportCreated': {
+        // E19 — บริษัทรายงานพฤติกรรมนักศึกษา: แจ้งเฉพาะอาจารย์ที่ปรึกษา (ไม่ส่งรายละเอียดใน Event/ข้อความ)
+        const p = event.payload as ConductReportCreatedPayload;
+        return {
+          title: 'บริษัทรายงานพฤติกรรมนักศึกษา',
+          body: 'มีรายงานพฤติกรรมนักศึกษาในความดูแลจากบริษัท เปิดเพื่อดูรายละเอียดและกดรับทราบ',
+          recipients: [{ id: p.advisor_user_id, email: true, link: '/advisor/conduct-reports' }],
         };
       }
       case 'CompanyFlagChanged': {

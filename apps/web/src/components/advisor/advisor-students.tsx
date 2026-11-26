@@ -33,6 +33,8 @@ function failure(cause: unknown): string {
   return cause.message;
 }
 
+/** ตรงกับ Identity: ตัวอักษรนำหน้าได้ไม่เกิน 2 ตัว + ตัวเลข 6–13 หลัก ไม่มีช่องว่าง/ขีด */
+const STUDENT_CODE_PATTERN = /^[A-Z]{0,2}[0-9]{6,13}$/;
 const EMPTY_FORM = { email: '', full_name: '', student_code: '', major: '', year_level: INTERN_YEAR };
 const inputClass = 'mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-base outline-none focus:border-primary focus:ring-2 focus:ring-primary-soft';
 
@@ -111,11 +113,16 @@ export function AdvisorStudents() {
     event.preventDefault();
     const year = Number(form.year_level);
     if (year !== Number(INTERN_YEAR)) { setFormMessage({ tone: 'error', text: 'เพิ่มได้เฉพาะนักศึกษาชั้นปี 4' }); return; }
+    const studentCode = form.student_code.trim().toUpperCase();
+    if (!STUDENT_CODE_PATTERN.test(studentCode)) {
+      setFormMessage({ tone: 'error', text: 'รหัสนักศึกษาต้องเป็นตัวเลข 6–13 หลัก (มีตัวอักษรนำหน้าได้ไม่เกิน 2 ตัว) ไม่มีช่องว่างหรือขีด' });
+      return;
+    }
     setFormBusy(true);
     setFormMessage(null);
     try {
       const body: CreateStudentRequest = {
-        email: form.email.trim(), full_name: form.full_name.trim(), student_code: form.student_code.trim(), major: form.major.trim(), year_level: year,
+        email: form.email.trim(), full_name: form.full_name.trim(), student_code: studentCode, major: form.major.trim(), year_level: year,
       };
       const created = await request<CreateStudentResponse>('/advisor-links/students', { method: 'POST', body });
       setForm(EMPTY_FORM);
@@ -193,7 +200,7 @@ export function AdvisorStudents() {
             <input id={`${fieldId}-name`} required value={form.full_name} onChange={set('full_name')} maxLength={200} className={inputClass} autoComplete="off" />
           </Field>
           <Field id={`${fieldId}-code`} label="รหัสนักศึกษา">
-            <input id={`${fieldId}-code`} required value={form.student_code} onChange={set('student_code')} maxLength={50} className={inputClass} autoComplete="off" />
+            <input id={`${fieldId}-code`} required value={form.student_code} onChange={set('student_code')} maxLength={15} className={inputClass} autoComplete="off" inputMode="text" placeholder="เช่น 6610010467" />
           </Field>
           <Field id={`${fieldId}-major`} label="สาขาวิชา">
             <input id={`${fieldId}-major`} required value={form.major} onChange={set('major')} maxLength={200} className={inputClass} />

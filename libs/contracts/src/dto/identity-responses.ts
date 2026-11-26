@@ -23,6 +23,9 @@ export interface UserMeResponse extends AuthUser {
     year_level: number;
     advisor_link_status: AdvisorLinkStatus;
     advisor_id?: string;
+    /** ชื่อ/รหัสอาจารย์ที่ปรึกษาปัจจุบัน (มีเมื่อมี `advisor_id`) — ให้นักศึกษาเห็นในหน้าบัญชี */
+    advisor_name?: string;
+    advisor_code?: string;
   };
   /** `advisor_code` = รหัสอาจารย์ที่แสดงแทน UUID (ตัวย่อมหาวิทยาลัย + 6 หลัก) */
   advisor?: { department?: string; advisor_code?: string };
@@ -150,6 +153,14 @@ export interface AdminUniversityItem {
   /** ตัวย่อ (คำนำหน้ารหัสอาจารย์) — มหาวิทยาลัยเก่าที่ยังไม่มีอาจารย์ตั้งให้เป็น null */
   abbreviation: string | null;
   active: boolean;
+}
+
+/** PATCH /admin/universities/{id} — แก้ชื่อ/ตัวย่อที่สะกดผิด หรือเปิด/ปิดใช้งาน (โดเมนอีเมลแก้ไม่ได้) */
+export interface UpdateUniversityRequest {
+  name?: string;
+  /** A-Z/0-9 2–10 ตัว (แปลงเป็นตัวพิมพ์ใหญ่) — เปลี่ยนแล้วรหัสอาจารย์เดิมไม่เปลี่ยนตาม */
+  abbreviation?: string;
+  active?: boolean;
 }
 
 /** GET /admin/advisors */

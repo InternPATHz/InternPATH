@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { AdminAdvisorListItem, AdvisorLinkChangedPayload, AdvisorStudentItem, CreateStudentResponse } from '@internpath/contracts';
 import { Prisma, StudentProfileIdentity, User } from '../../../generated/client';
+import { assertInternYear, assertStudentCode, normalizeStudentCode } from '../../common/student-rules';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuthMailer } from '../auth/auth.mailer';
 import { AuthService, STUDENT_INVITATION_TTL_MS } from '../auth/auth.service';
@@ -80,6 +81,9 @@ export class AdvisorLinkService {
     const advisor = await this.actor(advisorId, 'ADVISOR');
     const universityId = advisor.universityId;
     if (!universityId) throw new AppException('FORBIDDEN_ROLE', 'อาจารย์ยังไม่ผูกสถาบัน', 403);
+    const studentCode = normalizeStudentCode(body.student_code);
+    assertStudentCode(studentCode);
+    assertInternYear(body.year_level);
     const university = await this.db.university.findUniqueOrThrow({ where: { id: universityId } });
     const email = normalizeEmail(body.email);
     if (email.split('@')[1] !== university.emailDomain.toLowerCase()) {
@@ -95,7 +99,6 @@ export class AdvisorLinkService {
           throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
         }
         // เช็กก่อนเพื่อตอบ 409 ที่ชัดเจน; คำขอพร้อมกันที่หลุดไปชน unique (university_id, student_code) ใน DB ⇒ แปลงเป็น 409 เดียวกันด้านล่าง
-        const studentCode = body.student_code.trim();
         if (await this.studentCodeInUse(tx, universityId, studentCode)) throw studentCodeTaken();
         const now = new Date();
         const user = await tx.user.create({ data: {
@@ -117,7 +120,7 @@ export class AdvisorLinkService {
       if (isSerializationError(error)) {
         if (await this.db.user.findUnique({ where: { email } }))
           throw new AppException('STATE_CONFLICT', 'อีเมลนี้ลงทะเบียนแล้ว', 409, [{ field: 'email', issue: 'EMAIL_ALREADY_REGISTERED' }]);
-        if (await this.studentCodeInUse(this.db, universityId, body.student_code.trim())) throw studentCodeTaken();
+        if (await this.studentCodeInUse(this.db, universityId, studentCode)) throw studentCodeTaken();
         throw new AppException('STATE_CONFLICT', 'ข้อมูลถูกเปลี่ยนระหว่างบันทึก กรุณาลองใหม่', 409);
       }
       throw error;
@@ -138,6 +141,7 @@ export class AdvisorLinkService {
 
   async updateStudent(advisorId: string, studentId: string, body: UpdateStudentDto): Promise<void> {
     await this.actor(advisorId, 'ADVISOR');
+    if (body.year_level !== undefined) assertInternYear(body.year_level);
     await this.db.$transaction(async (tx) => {
       const profile = await this.ownedStudent(tx, advisorId, studentId);
       const fullName = body.full_name === undefined ? undefined : body.full_name.trim();

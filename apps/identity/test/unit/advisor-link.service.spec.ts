@@ -9,7 +9,7 @@ import { PrismaService } from '../../src/prisma/prisma.service';
 
 const advisorId = randomUUID();
 const universityId = randomUUID();
-const body = { email: 'new@test.ac.th', full_name: 'นักศึกษา', student_code: ' S-100 ', major: 'CS', year_level: 3 };
+const body = { email: 'new@test.ac.th', full_name: 'นักศึกษา', student_code: ' s6610010 ', major: 'CS', year_level: 4 };
 
 /** Transaction ล้มด้วย P2034 (คำขอพร้อมกัน) แล้วดูว่ากิ่ง catch หารหัสซ้ำอย่างไร */
 function serviceAfterSerializationFailure(codeTaken: boolean) {
@@ -41,7 +41,7 @@ describe('AdvisorLinkService.createStudent serialization failure (P2034)', () =>
     expect((error as AppException).details).to.deep.equal([{ field: 'student_code', issue: 'STUDENT_CODE_ALREADY_USED' }]);
     // ตรงกับ unique (university_id, student_code) ของโปรไฟล์ — ไม่ใช่ users.university_id
     expect(lookups).to.deep.equal([{
-      where: { studentCode: 'S-100', universityId, user: { status: { not: 'DELETED' } } }, select: { userId: true },
+      where: { studentCode: 'S6610010', universityId, user: { status: { not: 'DELETED' } } }, select: { userId: true },
     }]);
   });
 

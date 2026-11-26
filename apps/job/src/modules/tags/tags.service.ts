@@ -106,6 +106,39 @@ export class TagsService {
     }
   }
 
+  /**
+   * รวม Tag ซ้ำ (เช่น "ReactJS" กับ "React"): ย้ายประกาศทุกใบที่ติด `sourceId` ไป `targetId` (ประกาศที่ติดทั้งคู่อยู่แล้วไม่ซ้ำ)
+   * แล้วลบ `sourceId` ใน Transaction เดียว • รวมเข้าตัวเอง ⇒ 400 `TAG_MERGE_SELF` • ไม่พบตัวใดตัวหนึ่ง ⇒ 404
+   * ปลายทางปิดใช้งานอยู่ ⇒ 409 `TAG_INACTIVE` (ไม่ให้ประกาศย้ายไปติด Tag ที่เลือกใหม่ไม่ได้) • ล็อกทั้งสองแถวตามลำดับ id กันรวมสวนทางพร้อมกัน
+   */
+  async merge(sourceId: string, targetId: string, adminId: string): Promise<AdminTag> {
+    if (sourceId === targetId) {
+      throw new AppException('VALIDATION_FAILED', 'เลือก Tag ปลายทางเป็นตัวเดียวกันไม่ได้', 400, [{ field: 'into_tag_id', issue: 'TAG_MERGE_SELF' }]);
+    }
+    return this.db.$transaction(async (tx) => {
+      const locked = await tx.$queryRaw<Array<{ id: string; active: boolean }>>`
+        SELECT id, active FROM tags WHERE id IN (${sourceId}::uuid, ${targetId}::uuid) ORDER BY id FOR UPDATE`;
+      const target = locked.find((row) => row.id === targetId);
+      if (locked.length !== 2 || !target) throw new AppException('NOT_FOUND', 'ไม่พบ Tag', 404);
+      if (!target.active) {
+        throw new AppException('STATE_CONFLICT', 'Tag ปลายทางถูกปิดใช้งาน ให้เปิดใช้งานก่อนรวม', 409, [{ field: 'into_tag_id', issue: 'TAG_INACTIVE' }]);
+      }
+      await tx.$executeRaw`
+        INSERT INTO job_tags (job_id, tag_id)
+        SELECT job_id, ${targetId}::uuid FROM job_tags WHERE tag_id = ${sourceId}::uuid
+        ON CONFLICT DO NOTHING`;
+      await tx.jobTag.deleteMany({ where: { tagId: sourceId } });
+      await tx.tag.delete({ where: { id: sourceId } });
+      const tag = await tx.tag.update({
+        where: { id: targetId },
+        data: { updatedBy: adminId },
+        select: { ...PUBLIC_SELECT, active: true, _count: { select: { jobs: true } } },
+      });
+      const { _count, ...rest } = tag;
+      return { ...rest, job_count: _count.jobs };
+    });
+  }
+
   private slugOrThrow(name: string): string {
     const slug = slugify(name);
     if (!slug) throw new AppException('VALIDATION_FAILED', 'ชื่อ Tag ต้องมีตัวอักษรภาษาอังกฤษหรือตัวเลข', 400, [{ field: 'name', issue: 'TAG_NAME_INVALID' }]);

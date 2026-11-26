@@ -19,6 +19,7 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     items: [
       { label: 'บริษัท', href: '/admin/companies' },
       { label: 'อาจารย์ที่ปรึกษา', href: '/admin/advisors' },
+      { label: 'มหาวิทยาลัย', href: '/admin/universities' },
       { label: 'ผู้ใช้', href: '/admin/users' },
     ],
   },

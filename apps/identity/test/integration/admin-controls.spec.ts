@@ -227,4 +227,60 @@ describe('Identity Admin controls (Postgres จริง)', function () {
     expect(admin.status).to.equal('ACTIVE');
     expect(await db.tokenDenylist.count({ where: { userId: adminId } })).to.equal(0);
   });
+
+  it('PATCH /admin/universities/{id} fixes a misspelt name/abbreviation with audit; duplicate abbreviation ⇒ 409', async () => {
+    const auth = bearer(adminId, 'PLATFORM_ADMIN');
+    const uni = await db.university.create({ data: { name: 'มหาวิทยาลัยสะกดผิด', emailDomain: 'typo.ac.th', abbreviation: 'TPYO' } });
+    await db.university.create({ data: { name: 'Taken University', emailDomain: 'taken.ac.th', abbreviation: 'TKN' } });
+    const advisor = await db.user.create({ data: { email: 'adv@typo.ac.th', passwordHash: 'test', fullName: 'Advisor', role: 'ADVISOR',
+      status: 'ACTIVE', emailVerifiedAt: new Date(), universityId: uni.id, advisorProfile: { create: { department: 'CS', advisorCode: 'TPYO000001' } } } });
+    const url = `/v1/admin/universities/${uni.id}`;
+
+    const saved = await request(app.getHttpServer()).patch(url).set('Authorization', auth)
+      .send({ name: '  มหาวิทยาลัยสะกดถูก  ', abbreviation: 'typu' }).expect(200);
+    expect(saved.body).to.deep.equal({ id: uni.id, name: 'มหาวิทยาลัยสะกดถูก', email_domain: 'typo.ac.th', abbreviation: 'TYPU', active: true });
+    // รหัสอาจารย์ที่ออกแล้วไม่เปลี่ยนตามตัวย่อใหม่
+    expect((await db.advisorProfile.findUniqueOrThrow({ where: { userId: advisor.id } })).advisorCode).to.equal('TPYO000001');
+    const audit = await db.adminAuditLog.findFirstOrThrow({ where: { targetId: uni.id, action: 'UNIVERSITY_UPDATE' } });
+    expect(audit).to.include({ adminId, targetType: 'UNIVERSITY' });
+    expect(audit.before).to.deep.equal({ name: 'มหาวิทยาลัยสะกดผิด', abbreviation: 'TPYO', active: true });
+    expect(audit.after).to.deep.equal({ name: 'มหาวิทยาลัยสะกดถูก', abbreviation: 'TYPU', active: true });
+    // ค้นใน Audit ด้วยตัวย่อได้ และมีป้ายชื่อแทน UUID
+    const byCode = await request(app.getHttpServer()).get('/v1/admin/audit-logs?target_code=typu').set('Authorization', auth).expect(200);
+    expect(byCode.body.data[0]).to.include({ target_id: uni.id, target_label: 'มหาวิทยาลัยสะกดถูก (TYPU)' });
+
+    // ปิดรับสมัคร • ส่งค่าเดิมซ้ำไม่เพิ่ม Audit
+    await request(app.getHttpServer()).patch(url).set('Authorization', auth).send({ active: false }).expect(200);
+    await request(app.getHttpServer()).patch(url).set('Authorization', auth).send({ active: false, name: 'มหาวิทยาลัยสะกดถูก' }).expect(200);
+    expect(await db.adminAuditLog.count({ where: { targetId: uni.id, action: 'UNIVERSITY_UPDATE' } })).to.equal(2);
+
+    const dup = await request(app.getHttpServer()).patch(url).set('Authorization', auth).send({ abbreviation: 'TKN' }).expect(409);
+    expect(dup.body.error.details).to.deep.equal([{ field: 'abbreviation', issue: 'UNIVERSITY_ABBREVIATION_TAKEN' }]);
+    for (const body of [{}, { abbreviation: 'A' }, { abbreviation: 'มอ' }, { abbreviation: 'AB CD' }, { name: '   ' }, { active: 'yes' }]) {
+      await request(app.getHttpServer()).patch(url).set('Authorization', auth).send(body).expect(400);
+    }
+    await request(app.getHttpServer()).patch(`/v1/admin/universities/${randomUUID()}`).set('Authorization', auth).send({ name: 'x' }).expect(404);
+    await request(app.getHttpServer()).patch(url).set('Authorization', bearer(memberId, 'COMPANY_HR')).send({ name: 'x' }).expect(403);
+    expect((await db.university.findUniqueOrThrow({ where: { id: uni.id } })).abbreviation).to.equal('TYPU');
+  });
+
+  it('two Admins suspending each other at the same time never leaves zero active Admins', async () => {
+    const other = (await db.user.create({ data: { email: 'admin2@test.local', passwordHash: 'test', fullName: 'Admin 2',
+      role: 'PLATFORM_ADMIN', status: 'ACTIVE', emailVerifiedAt: new Date() } })).id;
+    const suspend = (actor: string, target: string) => request(app.getHttpServer()).post(`/v1/admin/users/${target}/actions/suspend`)
+      .set('Authorization', bearer(actor, 'PLATFORM_ADMIN')).send({ reason: 'ทดสอบพร้อมกัน' });
+    const results = await Promise.all([suspend(adminId, other), suspend(other, adminId)]);
+    const statuses = results.map((res) => res.status).sort();
+    expect(statuses[0]).to.equal(204);
+    // คำขอที่แพ้: LAST_ACTIVE_ADMIN (ล็อกแล้วเห็นว่าเหลือคนเดียว) หรือ 401 (ผู้สั่งถูกระงับไปก่อนแล้ว) — ไม่มีทางได้ 204 ทั้งคู่
+    expect([401, 409]).to.include(statuses[1]);
+    const loser = results.find((res) => res.status !== 204)!;
+    if (loser.status === 409) expect(loser.body.error.code).to.equal('LAST_ACTIVE_ADMIN');
+    expect(await db.user.count({ where: { role: 'PLATFORM_ADMIN', status: 'ACTIVE' } })).to.equal(1);
+
+    // คืนสถานะ: Admin หลักกลับมาใช้งาน แล้วระงับ Admin 2 ได้ปกติ (ยังเหลือ 1 คน)
+    await db.user.updateMany({ where: { id: { in: [adminId, other] } }, data: { status: 'ACTIVE', suspendedReason: null } });
+    await db.tokenDenylist.deleteMany({ where: { userId: { in: [adminId, other] } } });
+    await suspend(adminId, other).expect(204);
+  });
 });

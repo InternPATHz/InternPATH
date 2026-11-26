@@ -13,6 +13,7 @@ const cards = [
   { title: 'นักศึกษารอตั้งรหัสผ่าน', href: '/advisor/students', paths: ['/advisor-links/students?activation=PENDING'] },
   { title: 'คำโต้แย้งผลประเมิน', href: '/advisor/evaluations', paths: ['/advisor/disputes'] },
   { title: 'รายงานปัญหาที่ยังเปิด', href: '/advisor/problem-reports', paths: ['/advisor/problem-reports?status=OPEN'] },
+  { title: 'รายงานพฤติกรรมจากบริษัท', href: '/advisor/conduct-reports', paths: ['/advisor/conduct-reports?status=OPEN'] },
   { title: 'รอบันทึกผลรายวิชา', href: '/advisor/evaluations?view=pending', paths: [
     '/advisor/applications?status=EVALUATED_PASS&academic_recorded=false',
     '/advisor/applications?status=EVALUATED_FAIL&academic_recorded=false',

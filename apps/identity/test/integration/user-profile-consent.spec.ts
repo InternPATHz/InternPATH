@@ -67,7 +67,7 @@ describe('Identity profile and resume consent (Postgres จริง)', function
     const universityId = (await db.university.create({ data: { name: 'Test U', emailDomain: 'test.ac.th' } })).id;
     advisorId = (await db.user.create({ data: { email: 'advisor@test.ac.th', passwordHash: 'secret',
       fullName: 'Advisor', role: 'ADVISOR', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId,
-      advisorProfile: { create: { department: 'Engineering' } } } })).id;
+      advisorProfile: { create: { department: 'Engineering', advisorCode: 'TU123456' } } } })).id;
     studentId = (await db.user.create({ data: { email: 'student@test.ac.th', passwordHash: 'secret',
       fullName: 'Student', role: 'STUDENT', status: 'ACTIVE', emailVerifiedAt: new Date(), universityId,
       studentProfile: { create: { universityId, studentCode: 'S001', major: 'CS', yearLevel: 3,
@@ -91,12 +91,12 @@ describe('Identity profile and resume consent (Postgres จริง)', function
       .set('Authorization', auth(studentId, 'STUDENT')).expect(200);
     expect(student.body).to.include({ id: studentId, full_name: 'Student', role: 'STUDENT', email_verified: true });
     expect(student.body.student).to.include({ student_code: 'S001', major: 'CS', year_level: 3,
-      advisor_link_status: 'LINKED', advisor_id: advisorId });
+      advisor_link_status: 'LINKED', advisor_id: advisorId, advisor_name: 'Advisor', advisor_code: 'TU123456' });
     expect(student.body).not.to.have.property('password_hash');
     expect(student.body).not.to.have.property('refresh_tokens');
     const advisor = await request(app.getHttpServer()).get('/v1/users/me')
       .set('Authorization', auth(advisorId, 'ADVISOR')).expect(200);
-    expect(advisor.body.advisor).to.deep.equal({ department: 'Engineering' });
+    expect(advisor.body.advisor).to.deep.equal({ department: 'Engineering', advisor_code: 'TU123456' });
     expect(student.body.university).to.deep.equal({ id: advisor.body.university.id, name: 'Test U' });
     expect(advisor.body.university.name).to.equal('Test U');
     const hr = await request(app.getHttpServer()).get('/v1/users/me')

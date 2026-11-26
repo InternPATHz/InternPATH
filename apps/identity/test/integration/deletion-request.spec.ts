@@ -169,4 +169,22 @@ describe('Identity POST /users/me/deletion-request (Postgres + Lifecycle ปล�
     expect(calls).to.deep.equal([]);
     await http().post('/v1/users/me/deletion-request').expect(401);
   });
+
+  it('Admin คนสุดท้ายที่ใช้งานได้ลบบัญชีไม่ได้ (409 LAST_ACTIVE_ADMIN) • มี Admin อื่นที่ใช้งานได้ ⇒ ลบได้', async () => {
+    const makeAdmin = (status: 'ACTIVE' | 'SUSPENDED', verified = true) => db.user.create({ data: {
+      email: `a-${randomUUID()}@example.test`, passwordHash: 'hash', fullName: 'Admin', role: 'PLATFORM_ADMIN', status,
+      emailVerifiedAt: verified ? new Date() : null } });
+    await db.user.updateMany({ where: { role: 'PLATFORM_ADMIN' }, data: { status: 'SUSPENDED' } });
+    const only = await makeAdmin('ACTIVE');
+    await makeAdmin('SUSPENDED'); // Admin ที่ถูกระงับ/ยังไม่ยืนยันอีเมลไม่นับ
+    await makeAdmin('ACTIVE', false);
+    const res = await deletion(only.id, 'PLATFORM_ADMIN').expect(409);
+    expect(res.body.error.code).to.equal('LAST_ACTIVE_ADMIN');
+    expect((await db.user.findUniqueOrThrow({ where: { id: only.id } })).status).to.equal('ACTIVE');
+
+    const second = await makeAdmin('ACTIVE');
+    await deletion(only.id, 'PLATFORM_ADMIN').expect(204);
+    expect((await db.user.findUniqueOrThrow({ where: { id: only.id } })).status).to.equal('DELETED');
+    expect((await db.user.findUniqueOrThrow({ where: { id: second.id } })).status).to.equal('ACTIVE');
+  });
 });

@@ -89,7 +89,7 @@ function AccountContent() {
           {message && <p role="status" className="mt-2 text-sm">{message}</p>}
         </section>
         {student && <section id="advisor" className="scroll-mt-20 rounded-xl bg-surface-muted p-5"><h2 className="text-lg font-semibold">อาจารย์ที่ปรึกษา</h2>
-          <p className="mt-2">{labelOf(ADVISOR_LINK_LABEL, student.advisor_link_status)}</p><p className="mt-1 text-sm">{student.advisor_link_status === 'LINKED' ? 'หลังคุณยืนยันข้อเสนอ อาจารย์จะพิจารณาอนุมัติการฝึกงาน' : 'กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบของสถาบันเพื่อตรวจสอบการเชื่อมบัญชี'}</p>
+          <p className="mt-2">{labelOf(ADVISOR_LINK_LABEL, student.advisor_link_status)}</p>{student.advisor_name && <p className="mt-1 text-sm">อาจารย์ที่ปรึกษา: <span className="font-medium">{student.advisor_name}</span>{student.advisor_code && <> · รหัส <Code value={student.advisor_code} label="รหัสอาจารย์ที่ปรึกษา" /></>}</p>}<p className="mt-1 text-sm">{student.advisor_link_status === 'LINKED' ? 'หลังคุณยืนยันข้อเสนอ อาจารย์จะพิจารณาอนุมัติการฝึกงาน' : 'กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบของสถาบันเพื่อตรวจสอบการเชื่อมบัญชี'}</p>
           <div className="mt-3 flex gap-4 text-sm"><Link className={link} href="/student/profile">โปรไฟล์และเรซูเม่</Link>{student.advisor_link_status === 'LINKED' && <Link className={link} href="/jobs">ค้นหางาน</Link>}</div></section>}
         <section id="security" className="scroll-mt-20"><h2 className="mb-2 text-lg font-semibold">ความปลอดภัย</h2><Link href="/forgot-password" className={link}>ขอลิงก์ตั้งรหัสผ่านใหม่ ›</Link></section>
         <section id="privacy" className="scroll-mt-20"><h2 className="mb-2 text-lg font-semibold">ความเป็นส่วนตัว</h2><Link href="/privacy" className={link}>นโยบายความเป็นส่วนตัว ›</Link>

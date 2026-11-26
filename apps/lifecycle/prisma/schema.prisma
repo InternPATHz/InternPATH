@@ -157,6 +157,24 @@ enum ProblemReportCategory {
   @@map("problem_report_category")
 }
 
+/// หมวดรายงานพฤติกรรมนักศึกษาจากบริษัทถึงอาจารย์ (ผู้ใช้สั่ง 2026-11-26)
+enum ConductReportCategory {
+  ATTENDANCE
+  BEHAVIOR
+  PERFORMANCE
+  SAFETY
+  OTHER
+
+  @@map("conduct_report_category")
+}
+
+enum ConductReportStatus {
+  OPEN
+  ACKNOWLEDGED
+
+  @@map("conduct_report_status")
+}
+
 enum ProblemFollowUpAction {
   MONITOR_COMPANY
   TERMINATE
@@ -335,6 +353,7 @@ model Application {
   certificate              Certificate?
   review                   Review?
   problemReports           ProblemReport[]
+  conductReports           ConductReport[]
 
   @@index([status, statusChangedAt])
   @@index([advisorUserId, status])
@@ -482,6 +501,32 @@ model ProblemReport {
   @@index([advisorUserId, status])
   @@index([status, dueAt])
   @@map("problem_reports")
+}
+
+/**
+ * รายงานพฤติกรรมนักศึกษาระหว่างฝึกงาน — HR ของบริษัทส่งถึงอาจารย์ที่ปรึกษา (คนละทางกับ problem_reports ที่นักศึกษาส่งและบริษัทห้ามเห็น)
+ * อาจารย์ผู้รับ = `applications.advisor_user_id` ปัจจุบัน (ย้ายตาม E07) จึงไม่เก็บซ้ำ • ไม่เปลี่ยนสถานะใบสมัคร
+ */
+model ConductReport {
+  id             String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  applicationId  String                @map("application_id") @db.Uuid
+  studentUserId  String                @map("student_user_id") @db.Uuid
+  companyId      String                @map("company_id") @db.Uuid
+  reportedBy     String                @map("reported_by") @db.Uuid
+  category       ConductReportCategory @map("category")
+  detail         String                @map("detail") @db.Text
+  status         ConductReportStatus   @default(OPEN) @map("status")
+  acknowledgedBy String?               @map("acknowledged_by") @db.Uuid
+  acknowledgedAt DateTime?             @map("acknowledged_at") @db.Timestamptz(6)
+  advisorNote    String?               @map("advisor_note") @db.Text
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime              @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  application    Application           @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+
+  @@index([applicationId, createdAt])
+  @@index([status, createdAt])
+  @@map("conduct_reports")
 }
 
 model ReapplyUnlock {

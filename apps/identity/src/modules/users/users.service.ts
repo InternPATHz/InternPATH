@@ -5,7 +5,8 @@ import { Prisma } from '../../../generated/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { UpdateMeDto } from './users.dto';
 
-const profile = { studentProfile: true, advisorProfile: true, companyMember: { include: { company: true } }, university: true } as const;
+const profile = { studentProfile: { include: { advisor: { include: { advisorProfile: true } } } }, advisorProfile: true,
+  companyMember: { include: { company: true } }, university: true } as const;
 type ProfileUser = Prisma.UserGetPayload<{ include: typeof profile }>;
 
 @Injectable()
@@ -28,6 +29,12 @@ export class UsersService {
         student_code: user.studentProfile.studentCode, major: user.studentProfile.major,
         year_level: user.studentProfile.yearLevel, advisor_link_status: user.studentProfile.advisorLinkStatus,
         ...(user.studentProfile.advisorId ? { advisor_id: user.studentProfile.advisorId } : {}),
+        // ชื่อ/รหัสอาจารย์ให้นักศึกษาเห็นในหน้าบัญชี (บัญชีอาจารย์ที่ถูกลบแล้วไม่แสดง)
+        ...(user.studentProfile.advisor && user.studentProfile.advisor.status !== 'DELETED' ? {
+          advisor_name: user.studentProfile.advisor.fullName,
+          ...(user.studentProfile.advisor.advisorProfile?.advisorCode
+            ? { advisor_code: user.studentProfile.advisor.advisorProfile.advisorCode } : {}),
+        } : {}),
       } } : {}),
       ...(user.role === 'ADVISOR' && user.advisorProfile ? { advisor: {
         ...(user.advisorProfile.department ? { department: user.advisorProfile.department } : {}),

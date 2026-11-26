@@ -1,5 +1,6 @@
-import { Type } from 'class-transformer';
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsString, IsUUID, Max, MaxLength, Min } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsEnum, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Matches, Max, MaxLength, Min } from 'class-validator';
+import type { UpdateUniversityRequest } from '@internpath/contracts';
 import { Role, UserStatus } from '../../../generated/client';
 
 export class SetPartnerDto {
@@ -9,6 +10,14 @@ export class SetPartnerDto {
 export class SetEntitlementsDto {
   @IsBoolean() featured_enabled!: boolean;
   @IsBoolean() fast_track_enabled!: boolean;
+}
+
+export class UpdateUniversityDto implements UpdateUniversityRequest {
+  @IsOptional() @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString() @IsNotEmpty() @MaxLength(200) name?: string;
+  @IsOptional() @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @IsString() @Matches(/^[A-Z0-9]{2,10}$/, { message: 'ตัวย่อมหาวิทยาลัยต้องเป็น A-Z หรือ 0-9 ยาว 2–10 ตัว' }) abbreviation?: string;
+  @IsOptional() @IsBoolean() active?: boolean;
 }
 
 export class UserActionDto {

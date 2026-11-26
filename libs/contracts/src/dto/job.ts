@@ -25,6 +25,11 @@ export interface CreateTagRequest {
   name: string;
 }
 
+/** POST /admin/tags/{id}/merge — ย้ายประกาศทุกใบจาก Tag `{id}` ไป `into_tag_id` แล้วลบ Tag `{id}` */
+export interface MergeTagRequest {
+  into_tag_id: string;
+}
+
 export interface UpdateTagRequest {
   name?: string;
   active?: boolean;

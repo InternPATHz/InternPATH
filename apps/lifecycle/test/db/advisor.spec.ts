@@ -354,6 +354,30 @@ describe('Lifecycle 1.6 — ฝั่งอาจารย์ที่ปรึ�
       expect(res.body.error.details).to.deep.equal([{ issue: 'DISPUTE_WINDOW_OPEN' }]);
     });
 
+    it('academic_result_available_at: FAIL ในช่วงโต้แย้ง = ผลประเมิน + 7 วัน • ตัดสินคำโต้แย้งแล้ว/บันทึกแล้ว/ไม่ใช่ FAIL ⇒ ไม่มีฟิลด์', async () => {
+      const evaluatedAt = new Date(Date.now() - 2 * DAY_MS);
+      const failed = await seed('EVALUATED_FAIL');
+      await prisma.evaluation.create({ data: { applicationId: failed.id, round: 1, result: 'FAIL', reason: 'x', evaluatedBy: randomUUID(), evaluatedAt } });
+      const upheld = await seedDisputed({ studentUserId: randomUUID() });
+      await act(upheld.id, 'actions/uphold-fail').expect(200);
+      const passed = await seed('EVALUATED_PASS', { studentUserId: randomUUID() });
+
+      const res = await http().get('/v1/advisor/applications?page_size=100').set('Authorization', asAdvisor()).expect(200);
+      const byId = new Map((res.body.data as Array<{ id: string }>).map((row) => [row.id, row]));
+      expect(byId.get(failed.id)).to.include({ academic_result_available_at: new Date(evaluatedAt.getTime() + 7 * DAY_MS).toISOString() });
+      expect(byId.get(upheld.id)).to.include({ status: 'EVALUATED_FAIL' }).and.not.have.property('academic_result_available_at');
+      expect(byId.get(passed.id)).to.not.have.property('academic_result_available_at');
+      // ตรงกับ Guard: ก่อนเวลานั้น ⇒ 409 DISPUTE_WINDOW_OPEN
+      await act(failed.id, 'academic-result', { academic_result: 'REPEAT_REQUIRED' }).expect(409);
+      // ผลประเมินเกิน 7 วันแล้ว ⇒ เวลาอยู่ในอดีต และบันทึกได้
+      await prisma.evaluation.updateMany({ where: { applicationId: failed.id }, data: { evaluatedAt: new Date(Date.now() - 8 * DAY_MS) } });
+      const later = await http().get('/v1/advisor/applications?status=EVALUATED_FAIL&academic_recorded=false').set('Authorization', asAdvisor()).expect(200);
+      const row = (later.body.data as Array<{ id: string; academic_result_available_at?: string }>).find((r) => r.id === failed.id)!;
+      expect(new Date(row.academic_result_available_at!).getTime()).to.be.below(Date.now());
+      const done = await act(failed.id, 'academic-result', { academic_result: 'REPEAT_REQUIRED' }).expect(200);
+      expect(done.body).to.not.have.property('academic_result_available_at');
+    });
+
     it('บริษัท PASS ⇒ อาจารย์ให้ ACADEMIC_FAIL ได้ (data-schema §8.1) • ค่าไม่ถูกต้อง ⇒ 400', async () => {
       const passed = await seed('EVALUATED_PASS');
       await act(passed.id, 'academic-result', { academic_result: 'PASS' }).expect(400);

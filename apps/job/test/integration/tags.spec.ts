@@ -148,4 +148,51 @@ describe('Tags API (HTTP และ PostgreSQL จริง)', function () {
     expect(blocked.body.error.details[0].issue).to.equal('TAG_IN_USE');
     expect(await db.prisma.jobTag.count({ where: { tagId: used.id } })).to.equal(1);
   });
+
+  it('POST /merge ย้ายประกาศไป Tag ปลายทาง (ติดทั้งคู่ไม่ซ้ำ) แล้วลบ Tag ต้นทาง', async () => {
+    const source = (await http().post('/v1/admin/tags').set(admin()).send({ name: 'ReactJS Merge' }).expect(201)).body as AdminTag;
+    const target = (await http().post('/v1/admin/tags').set(admin()).send({ name: 'React Merge' }).expect(201)).body as AdminTag;
+    const onlySource = await seedJob(db.prisma, 'PUBLISHED');
+    const both = await seedJob(db.prisma, 'CLOSED');
+    const onlyTarget = await seedJob(db.prisma, 'PUBLISHED');
+    await db.prisma.jobTag.createMany({ data: [
+      { jobId: onlySource.id, tagId: source.id }, { jobId: both.id, tagId: source.id },
+      { jobId: both.id, tagId: target.id }, { jobId: onlyTarget.id, tagId: target.id },
+    ] });
+
+    const merged = await http().post(`/v1/admin/tags/${source.id}/merge`).set(admin()).send({ into_tag_id: target.id }).expect(200);
+    expect(merged.body).to.include({ id: target.id, name: 'React Merge', active: true, job_count: 3 });
+    expect(await db.prisma.tag.count({ where: { id: source.id } })).to.equal(0);
+    const rows = await db.prisma.jobTag.findMany({ where: { jobId: { in: [onlySource.id, both.id, onlyTarget.id] } }, orderBy: { jobId: 'asc' } });
+    expect(rows.every((row) => row.tagId === target.id)).to.equal(true);
+    expect(rows).to.have.length(3);
+    // ซ้ำ (ต้นทางถูกลบไปแล้ว) ⇒ 404
+    await http().post(`/v1/admin/tags/${source.id}/merge`).set(admin()).send({ into_tag_id: target.id }).expect(404);
+  });
+
+  it('POST /merge: รวมเข้าตัวเอง 400, ปลายทางปิดใช้งาน 409 TAG_INACTIVE, ไม่พบ 404, body ผิด 400, ไม่ใช่ Admin 403, รวมสวนทางพร้อมกันไม่พัง', async () => {
+    const a = (await http().post('/v1/admin/tags').set(admin()).send({ name: 'Merge A' }).expect(201)).body as AdminTag;
+    const b = (await http().post('/v1/admin/tags').set(admin()).send({ name: 'Merge B' }).expect(201)).body as AdminTag;
+    const self = await http().post(`/v1/admin/tags/${a.id}/merge`).set(admin()).send({ into_tag_id: a.id }).expect(400);
+    expect(self.body.error.details[0].issue).to.equal('TAG_MERGE_SELF');
+    await http().post(`/v1/admin/tags/${a.id}/merge`).set(admin()).send({ into_tag_id: randomUUID() }).expect(404);
+    await http().post(`/v1/admin/tags/${a.id}/merge`).set(admin()).send({ into_tag_id: 'nope' }).expect(400);
+    await http().post(`/v1/admin/tags/${a.id}/merge`).set(admin()).send({}).expect(400);
+    await http().post(`/v1/admin/tags/${a.id}/merge`).set({ Authorization: `Bearer ${token('COMPANY_HR')}` }).send({ into_tag_id: b.id }).expect(403);
+    await http().patch(`/v1/admin/tags/${b.id}`).set(admin()).send({ active: false }).expect(200);
+    const inactive = await http().post(`/v1/admin/tags/${a.id}/merge`).set(admin()).send({ into_tag_id: b.id }).expect(409);
+    expect(inactive.body.error.details[0].issue).to.equal('TAG_INACTIVE');
+    await http().patch(`/v1/admin/tags/${b.id}`).set(admin()).send({ active: true }).expect(200);
+
+    // A→B และ B→A พร้อมกัน: สำเร็จได้แค่ทางเดียว อีกทาง 404 (ต้นทาง/ปลายทางหายไปแล้ว) และยังเหลือ Tag 1 ตัว
+    const job = await seedJob(db.prisma, 'PUBLISHED');
+    await db.prisma.jobTag.createMany({ data: [{ jobId: job.id, tagId: a.id }, { jobId: job.id, tagId: b.id }] });
+    const results = await Promise.all([
+      http().post(`/v1/admin/tags/${a.id}/merge`).set(admin()).send({ into_tag_id: b.id }),
+      http().post(`/v1/admin/tags/${b.id}/merge`).set(admin()).send({ into_tag_id: a.id }),
+    ]);
+    expect(results.map((res) => res.status).sort()).to.deep.equal([200, 404]);
+    expect(await db.prisma.tag.count({ where: { id: { in: [a.id, b.id] } } })).to.equal(1);
+    expect(await db.prisma.jobTag.count({ where: { jobId: job.id } })).to.equal(1);
+  });
 });

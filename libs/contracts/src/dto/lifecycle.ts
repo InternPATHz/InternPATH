@@ -1,6 +1,6 @@
 // ต้องตรงกับ docs/api-contract.md §7 (Lifecycle), §8 (Notification) และ §9 (Internal) — เฉพาะที่เอกสารระบุไว้
 import type { AcademicResult, ApplicationStatus, CertificateStatus, JobCategory } from '../enums';
-import type { ProblemReportCategory } from './lifecycle-responses';
+import type { ConductReportCategory, ProblemReportCategory } from './lifecycle-responses';
 
 // ---- 7.2 นักศึกษา ----
 export interface CreateApplicationRequest {
@@ -30,6 +30,17 @@ export interface DisputeFailRequest {
 export interface CreateProblemReportRequest {
   category: ProblemReportCategory;
   detail: string;
+}
+
+/** POST /hr/applications/{id}/conduct-reports — HR รายงานพฤติกรรมนักศึกษาถึงอาจารย์ (เฉพาะ `IN_PROGRESS`) */
+export interface CreateConductReportRequest {
+  category: ConductReportCategory;
+  detail: string;
+}
+
+/** POST /advisor/conduct-reports/{id}/actions/acknowledge */
+export interface AcknowledgeConductReportRequest {
+  note?: string;
 }
 
 // ---- 7.3 HR ----
