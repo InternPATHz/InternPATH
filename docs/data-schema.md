@@ -41,6 +41,8 @@
 | `CertificateStatus` | `VALID`, `REVOKED` | lifecycle |
 | `ReviewStatus` | `SUBMITTED`, `PUBLISHED`, `HELD` (เลิกใช้ — ไม่มีการสแกนเนื้อหารีวิว), `REMOVED` | lifecycle |
 | `ProblemReportStatus` | `OPEN`, `ACKNOWLEDGED`, `RESOLVED` | lifecycle |
+| `ConductReportCategory` (`conduct_report_category`) | `ATTENDANCE`, `BEHAVIOR`, `PERFORMANCE`, `SAFETY`, `OTHER` | lifecycle (เพิ่ม 2026-11-26) |
+| `ConductReportStatus` (`conduct_report_status`) | `OPEN`, `ACKNOWLEDGED` | lifecycle (เพิ่ม 2026-11-26) |
 | `NotificationChannel` | `IN_APP`, `EMAIL` | notification |
 
 ### 2.2 ตารางร่วมที่ทุก Service มี
@@ -104,7 +106,7 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 
 ## 3. Identity & Organization Service (`identity_db`)
 
-**`universities`**: `id`, `name`, `email_domain` (เช่น `xxx.ac.th`, unique), `active`
+**`universities`**: `id`, `name`, `email_domain` (เช่น `xxx.ac.th`, unique), `abbreviation text null unique` (ตัวย่อมหาวิทยาลัย A-Z/0-9 2–10 ตัว ใช้นำหน้ารหัสอาจารย์ — อาจารย์คนแรกของโดเมนกรอกตอนสมัคร, Admin แก้ได้ที่ `PATCH /admin/universities/{id}`; ซ้ำกับมหาวิทยาลัยอื่น ⇒ `409 STATE_CONFLICT` / `UNIVERSITY_ABBREVIATION_TAKEN`), `active` — *(เพิ่ม `abbreviation` 2026-11-26, migration `20261126090000_display_codes` เติมค่าให้ข้อมูลเดิมจากส่วนแรกของโดเมน ตัวพิมพ์ใหญ่ ไม่เกิน 8 ตัว ถ้าซ้ำต่อท้ายลำดับ)*
 
 **`users`**
 | ฟิลด์ | ชนิด | หมายเหตุ |
@@ -125,7 +127,9 @@ Index: (`entity`, `entity_id`, `occurred_at`)
 
 **`student_profiles_identity`** (ข้อมูลระบุตัวตนขั้นต่ำ; เรซูเม่อยู่ที่ Lifecycle): `user_id PK`, `university_id uuid NOT NULL (FK universities)` (สำเนา `users.university_id` ของนักศึกษา ตั้งตอนสร้างโปรไฟล์และต้องตรงกันเสมอ — มีไว้เพราะ unique ข้ามตารางไม่ได้), `student_code` — **`UNIQUE(university_id, student_code)`** (PM ตัดสิน 2026-11-22: กันรหัสซ้ำในสถาบันเดียวกันระดับ DB เป็นด่านสุดท้ายของคำขอพร้อมกัน; API ยังเช็กก่อนเหมือนเดิม และแปลง unique violation เป็น `409 STATE_CONFLICT` / `STUDENT_CODE_ALREADY_USED`; สถาบันต่างกันใช้รหัสเดียวกันได้; ลบบัญชีนักศึกษา = ลบแถวนี้ รหัสจึงกลับมาใช้ได้), `major`, `year_level`, `advisor_id (FK users)`, `advisor_link_status AdvisorLinkStatus` (ตั้งเป็น `LINKED` ตอนอาจารย์สร้างนักศึกษา — ไม่มีขั้นที่นักศึกษาเลือกอาจารย์), `created_by_advisor_id (FK users)` (อาจารย์ที่สร้างบัญชี), `advisor_link_updated_at` — ถอด `pending_advisor_id` (เลิกใช้ ปรับ Requirement 2026-11-21)
 
-**`advisor_profiles`**: `user_id PK`, `department`, `approved_by`, `approved_at`
+**`advisor_profiles`**: `user_id PK`, `department`, `advisor_code text null unique` (รหัสอาจารย์ที่แสดงแทน UUID = `universities.abbreviation` + เลข 6 หลัก เช่น `SPU004217` — สุ่มตอนสมัครและลองใหม่เมื่อชน; ข้อมูลเดิมได้เลขเรียงตามวันสมัคร), `approved_by`, `approved_at`
+
+> **รหัสที่แสดงแทน UUID (2026-11-26):** นักศึกษาใช้ `student_code`, บริษัทใช้ `registration_no`, อาจารย์ใช้ `advisor_code` — ใช้แสดงผลและค้นหาในหน้า Admin เท่านั้น UUID ยังเป็น key ภายใน, FK และค่าใน Event เหมือนเดิม
 
 **`companies`**
 | ฟิลด์ | ชนิด |
@@ -363,6 +367,23 @@ Index: (`status`, `status_changed_at`) สำหรับ Scheduler, (`advisor_u
 **`company_review_stats`**: `company_id PK`, `review_count`, `rating_sum`, `entity_version` — ตัวนับที่ใช้ส่งใน `ReviewPublished`
 
 **`problem_reports`**: `id`, `application_id`, `student_user_id`, `advisor_user_id`, `category`, `detail`, `status ProblemReportStatus`, `acknowledged_by/at`, `resolved_by/at`, `resolution_note null`, `follow_up_action null (MONITOR_COMPANY|TERMINATE|ESCALATE_COMPANY_REVIEW)`, `due_at` (= created_at + 48 ชม. ตามตาราง SLA README 5.3; `OVERDUE` คำนวณตอนอ่าน), `created_at` — **อยู่ในหน้า Admin ของ Lifecycle ไม่ใช่คิวของ Verification** (README 4.3) — **ห้ามมี API/Query ให้ role `COMPANY_HR`**
+
+**`conduct_reports`** *(เพิ่ม 2026-11-26, migration `20261126120000_conduct_reports`)* — รายงานพฤติกรรมนักศึกษาที่ HR ส่งถึงอาจารย์ที่ปรึกษา (ทิศทางตรงข้ามกับ `problem_reports` ที่นักศึกษาแจ้งปัญหาบริษัท)
+| ฟิลด์ | ชนิด | หมายเหตุ |
+| :--- | :--- | :--- |
+| id | uuid | |
+| application_id | uuid | FK `applications` (`ON DELETE CASCADE`) — สร้างได้เฉพาะใบที่ `IN_PROGRESS` และมี `advisor_user_id` (ไม่เช่นนั้น `409 STATE_CONFLICT` / `NOT_IN_PROGRESS` หรือ `ADVISOR_NOT_LINKED`) |
+| student_user_id | uuid | `ref:identity` — สำเนาจากใบสมัคร |
+| company_id | uuid | `ref:identity` — สำเนาจากใบสมัคร |
+| reported_by | uuid | `ref:identity` HR ผู้ส่ง (Owner หรือ Member ที่ใบสมัครอยู่ในสายงานของตน) |
+| category | `conduct_report_category` | `ATTENDANCE` \| `BEHAVIOR` \| `PERFORMANCE` \| `SAFETY` \| `OTHER` |
+| detail | text | 10–2000 ตัวอักษร (CHECK) |
+| status | `conduct_report_status` default `OPEN` | `OPEN` → `ACKNOWLEDGED` (อาจารย์ของใบสมัครกดรับทราบได้ครั้งเดียว ครั้งที่สอง ⇒ `409` / `ALREADY_ACKNOWLEDGED`) |
+| acknowledged_by / acknowledged_at | uuid null / timestamptz null | CHECK: `OPEN` ต้องว่าง, `ACKNOWLEDGED` ต้องมีทั้งคู่ |
+| advisor_note | text null | หมายเหตุจากอาจารย์ตอนรับทราบ (≤ 2000) — HR ของบริษัทเห็น |
+| created_at / updated_at | timestamptz | |
+
+Index: `(application_id, created_at)`, `(status, created_at)` — สร้างแล้วส่ง E19 `ConductReportCreated` ผ่าน Outbox ใน Transaction เดียวกัน (แจ้งอาจารย์) — เมื่อลบบัญชี (E15) คอลัมน์ `student_user_id`, `reported_by`, `acknowledged_by` ⇒ `anonymous_actor_id` เหมือนตารางอื่นของ Lifecycle
 
 **`reapply_unlocks`**: `id`, `student_user_id`, `unlocked_by` (Admin), `reason`, `created_at`, `used_at null`
 
