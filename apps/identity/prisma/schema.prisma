@@ -102,6 +102,8 @@ model University {
   id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name        String
   emailDomain String   @unique @map("email_domain")
+  /// ตัวย่อ A-Z/0-9 (เช่น KU) — คำนำหน้ารหัสอาจารย์ ผู้สมัครอาจารย์คนแรกของโดเมนเป็นคนตั้ง
+  abbreviation String? @unique
   active      Boolean  @default(true)
   createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -172,6 +174,8 @@ model StudentProfileIdentity {
 
 model AdvisorProfile {
   userId     String    @id @map("user_id") @db.Uuid
+  /// รหัสอาจารย์ที่แสดงแทน UUID: ตัวย่อมหาวิทยาลัย + เลขสุ่ม 6 หลัก (เช่น KU048213)
+  advisorCode String? @unique @map("advisor_code")
   department String
   approvedBy String?   @map("approved_by") @db.Uuid
   approvedAt DateTime? @map("approved_at") @db.Timestamptz(6)

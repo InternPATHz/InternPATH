@@ -111,6 +111,17 @@ export interface ReminderDuePayload {
   context: { application_id?: string; days_overdue?: number; deadline_at?: string };
 }
 
+/** E19 `ConductReportCreated` (lifecycle → notification) — HR รายงานพฤติกรรมนักศึกษาถึงอาจารย์ (ไม่มีรายละเอียดใน Event) */
+export interface ConductReportCreatedPayload {
+  conduct_report_id: string;
+  application_id: string;
+  student_user_id: string;
+  advisor_user_id: string;
+  company_id: string;
+  category: string;
+  created_at: string;
+}
+
 /** E17 `ProblemReportCreated` (lifecycle → notification) — ห้ามแจ้ง HR/บริษัท (README 5.2.2) */
 export interface ProblemReportCreatedPayload {
   problem_report_id: string;

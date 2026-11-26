@@ -2,7 +2,7 @@
 import type { ServiceName } from './envelope';
 
 export interface EventCatalogEntry {
-  /** E01-E18 ตามเอกสาร */
+  /** E01-E19 ตามเอกสาร */
   id: string;
   type: string;
   producer: ServiceName;
@@ -29,4 +29,5 @@ export const EVENT_CATALOG: readonly EventCatalogEntry[] = [
   { id: 'E16', type: 'UserSuspended', producer: 'identity', consumers: ['gateway', 'notification'] },
   { id: 'E17', type: 'ProblemReportCreated', producer: 'lifecycle', consumers: ['notification'] },
   { id: 'E18', type: 'CompanyFlagChanged', producer: 'verification', consumers: ['job', 'notification'] },
+  { id: 'E19', type: 'ConductReportCreated', producer: 'lifecycle', consumers: ['notification'] },
 ];

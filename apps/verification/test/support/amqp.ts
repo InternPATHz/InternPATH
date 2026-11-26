@@ -1,7 +1,51 @@
+import { randomBytes } from 'node:crypto';
 import * as amqp from 'amqplib';
 
 /** ค่าเริ่มต้นตรงกับ .env.example (RabbitMQ จาก `pnpm infra:up`) */
-export const brokerUrl = (): string => process.env.RABBITMQ_URL ?? 'amqp://internpath:change-me@127.0.0.1:5672';
+const baseBrokerUrl = (): string => process.env.RABBITMQ_URL ?? 'amqp://internpath:change-me@127.0.0.1:5672';
+
+/**
+ * e2e ใช้ vhost ส่วนตัวต่อไฟล์ (แบบเดียวกับเทสต์ของ Job) — เดิมใช้ vhost หลักร่วมกับ service ที่รันอยู่
+ * ทำให้ Event ปลอม (บริษัท/ประกาศที่ไม่มีจริง) ไหลไปเข้าคิวของ Job/Lifecycle จริง และลบคิว verification.* ของ service จริงทิ้ง
+ */
+let sandbox: { url: string; name: string; admin: URL; auth: string } | undefined;
+export const brokerUrl = (): string => sandbox?.url ?? baseBrokerUrl();
+
+async function management(admin: URL, auth: string, route: string, method = 'GET', body?: unknown): Promise<Response> {
+  return fetch(new URL(route, admin), { method, signal: AbortSignal.timeout(5000),
+    headers: { Authorization: auth, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+}
+
+/** สร้าง vhost ทดสอบผ่าน management API (พอร์ต 15672 หรือ VERIFICATION_IT_RABBITMQ_ADMIN_URL) */
+async function createSandbox(): Promise<boolean> {
+  const broker = new URL(baseBrokerUrl());
+  const admin = new URL(process.env.VERIFICATION_IT_RABBITMQ_ADMIN_URL ?? `http://${broker.hostname}:15672`);
+  const user = decodeURIComponent(broker.username);
+  const auth = `Basic ${Buffer.from(`${user}:${decodeURIComponent(broker.password)}`).toString('base64')}`;
+  const name = `verification_it_${randomBytes(8).toString('hex')}`;
+  try {
+    if (!(await management(admin, auth, '/api/whoami')).ok) return false;
+    if (!(await management(admin, auth, `/api/vhosts/${encodeURIComponent(name)}`, 'PUT', {})).ok) return false;
+    sandbox = { url: '', name, admin, auth };
+    const granted = await management(admin, auth, `/api/permissions/${encodeURIComponent(name)}/${encodeURIComponent(user)}`, 'PUT',
+      { configure: '.*', write: '.*', read: '.*' });
+    if (!granted.ok) { await dropBrokerSandbox(); return false; }
+    broker.pathname = `/${name}`;
+    sandbox.url = broker.toString();
+    return true;
+  } catch {
+    await dropBrokerSandbox();
+    return false;
+  }
+}
+
+/** ลบ vhost ทดสอบ (เรียกใน after ของแต่ละไฟล์ e2e) — ลบเฉพาะชื่อที่สร้างโดยเทสต์ */
+export async function dropBrokerSandbox(): Promise<void> {
+  const current = sandbox;
+  sandbox = undefined;
+  if (!current || !/^verification_it_[0-9a-f]{16}$/.test(current.name)) return;
+  await management(current.admin, current.auth, `/api/vhosts/${encodeURIComponent(current.name)}`, 'DELETE').catch(() => undefined);
+}
 
 /** e2e ลบคิว `verification.*` ทิ้ง จึงรันเฉพาะกับ broker ในเครื่อง ไม่แตะ broker ที่ใช้ร่วมกัน (เช่น CloudAMQP) */
 function isLocal(url: string): boolean {
@@ -14,7 +58,11 @@ function isLocal(url: string): boolean {
 }
 
 export async function brokerReachableOrSkip(ctx: Mocha.Context): Promise<void> {
-  if (!isLocal(brokerUrl())) ctx.skip();
+  if (!isLocal(baseBrokerUrl())) ctx.skip();
+  if (!sandbox && !(await createSandbox())) {
+    console.warn('Verification e2e pending: ต้องใช้ RabbitMQ management API (15672) เพื่อสร้าง vhost ทดสอบแยก');
+    ctx.skip();
+  }
   try {
     const conn = await Promise.race([
       amqp.connect(brokerUrl()),
@@ -22,6 +70,7 @@ export async function brokerReachableOrSkip(ctx: Mocha.Context): Promise<void> {
     ]);
     await conn.close();
   } catch {
+    await dropBrokerSandbox();
     ctx.skip();
   }
 }

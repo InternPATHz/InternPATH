@@ -5,13 +5,21 @@ import type { AdminUserListItem, Paginated } from '@internpath/contracts';
 import { useAuth } from '@/auth/session';
 import { FilterSelect, Notice } from '@/components/admin/filter-fields';
 import { ROLE_LABEL, USER_STATUS_LABEL, labelOf } from '@/lib/status-map';
-import { useUniversityOptions } from './use-universities';
+import { universityLabel, useUniversityOptions } from './use-universities';
 
 const roles: Array<[string, string]> = [['', 'ทุกบทบาท'], ['STUDENT', 'นักศึกษา'], ['ADVISOR', 'อาจารย์'], ['COMPANY_HR', 'HR'], ['PLATFORM_ADMIN', 'Admin']];
 const statuses: Array<[string, string]> = [['', 'ทุกสถานะ'], ['ACTIVE', 'ใช้งานอยู่'], ['PENDING_EMAIL', 'รอยืนยันอีเมล'], ['PENDING_APPROVAL', 'รออนุมัติ'], ['SUSPENDED', 'ถูกระงับ']];
 
+/** รหัสที่แสดงแทน UUID ตามบทบาท (Admin ไม่มีรหัส) */
+function displayCode(item: AdminUserListItem): string {
+  return item.student_code || item.advisor_code || item.company_registration_no || '';
+}
+function codeLabel(item: AdminUserListItem): string {
+  return item.student_code ? 'รหัสนักศึกษา' : item.advisor_code ? 'รหัสอาจารย์' : 'เลขทะเบียนนิติบุคคล';
+}
+
 export function AdminUsers() {
-  const { request } = useAuth();
+  const { request, user } = useAuth();
   const [q, setQ] = useState('');
   const [search, setSearch] = useState('');
   const [role, setRole] = useState('');
@@ -65,7 +73,7 @@ export function AdminUsers() {
     {error && <Notice tone="error">{error}</Notice>}{notice && <Notice tone="success">{notice}</Notice>}
     <div className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
       <form onSubmit={(event) => { event.preventDefault(); setQ(search.trim()); setPage(1); }} className="flex min-w-64 flex-1 items-end gap-2">
-        <label className="flex-1 text-sm">ชื่อ อีเมล หรือรหัสนักศึกษา<input value={search} onChange={(event) => setSearch(event.target.value)} maxLength={100} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
+        <label className="flex-1 text-sm">ชื่อ อีเมล หรือรหัส (นักศึกษา/อาจารย์/เลขทะเบียนบริษัท)<input value={search} onChange={(event) => setSearch(event.target.value)} maxLength={100} className="mt-1 w-full rounded-lg border border-border px-3 py-2 text-sm" /></label>
         <button className="rounded-lg border border-border px-3 py-2 text-sm">ค้นหา</button>
       </form>
       <span className="text-sm text-ink-soft">{result && `พบ ${result.meta.total} บัญชี`}</span>
@@ -77,21 +85,22 @@ export function AdminUsers() {
     <div className="rounded-xl border border-border bg-surface p-4">
       {loading ? <p className="text-sm text-ink-soft">กำลังโหลด…</p> : !result?.data.length ? <p className="text-sm text-ink-soft">ไม่พบบัญชีที่ตรงกับตัวกรอง</p> :
         <div className="overflow-x-auto"><table className="w-full text-left text-sm">
-          <thead className="bg-surface-muted text-ink-soft"><tr>{['ชื่อและอีเมล', 'บทบาท', 'สถานะ', 'มหาวิทยาลัย', 'รหัสนักศึกษา', 'จัดการ'].map((label) => <th key={label} scope="col" className="p-3">{label}</th>)}</tr></thead>
+          <thead className="bg-surface-muted text-ink-soft"><tr>{['ชื่อและอีเมล', 'บทบาท', 'สถานะ', 'มหาวิทยาลัย', 'รหัส', 'จัดการ'].map((label) => <th key={label} scope="col" className="p-3">{label}</th>)}</tr></thead>
           <tbody className="divide-y divide-border">{result.data.map((item) => <tr key={item.id} className={item.id === selectedId ? 'bg-primary-soft' : ''}>
             <th scope="row" className="max-w-xs p-3 [overflow-wrap:anywhere]">{item.full_name}<span className="block font-normal text-ink-soft">{item.email}</span></th>
-            <td className="p-3">{labelOf(ROLE_LABEL, item.role)}</td><td className="p-3">{labelOf(USER_STATUS_LABEL, item.status)}</td><td className="p-3">{item.university_name || '—'}</td><td className="p-3">{item.student_code || '—'}</td>
+            <td className="p-3">{labelOf(ROLE_LABEL, item.role)}</td><td className="p-3">{labelOf(USER_STATUS_LABEL, item.status)}</td><td className="p-3">{item.university_name || '—'}</td><td className="p-3 font-mono text-xs">{displayCode(item) || '—'}</td>
             <td className="p-3"><button aria-label={`จัดการ ${item.full_name} ${item.email}`} onClick={() => { setSelectedId(item.id); setActionId(null); setReason(''); }} className="text-primary">จัดการ</button></td>
           </tr>)}</tbody>
         </table></div>}
       {!loading && selected && <section aria-label="รายละเอียดบัญชีที่เลือก" className="mt-4 space-y-3 rounded-xl bg-surface-muted p-4 [overflow-wrap:anywhere]">
         <h2 className="font-semibold">{selected.full_name}</h2>
         <p className="text-sm">{selected.email} · {labelOf(ROLE_LABEL, selected.role)} · {labelOf(USER_STATUS_LABEL, selected.status)}</p>
-        <details className="text-xs text-ink-soft"><summary className="cursor-pointer">รหัสอ้างอิงระบบ</summary><p>บัญชี {selected.id}</p>{selected.university_id && <p>มหาวิทยาลัย {selected.university_id}</p>}{selected.advisor_id && <p>อาจารย์ {selected.advisor_id}</p>}</details>
+        {(displayCode(selected) || selected.university_name) && <p className="text-xs text-ink-soft">{displayCode(selected) && <>{codeLabel(selected)} <span className="font-mono">{displayCode(selected)}</span></>}{displayCode(selected) && selected.university_name && ' · '}{selected.university_name && <>{universityLabel(selected.university_name)}</>}</p>}
         <div className="flex flex-wrap gap-3 text-sm">
           {selected.role === 'STUDENT' && selected.status === 'ACTIVE' && <a className="text-primary" href={`/admin/advisors?${new URLSearchParams({ student: selected.id, code: selected.student_code || selected.email })}#move-student`}>ย้ายอาจารย์</a>}
-          {selected.status === 'ACTIVE' && actionId !== selected.id && <button className="text-danger-text" onClick={() => setActionId(selected.id)}>ระงับบัญชี</button>}
-          {selected.status === 'SUSPENDED' && <button disabled={busy} className="text-primary" onClick={() => void changeStatus(selected)}>ยกเลิกการระงับ</button>}
+          {selected.id === user?.id && <p className="text-ink-soft">บัญชีของคุณเอง — ระงับตัวเองไม่ได้</p>}
+          {selected.id !== user?.id && selected.status === 'ACTIVE' && actionId !== selected.id && <button className="text-danger-text" onClick={() => setActionId(selected.id)}>ระงับบัญชี</button>}
+          {selected.id !== user?.id && selected.status === 'SUSPENDED' && <button disabled={busy} className="text-primary" onClick={() => void changeStatus(selected)}>ยกเลิกการระงับ</button>}
         </div>
         {actionId === selected.id && <form onSubmit={(event) => { event.preventDefault(); void changeStatus(selected); }} className="flex flex-wrap items-end gap-3 text-sm">
           <label>เหตุผลที่ระงับบัญชี<input required maxLength={1000} value={reason} onChange={(event) => setReason(event.target.value)} className="block rounded-lg border border-border p-2" /></label>

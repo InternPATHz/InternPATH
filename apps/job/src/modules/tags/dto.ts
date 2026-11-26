@@ -1,5 +1,6 @@
 import { Transform, Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, Max, MaxLength, Min, NotContains } from 'class-validator';
+import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, Max, MaxLength, Min, NotContains } from 'class-validator';
+import type { MergeTagRequest } from '@internpath/contracts';
 
 const trim = ({ value }: { value: unknown }) => (typeof value === 'string' ? value.trim() : value);
 const toBool = ({ value }: { value: unknown }) => (value === 'true' ? true : value === 'false' ? false : value);
@@ -40,6 +41,11 @@ export class CreateTagDto {
   @IsNotEmpty()
   @MaxLength(50)
   name!: string;
+}
+
+export class MergeTagDto implements MergeTagRequest {
+  @IsUUID()
+  into_tag_id!: string;
 }
 
 export class UpdateTagDto {

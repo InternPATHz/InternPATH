@@ -288,6 +288,19 @@ describe('Notification event consumption (PostgreSQL)', function () {
     published_at: new Date().toISOString(),
   });
 
+  it('E19 ConductReportCreated notifies only the advisor (in-app + email, link to conduct reports) without the detail', async () => {
+    const advisor = randomUUID();
+    const event = envelope('ConductReportCreated', {
+      conduct_report_id: randomUUID(), application_id: randomUUID(), student_user_id: randomUUID(), advisor_user_id: advisor,
+      company_id: randomUUID(), category: 'ATTENDANCE', created_at: new Date().toISOString(),
+    }, 'lifecycle');
+    const notice = await deliver(event);
+    expect(notice.map((row) => row.userId)).to.deep.equal([advisor]);
+    expect(notice[0]).to.include({ link: '/advisor/conduct-reports' });
+    expect(notice[0].deliveries.length).to.be.greaterThan(0);
+    expect(await deliver(event)).to.have.length(1);
+  });
+
   it('notifies HR once for E11 PUBLISHED, including redelivery with the same or a new event ID', async () => {
     const payload = { ...reviewPublished(), change: 'PUBLISHED' };
     const published = envelope('ReviewPublished', payload, 'lifecycle');

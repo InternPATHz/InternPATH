@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AppException, OutboxWriter, asUuid } from '@internpath/common';
 import type { AdvisorLinkChangedPayload, UserDeletionRequestedPayload, UserSuspendedPayload } from '@internpath/contracts';
 import { Prisma } from '../../../generated/client';
+import { assertAnotherActiveAdmin } from '../../common/student-rules';
 import { PrismaService } from '../../prisma/prisma.service';
 
 export const DELETION_ELIGIBILITY = Symbol('DELETION_ELIGIBILITY');
@@ -26,6 +27,8 @@ export class AccountDeletionService {
       if (user.companyMember?.memberRole === 'OWNER') {
         throw new AppException('DELETION_BLOCKED', 'ต้องโอนสิทธิ์ Owner ก่อนลบบัญชี', 422);
       }
+      // Admin คนสุดท้ายที่ใช้งานได้ลบตัวเองไม่ได้ (ไม่งั้นไม่มีใครอนุมัติ/ปลดระงับได้อีก)
+      if (user.role === 'PLATFORM_ADMIN') await assertAnotherActiveAdmin(tx, user.id);
       const pending = await tx.deletionRequest.findFirst({ where: { userId, status: 'REQUESTED' } });
       if (pending) return pending.id;
       return (await tx.deletionRequest.create({ data: { userId, status: 'REQUESTED' } })).id;
@@ -58,6 +61,8 @@ export class AccountDeletionService {
       if (user.companyMember?.memberRole === 'OWNER') {
         throw new AppException('DELETION_BLOCKED', 'ต้องโอนสิทธิ์ Owner ก่อนลบบัญชี', 422);
       }
+      // Admin คนสุดท้ายที่ใช้งานได้ลบตัวเองไม่ได้ (ไม่งั้นไม่มีใครอนุมัติ/ปลดระงับได้อีก)
+      if (user.role === 'PLATFORM_ADMIN') await assertAnotherActiveAdmin(tx, user.id);
 
       const userId = user.id;
       const anonymousId = randomUUID();

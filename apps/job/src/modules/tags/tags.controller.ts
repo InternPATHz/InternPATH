@@ -1,6 +1,6 @@
 import { CurrentUser, JwtAuthGuard, JwtClaims, Roles, RolesGuard } from '@internpath/common';
-import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { AdminTagListQuery, CreateTagDto, TagListQuery, UpdateTagDto } from './dto';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { AdminTagListQuery, CreateTagDto, MergeTagDto, TagListQuery, UpdateTagDto } from './dto';
 import { TagsService } from './tags.service';
 
 /** `GET /tags` — Public (HR ใช้เลือก Tag ตอนสร้างประกาศ; นักศึกษาใช้กรองการค้นหา) */
@@ -35,5 +35,19 @@ export class AdminTagsController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTagDto, @CurrentUser() user: JwtClaims) {
     return this.tags.update(id, dto, user.sub);
+  }
+
+  /** รวม Tag ซ้ำ: ย้ายประกาศทุกใบจาก `{id}` ไป `into_tag_id` แล้วลบ `{id}` → 200 Tag ปลายทาง */
+  @Post(':id/merge')
+  @HttpCode(200)
+  merge(@Param('id', ParseUUIDPipe) id: string, @Body() dto: MergeTagDto, @CurrentUser() user: JwtClaims) {
+    return this.tags.merge(id, dto.into_tag_id, user.sub);
+  }
+
+  /** ลบได้เฉพาะ Tag ที่ไม่มีประกาศใช้ — ถูกใช้แล้ว ⇒ 409 `TAG_IN_USE` (ให้ปิดใช้งานแทน) */
+  @Delete(':id')
+  @HttpCode(204)
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.tags.remove(id);
   }
 }

@@ -15,6 +15,11 @@ import { ADVISOR_LINK_LABEL, ROLE_LABEL, USER_STATUS_LABEL, labelOf } from '@/li
 
 const link = 'font-medium text-primary hover:underline';
 
+/** รหัสที่ใช้แทน UUID เวลาติดต่อ Admin — คัดลอกได้ */
+function Code({ value, label }: { value: string; label: string }) {
+  return <span className="inline-flex items-center gap-2"><span className="font-mono">{value}</span><CopyButton value={value} label={`คัดลอก${label}`} /></span>;
+}
+
 function Row({ label, children }: { label: string; children: ReactNode }) {
   return <div className="grid gap-1 border-b border-border py-3 sm:grid-cols-[10rem_minmax(0,1fr)]"><dt className="text-ink-soft">{label}</dt><dd>{children}</dd></div>;
 }
@@ -70,20 +75,21 @@ function AccountContent() {
           {student && <a href="#advisor">อาจารย์ที่ปรึกษา</a>}<a href="#security">ความปลอดภัย</a><a href="#privacy">ความเป็นส่วนตัว</a></nav>
         <section id="account-info" className="scroll-mt-20"><h2 className="text-lg font-semibold">ข้อมูลบัญชี</h2>
           <dl className="text-sm"><Row label="อีเมล">{profile.email} · {profile.email_verified ? 'ยืนยันแล้ว' : 'รอยืนยัน'}</Row>
-            {student && <><Row label="รหัสนักศึกษา">{student.student_code}</Row><Row label="สาขาและชั้นปี">{student.major} · ชั้นปี {student.year_level}</Row></>}
+            {student && <><Row label="รหัสนักศึกษา"><Code value={student.student_code} label="รหัสนักศึกษา" /></Row><Row label="สาขาและชั้นปี">{student.major} · ชั้นปี {student.year_level}</Row></>}
             {profile.university && <Row label="มหาวิทยาลัย">{profile.university.name}</Row>}
+            {profile.advisor?.advisor_code && <Row label="รหัสอาจารย์"><Code value={profile.advisor.advisor_code} label="รหัสอาจารย์" /></Row>}
             {profile.advisor?.department && <Row label="ภาควิชา">{profile.advisor.department}</Row>}
             {profile.company && <><Row label="บริษัท"><Link href="/hr/company" className={link}>{profile.company.name}</Link></Row>
+              <Row label="เลขทะเบียนนิติบุคคล"><Code value={profile.company.registration_no} label="เลขทะเบียนนิติบุคคล" /></Row>
               <Row label="บทบาทในทีม"><Link href="/hr/team" className={link}>{profile.company.member_role === 'OWNER' ? 'เจ้าของบัญชีบริษัท' : 'สมาชิก HR'}</Link></Row></>}
           </dl>
-          <details className="mt-3 text-sm"><summary className="cursor-pointer">รหัสอ้างอิงบัญชี</summary><p className="mt-2 flex items-center gap-2 font-mono">{profile.id}<CopyButton value={profile.id} label="คัดลอกรหัสบัญชี" /></p></details>
           {editing ? <form className="mt-4 flex flex-wrap items-end gap-3" onSubmit={save}><label className="text-sm">ชื่อและนามสกุล<input autoFocus required value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block rounded-lg border border-border px-3 py-2" /></label>
             <button disabled={busy || !name.trim()} className={link}>บันทึกชื่อ</button><button type="button" disabled={busy} onClick={() => { setEditing(false); setMessage(''); }}>ยกเลิก</button></form>
             : <button className={link + ' mt-3 text-sm'} onClick={() => { setName(profile.full_name); setEditing(true); setMessage(''); }}>แก้ไขชื่อ</button>}
           {message && <p role="status" className="mt-2 text-sm">{message}</p>}
         </section>
         {student && <section id="advisor" className="scroll-mt-20 rounded-xl bg-surface-muted p-5"><h2 className="text-lg font-semibold">อาจารย์ที่ปรึกษา</h2>
-          <p className="mt-2">{labelOf(ADVISOR_LINK_LABEL, student.advisor_link_status)}</p><p className="mt-1 text-sm">{student.advisor_link_status === 'LINKED' ? 'หลังคุณยืนยันข้อเสนอ อาจารย์จะพิจารณาอนุมัติการฝึกงาน' : 'กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบของสถาบันเพื่อตรวจสอบการเชื่อมบัญชี'}</p>
+          <p className="mt-2">{labelOf(ADVISOR_LINK_LABEL, student.advisor_link_status)}</p>{student.advisor_name && <p className="mt-1 text-sm">อาจารย์ที่ปรึกษา: <span className="font-medium">{student.advisor_name}</span>{student.advisor_code && <> · รหัส <Code value={student.advisor_code} label="รหัสอาจารย์ที่ปรึกษา" /></>}</p>}<p className="mt-1 text-sm">{student.advisor_link_status === 'LINKED' ? 'หลังคุณยืนยันข้อเสนอ อาจารย์จะพิจารณาอนุมัติการฝึกงาน' : 'กรุณาติดต่ออาจารย์หรือผู้ดูแลระบบของสถาบันเพื่อตรวจสอบการเชื่อมบัญชี'}</p>
           <div className="mt-3 flex gap-4 text-sm"><Link className={link} href="/student/profile">โปรไฟล์และเรซูเม่</Link>{student.advisor_link_status === 'LINKED' && <Link className={link} href="/jobs">ค้นหางาน</Link>}</div></section>}
         <section id="security" className="scroll-mt-20"><h2 className="mb-2 text-lg font-semibold">ความปลอดภัย</h2><Link href="/forgot-password" className={link}>ขอลิงก์ตั้งรหัสผ่านใหม่ ›</Link></section>
         <section id="privacy" className="scroll-mt-20"><h2 className="mb-2 text-lg font-semibold">ความเป็นส่วนตัว</h2><Link href="/privacy" className={link}>นโยบายความเป็นส่วนตัว ›</Link>

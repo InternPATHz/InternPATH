@@ -33,6 +33,7 @@ export const ROLE_NAV: Record<Role, NavItem[]> = {
     { label: 'อนุมัติฝึกงาน', href: '/advisor/approvals', ready: true },
     { label: 'ประเมินผล', href: '/advisor/evaluations', ready: true },
     { label: 'รายงานปัญหา', href: '/advisor/problem-reports', ready: true },
+    { label: 'รายงานจากบริษัท', href: '/advisor/conduct-reports', ready: true },
   ],
   PLATFORM_ADMIN: [{ label: 'หลังบ้าน', href: '/admin/queue', ready: true }],
 };

@@ -126,6 +126,8 @@ describe('Internal Job API (HTTP and real PostgreSQL)', function () {
       category: 'TECH_IT',
       target_majors: ['CS'],
       application_deadline: '2026-12-01',
+      internship_period_start: '2027-01-01',
+      internship_period_end: '2027-04-01',
       entity_version: 10,
     });
     expect(await db.prisma.job.findUniqueOrThrow({ where: { id: job.id } })).to.deep.equal(before);

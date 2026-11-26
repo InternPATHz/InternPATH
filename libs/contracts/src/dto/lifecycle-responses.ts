@@ -132,6 +132,11 @@ export interface AdvisorApplicationItem extends ApplicationBase {
   student_name: string;
   flagged_for_advisor: boolean;
   academic_result?: AcademicResult;
+  /**
+   * `EVALUATED_FAIL` ที่ยังไม่บันทึกผลวิชา: เวลาที่ช่วงโต้แย้ง (`DISPUTE_WINDOW_DAYS` = 7 วันหลังผลประเมิน) ปิด
+   * ⇒ บันทึกผลได้ตั้งแต่เวลานี้ • ไม่มีเมื่อบันทึกได้ทันที (อาจารย์ตัดสินคำโต้แย้งแล้ว) หรือไม่ใช่ FAIL
+   */
+  academic_result_available_at?: string;
 }
 
 /**
@@ -185,6 +190,29 @@ export interface ProblemReportItem {
   due_at: string;
   resolution_note?: string;
   follow_up_action?: 'MONITOR_COMPANY' | 'TERMINATE' | 'ESCALATE_COMPANY_REVIEW';
+  created_at: string;
+}
+
+// ---- 7.4b รายงานพฤติกรรมนักศึกษาจากบริษัท (HR → อาจารย์) ----
+export type ConductReportCategory = 'ATTENDANCE' | 'BEHAVIOR' | 'PERFORMANCE' | 'SAFETY' | 'OTHER';
+export type ConductReportStatus = 'OPEN' | 'ACKNOWLEDGED';
+
+/** `/hr/applications/{id}/conduct-reports`, `/advisor/conduct-reports` */
+export interface ConductReportItem {
+  id: string;
+  application_id: string;
+  student_user_id: string;
+  /** ชื่อนักศึกษา (ฝั่งอาจารย์เท่านั้น — ดึงสดจาก Identity) */
+  student_name?: string;
+  company_id: string;
+  company_name: string;
+  job_title: string;
+  category: ConductReportCategory;
+  detail: string;
+  status: ConductReportStatus;
+  /** หมายเหตุของอาจารย์ตอนรับทราบ (HR เห็นด้วย) */
+  advisor_note?: string;
+  acknowledged_at?: string;
   created_at: string;
 }
 
@@ -304,6 +332,9 @@ export interface InternalJobResponse {
   category: JobCategory;
   target_majors: string[];
   application_deadline: string;
+  /** ช่วงฝึกงานของประกาศ (YYYY-MM-DD) — ไม่กำหนด ⇒ null; Lifecycle ใช้ตรวจวันเริ่ม/จบตอน HR ตอบรับ */
+  internship_period_start?: string | null;
+  internship_period_end?: string | null;
   entity_version: number;
 }
 

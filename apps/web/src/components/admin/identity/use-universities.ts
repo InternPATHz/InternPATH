@@ -21,5 +21,10 @@ export function useUniversityOptions(): Array<[string, string]> {
   return [['', 'ทุกมหาวิทยาลัย'],
     // มหาวิทยาลัยที่ระบบสร้างจากโดเมนอีเมลมีชื่อเท่ากับโดเมน — ไม่ต้องแสดงซ้ำ
     ...items.map((item): [string, string] => [item.id,
-      `${item.name}${item.name === item.email_domain ? '' : ` (${item.email_domain})`}${item.active ? '' : ' · ปิดใช้งาน'}`])];
+      `${item.name}${item.abbreviation ? ` (${item.abbreviation})` : item.name === item.email_domain ? '' : ` (${item.email_domain})`}${item.active ? '' : ' · ปิดใช้งาน'}`])];
+}
+
+/** ชื่อที่ขึ้นต้นด้วย "มหาวิทยาลัย" อยู่แล้วไม่ต้องเติมคำนำหน้าซ้ำ (มหาวิทยาลัยเก่าบางแห่งมีชื่อเป็นโดเมน) */
+export function universityLabel(name: string): string {
+  return name.startsWith('มหาวิทยาลัย') ? name : `มหาวิทยาลัย ${name}`;
 }

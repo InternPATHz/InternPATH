@@ -135,6 +135,8 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
     await prisma.jobSnapshot.upsert({
       where: { jobId }, create: { jobId, companyId, title: 'x', status: 'PUBLISHED', category: 'TECH_IT' }, update: {},
     });
+    // ประกาศฝั่ง Job (ตอบรับต้องอ่านช่วงฝึกงานของประกาศ) — ไม่กำหนดช่วงเป็นค่าเริ่มต้น
+    if (!job.jobs.has(jobId)) job.addJob({ job_id: jobId, company_id: companyId, internship_period_start: null, internship_period_end: null });
     return row;
   };
 
@@ -557,6 +559,37 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
       expect((await reload(pending.id)).status).to.equal('PENDING');
     });
 
+    it('วันเริ่ม/จบต้องอยู่ในช่วงฝึกงานของประกาศ: ก่อนช่วง ⇒ 400 BEFORE_JOB_PERIOD • หลังช่วง ⇒ 400 AFTER_JOB_PERIOD • ไม่จองโควตา', async () => {
+      const jobId = randomUUID();
+      const from = addDays(today(), 10);
+      const to = addDays(today(), 100);
+      job.addJob({ job_id: jobId, company_id: companyId, internship_period_start: ymd(from), internship_period_end: ymd(to) });
+      const pending = await seed('PENDING', { jobId });
+
+      const early = await action(pending.id, 'accept', { start_date: ymd(addDays(from, -1)), end_date: ymd(addDays(from, 60)) }).expect(400);
+      expect(early.body.error.details).to.deep.equal([{ field: 'start_date', issue: 'BEFORE_JOB_PERIOD' }]);
+      expect(early.body.error.message).to.include(ymd(from));
+      const late = await action(pending.id, 'accept', { start_date: ymd(from), end_date: ymd(addDays(to, 1)) }).expect(400);
+      expect(late.body.error.details).to.deep.equal([{ field: 'end_date', issue: 'AFTER_JOB_PERIOD' }]);
+      expect(job.calls.filter((c) => c.op === 'reserve')).to.have.length(0);
+      expect((await reload(pending.id)).status).to.equal('PENDING');
+
+      // ตรงขอบช่วงพอดี ⇒ ผ่าน
+      const ok = await action(pending.id, 'accept', { start_date: ymd(from), end_date: ymd(to) }).expect(200);
+      expect(ok.body).to.include({ status: 'HR_ACCEPTED', start_date: ymd(from), end_date: ymd(to) });
+    });
+
+    it('ประกาศกำหนดแค่วันเริ่ม ⇒ ตรวจแค่วันเริ่ม • Job อ่านไม่ได้ ⇒ ไม่ปล่อยผ่าน (ไม่เปลี่ยนสถานะ)', async () => {
+      const jobId = randomUUID();
+      job.addJob({ job_id: jobId, company_id: companyId, internship_period_start: ymd(addDays(today(), 5)), internship_period_end: null });
+      const pending = await seed('PENDING', { jobId });
+      job.unavailable = true;
+      await action(pending.id, 'accept', { start_date: ymd(addDays(today(), 5)), end_date: ymd(addDays(today(), 400)) }).expect(502);
+      expect((await reload(pending.id)).status).to.equal('PENDING');
+      job.unavailable = false;
+      await action(pending.id, 'accept', { start_date: ymd(addDays(today(), 5)), end_date: ymd(addDays(today(), 400)) }).expect(200);
+    });
+
     it('ไม่ส่ง/รูปแบบวันที่ผิด ⇒ 400 VALIDATION_FAILED', async () => {
       const pending = await seed('PENDING');
       for (const body of [{}, { start_date: ymd(today()) }, { start_date: '2026/12/01', end_date: '2027-02-01' }, { start_date: '2026-02-30', end_date: '2026-04-30' }]) {
@@ -710,6 +743,16 @@ describe('Lifecycle 1.5 — ใบสมัครฝั่ง HR (HTTP + Postgre
         end_date: ymd(addDays(today(), 40)),
       }).expect(200);
       expect(ok.body.status).to.equal('IN_PROGRESS');
+    });
+
+    it('ปรับ end_date ตอนเริ่มงานให้เกินช่วงฝึกงานของประกาศ ⇒ 400 AFTER_JOB_PERIOD ไม่ confirm โควตา', async () => {
+      const jobId = randomUUID();
+      job.addJob({ job_id: jobId, company_id: companyId, internship_period_start: null, internship_period_end: ymd(addDays(today(), 60)) });
+      const approved = await seedApproved({ jobId });
+      const res = await action(approved.id, 'start', { actual_start_date: ymd(today()), end_date: ymd(addDays(today(), 61)) }).expect(400);
+      expect(res.body.error.details).to.deep.equal([{ field: 'end_date', issue: 'AFTER_JOB_PERIOD' }]);
+      expect((await reload(approved.id)).status).to.equal('ADVISOR_APPROVED');
+      expect(job.calls.filter((c) => c.op === 'confirm')).to.have.length(0);
     });
 
     it('วันที่ไม่สมเหตุผล ⇒ 400 VALIDATION_FAILED และสถานะไม่เปลี่ยน', async () => {

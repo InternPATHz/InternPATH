@@ -137,7 +137,27 @@ describe('Identity Auth API (Postgres จริง)', function () {
   });
 
   it('advisor waits for approval; company gets OWNER and public email is rejected', async () => {
-    await request(app.getHttpServer()).post('/v1/auth/register/advisor').send({ email: 'advisor@test.ac.th', password: 'correct horse battery', full_name: 'Advisor', department: 'Science', accept_privacy: true }).expect(201);
+    const advisorBody = { email: 'advisor@test.ac.th', password: 'correct horse battery', full_name: 'Advisor', department: 'Science',
+      university_name: 'มหาวิทยาลัยทดสอบ', university_abbreviation: ' tu ', accept_privacy: true };
+    const missing = await request(app.getHttpServer()).post('/v1/auth/register/advisor').send({ ...advisorBody, university_abbreviation: 'T-U' }).expect(400);
+    expect(missing.body.error.code).to.equal('VALIDATION_FAILED');
+    await request(app.getHttpServer()).post('/v1/auth/register/advisor').send({ ...advisorBody, university_name: '  ' }).expect(400);
+    await request(app.getHttpServer()).post('/v1/auth/register/advisor').send(advisorBody).expect(201);
+    // โดเมนที่ระบบสร้างไว้ก่อน (ชื่อ = โดเมน) ได้ชื่อจริง + ตัวย่อจากผู้สมัครคนแรก; รหัสอาจารย์ = ตัวย่อ + 6 หลัก
+    const uni = await db.university.findUniqueOrThrow({ where: { emailDomain: 'test.ac.th' } });
+    expect(uni).to.include({ name: 'มหาวิทยาลัยทดสอบ', abbreviation: 'TU' });
+    const firstProfile = await db.advisorProfile.findFirstOrThrow({ where: { user: { email: 'advisor@test.ac.th' } } });
+    expect(firstProfile.advisorCode).to.match(/^TU\d{6}$/);
+    // ผู้สมัครคนหลังของโดเมนเดิมเปลี่ยนชื่อ/ตัวย่อไม่ได้
+    await request(app.getHttpServer()).post('/v1/auth/register/advisor').send({ ...advisorBody, email: 'advisor2@test.ac.th',
+      university_name: 'ชื่ออื่น', university_abbreviation: 'XYZ' }).expect(201);
+    expect(await db.university.findUniqueOrThrow({ where: { emailDomain: 'test.ac.th' } })).to.include({ name: 'มหาวิทยาลัยทดสอบ', abbreviation: 'TU' });
+    expect((await db.advisorProfile.findFirstOrThrow({ where: { user: { email: 'advisor2@test.ac.th' } } })).advisorCode).to.match(/^TU\d{6}$/);
+    // ตัวย่อซ้ำกับมหาวิทยาลัยอื่น ⇒ 409 และไม่สร้างมหาวิทยาลัย/บัญชี
+    const taken = await request(app.getHttpServer()).post('/v1/auth/register/advisor').send({ ...advisorBody, email: 'a@other.ac.th' }).expect(409);
+    expect(taken.body.error.details[0].issue).to.equal('UNIVERSITY_ABBREVIATION_TAKEN');
+    expect(await db.university.count({ where: { emailDomain: 'other.ac.th' } })).to.equal(0);
+    expect(await db.user.count({ where: { email: 'a@other.ac.th' } })).to.equal(0);
     const advisorToken = emails.find((item) => item.email === 'advisor@test.ac.th')?.token;
     await request(app.getHttpServer()).post('/v1/auth/verify-email').send({ token: advisorToken }).expect(204);
     expect((await db.user.findUniqueOrThrow({ where: { email: 'advisor@test.ac.th' } })).status).to.equal('PENDING_APPROVAL');
@@ -175,7 +195,7 @@ describe('Identity Auth API (Postgres จริง)', function () {
     const cases = [
       { route: 'advisor', email: 'mail-fail-advisor@test.ac.th', conflict: 'ACCOUNT_EXISTS', body: {
         email: 'mail-fail-advisor@test.ac.th', password: 'correct horse battery', full_name: 'Advisor Mail Failure',
-        department: 'Science', accept_privacy: true,
+        department: 'Science', university_name: 'Test University', university_abbreviation: 'TST', accept_privacy: true,
       } },
       { route: 'company', email: 'mail-fail-owner@test-company.com', conflict: 'ACCOUNT_OR_COMPANY_EXISTS', body: {
         company: { name: 'Mail Failure Company', registration_no: '0105550000456' },

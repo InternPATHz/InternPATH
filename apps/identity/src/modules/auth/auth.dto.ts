@@ -1,5 +1,5 @@
-import { Type } from 'class-transformer';
-import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MinLength, ValidateNested, Equals } from 'class-validator';
+import { Transform, Type } from 'class-transformer';
+import { IsBoolean, IsEmail, IsNotEmpty, IsOptional, IsString, IsUrl, Matches, MaxLength, MinLength, ValidateNested, Equals } from 'class-validator';
 import type { AcceptStudentInvitationRequest, RegisterCompanyRequest, LoginRequest, RefreshRequest, VerifyEmailRequest, ForgotPasswordRequest, ResetPasswordRequest } from '@internpath/contracts';
 
 export class AcceptStudentInvitationDto implements AcceptStudentInvitationRequest {
@@ -13,6 +13,12 @@ export class RegisterAdvisorDto {
   @IsString() @MinLength(12) password!: string;
   @IsString() @IsNotEmpty() full_name!: string;
   @IsString() @IsNotEmpty() department!: string;
+  /** ชื่อมหาวิทยาลัย — ใช้ตั้งชื่อเฉพาะตอนที่โดเมนนี้ยังไม่มีชื่อ (ผู้สมัครคนแรก) */
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim() : value))
+  @IsString() @IsNotEmpty() @MaxLength(200) university_name!: string;
+  /** ตัวย่อ 2–10 ตัว A-Z/0-9 (เช่น KU) — คำนำหน้ารหัสอาจารย์ */
+  @Transform(({ value }) => (typeof value === 'string' ? value.trim().toUpperCase() : value))
+  @IsString() @Matches(/^[A-Z0-9]{2,10}$/, { message: 'ตัวย่อมหาวิทยาลัยต้องเป็น A-Z หรือ 0-9 ยาว 2–10 ตัว' }) university_abbreviation!: string;
   @IsBoolean() @Equals(true) accept_privacy!: true;
 }
 

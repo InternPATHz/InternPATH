@@ -266,7 +266,7 @@ function AcademicResults({ view }: { view: View }) {
                 </div>
               </form>
             ) : (
-              <div className="mt-4"><button type="button" onClick={() => open(app)} className={primaryButton}>บันทึกผลวิชา</button></div>
+              <RecordButton app={app} onOpen={() => open(app)} />
             )}
           </li>
         ))}
@@ -290,5 +290,29 @@ function AcademicResults({ view }: { view: View }) {
         </div></div>
       {list && <Pager page={page} total={list.meta.total} onPage={setPage} />}
     </section>
+  );
+}
+
+/** วัน/เวลาแบบไทย เช่น "3 ธ.ค. 2569 14:30 น." */
+function formatDateTime(iso: string): string {
+  return new Date(iso).toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Bangkok' }) + ' น.';
+}
+
+/**
+ * ปุ่มบันทึกผลวิชา — ผล FAIL ที่ช่วงโต้แย้ง 7 วันยังไม่ปิด (academic_result_available_at ยังไม่ถึง) กดไม่ได้
+ * และบอกวันที่บันทึกได้ แทนการกดแล้วได้ข้อผิดพลาด DISPUTE_WINDOW_OPEN
+ */
+function RecordButton({ app, onOpen }: { app: AdvisorApplicationItem; onOpen: () => void }) {
+  const availableAt = app.academic_result_available_at;
+  const waiting = availableAt !== undefined && new Date(availableAt).getTime() > Date.now();
+  return (
+    <div className="mt-4 space-y-2">
+      {waiting && (
+        <p className="rounded-lg bg-warning-soft px-3 py-2 text-sm text-warning-text">
+          อยู่ในช่วงที่นักศึกษาโต้แย้งผลได้ (7 วันหลังบริษัทประเมิน) — บันทึกผลได้ตั้งแต่ {formatDateTime(availableAt)}
+        </p>
+      )}
+      <button type="button" onClick={onOpen} disabled={waiting} className={primaryButton}>บันทึกผลวิชา</button>
+    </div>
   );
 }

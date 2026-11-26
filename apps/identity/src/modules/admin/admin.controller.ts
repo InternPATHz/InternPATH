@@ -1,7 +1,7 @@
-import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { CurrentUser, JwtAuthGuard, type JwtClaims, Roles, RolesGuard } from '@internpath/common';
 import { AdminService } from './admin.service';
-import { AdminUsersQueryDto, AuditQueryDto, SetEntitlementsDto, SetPartnerDto, UserActionDto } from './admin.dto';
+import { AdminUsersQueryDto, AuditQueryDto, SetEntitlementsDto, SetPartnerDto, UpdateUniversityDto, UserActionDto } from './admin.dto';
 
 @Controller('admin')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -32,6 +32,12 @@ export class AdminController {
 
   @Get('universities')
   universities(@CurrentUser() actor: JwtClaims) { return this.service.universities(actor.sub); }
+
+  @Patch('universities/:id')
+  updateUniversity(@CurrentUser() actor: JwtClaims, @Param('id', ParseUUIDPipe) universityId: string,
+    @Body() body: UpdateUniversityDto, @Headers('x-correlation-id') correlationId: string) {
+    return this.service.updateUniversity(actor.sub, universityId, body, correlationId);
+  }
 
   @Get('audit-logs')
   audit(@CurrentUser() actor: JwtClaims, @Query() query: AuditQueryDto) { return this.service.audit(actor.sub, query); }

@@ -79,7 +79,7 @@ describe('lifecycle_db migration (Postgres จริง)', function () {
     await admin?.end().catch(() => undefined);
   });
 
-  it('สร้างตาราง Lifecycle ครบ 20 ตารางบนฐานเปล่า', async () => {
+  it('สร้างตาราง Lifecycle ครบ 21 ตารางบนฐานเปล่า (รวม conduct_reports — 2026-11-26)', async () => {
     const rows = (
       await pg.query(
         `SELECT table_name FROM information_schema.tables
@@ -93,6 +93,7 @@ describe('lifecycle_db migration (Postgres จริง)', function () {
         'certificates',
         'company_review_stats',
         'company_snapshots',
+        'conduct_reports',
         'config_overrides',
         'evaluations',
         'fail_disputes',

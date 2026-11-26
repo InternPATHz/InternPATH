@@ -11,17 +11,25 @@ import type {
 import { Injectable } from '@nestjs/common';
 import type { Application, Prisma } from '../../../generated/client';
 import { assertAdvisorOwnership } from '../../common/auth/ownership';
+import { LifecycleConfigService } from '../../config/lifecycle-config.service';
 import { IdentityInternalClient } from '../../internal/identity-client.service';
 import { STUDENT_NAMES_BATCH_MAX, StudentNamesService } from '../../internal/student-names.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApplicationStateMachine } from '../../state-machine/application-state-machine.service';
 import {
   ApplicationTransitionService,
+  loadDisputeContext,
   type TransitionCommand,
 } from '../../state-machine/application-transition.service';
 import { applicationNotFound, stateConflict } from '../../state-machine/errors';
 import type { Actor } from '../../state-machine/status-history.writer';
 import { ACADEMIC_RESULT_WITHOUT_TRANSITION, INACTIVE_STATUSES } from '../../state-machine/transition-table';
+
+/**
+ * ฝึกงานจบแล้ว (ไม่ว่าผลจะเป็นอย่างไร) — เดิมนับแค่ `COMPLETED` (หลังอาจารย์บันทึกผล) ทำให้นักศึกษาที่บริษัทประเมินแล้ว,
+ * กำลังโต้แย้งผล FAIL หรือถูกยุติกลางคัน ขึ้นว่า "ยังไม่ได้ฝึกงาน" ในหน้ารายชื่อของอาจารย์
+ */
+const TRAINING_ENDED: readonly string[] = ['EVALUATED_PASS', 'EVALUATED_FAIL', 'FAIL_DISPUTED', 'REEVALUATION_REQUESTED', 'NO_EVALUATION', 'TERMINATED', 'COMPLETED'];
 import { loadSnapshotNames, toAdvisorItem, toApplicationBase } from '../applications/application-view';
 import type { AcademicResultDto, AdvisorApplicationsQueryDto, AdvisorStudentsQueryDto } from './advisor.dto';
 
@@ -44,6 +52,7 @@ export class AdvisorService {
     private readonly transitions: ApplicationTransitionService,
     private readonly studentNames: StudentNamesService,
     private readonly identity: IdentityInternalClient,
+    private readonly config: LifecycleConfigService,
   ) {}
 
   // ---------- GET ----------
@@ -90,7 +99,7 @@ export class AdvisorService {
     for (const app of applications) {
       const entry = training.get(app.studentUserId) ?? { inProgress: false, completed: false, active: 0 };
       if (app.status === 'IN_PROGRESS') entry.inProgress = true;
-      if (app.status === 'COMPLETED') entry.completed = true;
+      if (TRAINING_ENDED.includes(app.status)) entry.completed = true;
       if (!INACTIVE_STATUSES.includes(app.status)) entry.active += 1;
       training.set(app.studentUserId, entry);
     }
@@ -369,10 +378,32 @@ export class AdvisorService {
   }
 
   private async toItems(rows: Application[]): Promise<AdvisorApplicationItem[]> {
-    const [names, studentNames] = await Promise.all([
+    const [names, studentNames, availableAt] = await Promise.all([
       loadSnapshotNames(this.db, rows),
       this.studentNames.names(rows.map((r) => r.studentUserId)),
+      this.academicResultAvailableAt(rows),
     ]);
-    return rows.map((row) => toAdvisorItem(row, names, studentNames.get(row.studentUserId) ?? ''));
+    return rows.map((row) => {
+      const item = toAdvisorItem(row, names, studentNames.get(row.studentUserId) ?? '');
+      const at = availableAt.get(row.id);
+      return at ? { ...item, academic_result_available_at: at } : item;
+    });
+  }
+
+  /**
+   * `EVALUATED_FAIL` ที่ยังไม่บันทึกผลวิชา ⇒ เวลาที่ช่วงโต้แย้งปิด (ผลประเมินล่าสุด + `DISPUTE_WINDOW_DAYS`) ให้หน้าเว็บบอกอาจารย์ว่าบันทึกได้วันไหน
+   * ใช้เงื่อนไขเดียวกับ Guard `disputeWindowClosed`: อาจารย์ตัดสินคำโต้แย้งแล้ว ⇒ บันทึกได้ทันที (ไม่ส่ง) • ไม่มีผลประเมิน ⇒ ไม่ส่ง
+   */
+  private async academicResultAvailableAt(rows: Application[]): Promise<Map<string, string>> {
+    const fails = rows.filter((row) => row.status === 'EVALUATED_FAIL' && !row.academicResult);
+    const result = new Map<string, string>();
+    if (!fails.length) return result;
+    const windowDays = await this.config.getNumber('DISPUTE_WINDOW_DAYS');
+    await Promise.all(fails.map(async (row) => {
+      const ctx = await loadDisputeContext(this.db, row.id);
+      if (!ctx.lastEvaluatedAt || ctx.disputeResolvedSinceLastEvaluation) return;
+      result.set(row.id, new Date(ctx.lastEvaluatedAt.getTime() + windowDays * 86_400_000).toISOString());
+    }));
+    return result;
   }
 }

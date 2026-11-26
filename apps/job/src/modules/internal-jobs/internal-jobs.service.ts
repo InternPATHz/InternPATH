@@ -21,6 +21,8 @@ export class InternalJobsService {
         category: true,
         targetMajors: true,
         applicationDeadline: true,
+        internshipPeriodStart: true,
+        internshipPeriodEnd: true,
         entityVersion: true,
       },
     });
@@ -46,6 +48,9 @@ export class InternalJobsService {
       category: job.category,
       target_majors: job.targetMajors,
       application_deadline: job.applicationDeadline.toISOString().slice(0, 10),
+      // ช่วงฝึกงานของประกาศ — Lifecycle ใช้ตรวจวันเริ่ม/จบที่ HR ตอบรับ (ไม่กำหนด ⇒ null)
+      internship_period_start: job.internshipPeriodStart?.toISOString().slice(0, 10) ?? null,
+      internship_period_end: job.internshipPeriodEnd?.toISOString().slice(0, 10) ?? null,
       entity_version: job.entityVersion,
     };
   }

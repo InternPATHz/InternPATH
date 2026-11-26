@@ -14,6 +14,7 @@ import { assertCompanyOwnership } from '../../common/auth/ownership';
 import { S3StorageService } from '../../common/storage/s3-storage.service';
 import { LifecycleConfigService } from '../../config/lifecycle-config.service';
 import { IdentityInternalClient } from '../../internal/identity-client.service';
+import { JobInternalClient } from '../../internal/job-client.service';
 import { StudentNamesService } from '../../internal/student-names.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ApplicationStateMachine } from '../../state-machine/application-state-machine.service';
@@ -56,6 +57,7 @@ export class HrApplicationsService {
     private readonly config: LifecycleConfigService,
     private readonly studentNames: StudentNamesService,
     private readonly scope: CategoryScopeService,
+    private readonly job: JobInternalClient,
   ) {}
 
   // ---------- GET ----------
@@ -129,10 +131,13 @@ export class HrApplicationsService {
 
   /** `accept` `{start_date, end_date}` — Guard: ไม่ Freeze, ไม่ยืนยันที่อื่น (403), ช่วง ≥ 30 วัน (422) → reserve โควตา (409 QUOTA_FULL) */
   async accept(user: JwtClaims, applicationId: string, body: HrAcceptDto, correlationId?: string): Promise<HrApplicationDetail> {
-    await this.companyApplication(user, applicationId, correlationId);
+    const app = await this.companyApplication(user, applicationId, correlationId);
+    const startDate = toDateOnly(body.start_date);
+    const endDate = toDateOnly(body.end_date);
+    await this.assertWithinJobPeriod(app, startDate, endDate, correlationId);
     await this.execute(user, applicationId, {
       trigger: 'accept',
-      input: { startDate: toDateOnly(body.start_date), endDate: toDateOnly(body.end_date) },
+      input: { startDate, endDate },
     }, correlationId);
     return this.detail(user, applicationId, correlationId);
   }
@@ -182,6 +187,10 @@ export class HrApplicationsService {
     }
     if (endDate && daysBetween(actualStart, endDate) <= 0) {
       throw validationFailed('end_date', 'NOT_AFTER_ACTUAL_START_DATE');
+    }
+    // ปรับวันเริ่ม/จบตอนเริ่มงาน ⇒ ต้องยังอยู่ในช่วงฝึกงานของประกาศ (ตรวจเฉพาะค่าที่ส่งมา)
+    if (body.start_date || body.end_date) {
+      await this.assertWithinJobPeriod(app, body.start_date ? startDate : null, body.end_date ? endDate : null, correlationId);
     }
 
     await this.execute(user, applicationId, {
@@ -257,6 +266,26 @@ export class HrApplicationsService {
   }
 
   // ---------- helper ----------
+
+  /**
+   * วันเริ่ม/จบที่ HR กำหนดต้องอยู่ในช่วงฝึกงานของประกาศ (`internship_period_start/end` จาก Job — ผู้ใช้สั่ง 2026-11-26)
+   * ประกาศไม่กำหนดช่วง ⇒ ไม่ตรวจ • ก่อนช่วง ⇒ `400 VALIDATION_FAILED` (`start_date`/`BEFORE_JOB_PERIOD`)
+   * • หลังช่วง ⇒ (`end_date`/`AFTER_JOB_PERIOD`) • Job อ่านไม่ได้ ⇒ ส่ง error ต่อ (ไม่ปล่อยผ่าน เพราะตอบรับต้องจองโควตาที่ Job อยู่แล้ว)
+   */
+  private async assertWithinJobPeriod(app: Application, start: Date | null, end: Date | null, correlationId?: string): Promise<void> {
+    const job = await this.job.getJob(app.jobId, correlationId);
+    const from = job.internship_period_start ?? null;
+    const to = job.internship_period_end ?? null;
+    const period = `${from ?? 'ไม่กำหนด'} ถึง ${to ?? 'ไม่กำหนด'}`;
+    if (from && start && daysBetween(from, start) < 0) {
+      throw new AppException('VALIDATION_FAILED', `วันเริ่มต้องอยู่ในช่วงฝึกงานของประกาศ (${period})`, 400,
+        [{ field: 'start_date', issue: 'BEFORE_JOB_PERIOD' }]);
+    }
+    if (to && end && daysBetween(end, to) < 0) {
+      throw new AppException('VALIDATION_FAILED', `วันสิ้นสุดต้องอยู่ในช่วงฝึกงานของประกาศ (${period})`, 400,
+        [{ field: 'end_date', issue: 'AFTER_JOB_PERIOD' }]);
+    }
+  }
 
   private async execute(
     user: JwtClaims,

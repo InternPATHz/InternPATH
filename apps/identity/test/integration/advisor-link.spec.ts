@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { generateKeyPairSync, randomBytes, randomUUID } from 'node:crypto';
+import { generateKeyPairSync, randomBytes, randomUUID, randomInt } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { Global, INestApplication, Module } from '@nestjs/common';
@@ -97,8 +97,10 @@ describe('Identity advisor-created students (Postgres จริง)', function (
   const http = () => request(app.getHttpServer());
   const advisorAuth = (id: string) => ({ Authorization: bearer(id, 'ADVISOR') });
   const adminAuth = () => ({ Authorization: bearer(adminId, 'PLATFORM_ADMIN') });
+  /** รหัสนักศึกษา 10 หลักแบบสุ่ม (ตรงรูปแบบ STUDENT_CODE_PATTERN) */
+  const studentCode = () => `66${randomInt(0, 100_000_000).toString().padStart(8, '0')}`;
   const newStudent = (over: Record<string, unknown> = {}) => ({
-    email: `new${randomBytes(3).toString('hex')}@test.ac.th`, full_name: 'นักศึกษา ใหม่', student_code: `N${randomBytes(3).toString('hex')}`, major: 'CS', year_level: 3, ...over,
+    email: `new${randomBytes(3).toString('hex')}@test.ac.th`, full_name: 'นักศึกษา ใหม่', student_code: studentCode(), major: 'CS', year_level: 4, ...over,
   });
 
   it('Admin approves a pending advisor once, with audit and approval timestamp', async () => {
@@ -137,7 +139,7 @@ describe('Identity advisor-created students (Postgres จริง)', function (
     const user = await db.user.findUniqueOrThrow({ where: { id: res.body.student_user_id }, include: { studentProfile: true } });
     expect(user).to.include({ role: 'STUDENT', status: 'PENDING_EMAIL', passwordHash: null, emailVerifiedAt: null });
     expect(user.universityId).to.equal((await db.user.findUniqueOrThrow({ where: { id: advisorB } })).universityId);
-    expect(user.studentProfile).to.include({ studentCode: body.student_code, major: 'CS', yearLevel: 3, advisorId: advisorB, createdByAdvisorId: advisorB, advisorLinkStatus: 'LINKED' });
+    expect(user.studentProfile).to.include({ studentCode: body.student_code, major: 'CS', yearLevel: 4, advisorId: advisorB, createdByAdvisorId: advisorB, advisorLinkStatus: 'LINKED' });
     const tokens = await db.emailToken.findMany({ where: { userId: user.id } });
     expect(tokens.map((t) => t.purpose)).to.deep.equal(['STUDENT_INVITATION']);
     expect(JSON.stringify(tokens)).to.not.include('"token"');
@@ -153,7 +155,7 @@ describe('Identity advisor-created students (Postgres จริง)', function (
   });
 
   it('student code is unique per university in the DB: same code in another university is allowed, concurrent duplicates ⇒ 409', async () => {
-    const code = `U${randomBytes(3).toString('hex')}`;
+    const code = studentCode();
     const first = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ student_code: code })).expect(201);
     const firstProfile = await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: first.body.student_user_id }, include: { user: true } });
     expect(firstProfile.universityId).to.equal(firstProfile.user.universityId);
@@ -170,7 +172,7 @@ describe('Identity advisor-created students (Postgres จริง)', function (
     expect(JSON.stringify(err?.meta?.target)).to.match(/student_?code/i);
 
     // คำขอพร้อมกันด้วยรหัสใหม่เดียวกัน: สำเร็จ 1 คำขอ ที่เหลือได้ 409 STUDENT_CODE_ALREADY_USED (ไม่ใช่ 500)
-    const raced = `R${randomBytes(3).toString('hex')}`;
+    const raced = studentCode();
     const results = await Promise.all(Array.from({ length: 6 }, () =>
       http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ student_code: raced }))));
     expect(results.map((r) => r.status).sort()).to.deep.equal([201, 409, 409, 409, 409, 409]);
@@ -194,6 +196,22 @@ describe('Identity advisor-created students (Postgres จริง)', function (
     for (const bad of [{ year_level: 0 }, { year_level: 11 }, { year_level: 'x' }, { major: '' }, { full_name: ' ' }, { email: 'not-an-email' }]) {
       await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent(bad)).expect(400);
     }
+    // ปีอื่นที่ไม่ใช่ปี 4 ⇒ INTERN_YEAR_ONLY (ไม่สร้างบัญชี)
+    for (const year_level of [1, 3, 5]) {
+      const res = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ year_level })).expect(400);
+      expect(res.body.error.details).to.deep.equal([{ field: 'year_level', issue: 'INTERN_YEAR_ONLY' }]);
+    }
+    // รูปแบบรหัสนักศึกษา: สั้น/ยาวเกิน, มีขีด/ช่องว่าง, ตัวอักษรนำหน้าเกิน 2, ภาษาไทย ⇒ STUDENT_CODE_FORMAT
+    for (const student_code of ['12345', '12345678901234', '66-100100', '6610 0100', 'ABC123456', 'ก6610010', 'S001', '']) {
+      const res = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB)).send(newStudent({ student_code })).expect(400);
+      const issues = res.body.error.details.map((d: { issue: string }) => d.issue) as string[];
+      expect(issues.some((issue) => issue === 'STUDENT_CODE_FORMAT' || issue === 'isNotEmpty'), student_code).to.equal(true);
+    }
+    // ตัวอักษรนำหน้าพิมพ์เล็ก/มีช่องว่างหัวท้าย ⇒ เก็บเป็น B + ตัวเลข
+    const prefixed = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorB))
+      .send(newStudent({ student_code: ` b${randomInt(1_000_000, 9_999_999)} ` })).expect(201);
+    const prefixedCode = (await db.studentProfileIdentity.findUniqueOrThrow({ where: { userId: prefixed.body.student_user_id } })).studentCode;
+    expect(prefixedCode).to.match(/^B[0-9]{7}$/);
     const pending = await http().post('/v1/advisor-links/students').set(advisorAuth(advisorC)).send(newStudent()).expect(401); // ยังไม่อนุมัติ (api-contract §2: ACCOUNT_SUSPENDED = 401)
     expect(pending.body.error.code).to.equal('ACCOUNT_SUSPENDED');
     await http().post('/v1/advisor-links/students').set('Authorization', bearer(studentId, 'STUDENT')).send(newStudent()).expect(403);
@@ -209,7 +227,7 @@ describe('Identity advisor-created students (Postgres จริง)', function (
   });
 
   it('simultaneous creates with one student code in the same university produce one account', async () => {
-    const code = `R${randomBytes(3).toString('hex')}`;
+    const code = studentCode();
     const results = await Promise.all([1, 2].map(() => http().post('/v1/advisor-links/students')
       .set(advisorAuth(advisorB)).send(newStudent({ student_code: code }))));
     expect(results.map((r) => r.status).sort()).to.deep.equal([201, 409]);
@@ -248,6 +266,9 @@ describe('Identity advisor-created students (Postgres จริง)', function (
     expect(edited.studentProfile).to.include({ major: 'Data Science', yearLevel: 4 });
     await http().patch(`/v1/advisor-links/students/${id}`).set(advisorAuth(advisorB)).send({ major: ' ' }).expect(400);
     await http().patch(`/v1/advisor-links/students/${id}`).set(advisorAuth(advisorB)).send({ year_level: 99 }).expect(400);
+    // รับเฉพาะปี 4 — แก้เป็นปีอื่นไม่ได้
+    const year3 = await http().patch(`/v1/advisor-links/students/${id}`).set(advisorAuth(advisorB)).send({ year_level: 3 }).expect(400);
+    expect(year3.body.error.details).to.deep.equal([{ field: 'year_level', issue: 'INTERN_YEAR_ONLY' }]);
 
     const before = await db.emailToken.findMany({ where: { userId: id } });
     await http().post(`/v1/advisor-links/students/${id}/actions/resend-invitation`).set(advisorAuth(advisorA)).expect(404);

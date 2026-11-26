@@ -113,6 +113,7 @@ outbox_events(id=event_id, type, version, payload jsonb, correlation_id,
 | E16 | `UserSuspended` *(เพิ่มใหม่)* | identity | gateway (cache denylist), notification | 5.7 |
 | E17 | `ProblemReportCreated` *(เพิ่มใหม่)* | lifecycle | notification | 5.2.2 |
 | E18 | `CompanyFlagChanged` *(เพิ่มใหม่)* | verification | job, notification | 5.1.4 |
+| E19 | `ConductReportCreated` *(เพิ่มใหม่ 2026-11-26)* | lifecycle | notification | 5.2.2 |
 
 > **E03 รับโดย verification เพิ่ม** เพื่อรู้ว่าประกาศถูกตั้ง `PENDING_REVIEW` โดย Fail-safe (สร้างรายการคิว Admin) และเพื่อนับการถูกปฏิเสธ/ระงับ/ลบ (เกณฑ์ `UNDER_REVIEW`) — **Verification รับ E03 ทุกตัว** (สไลซ์ 2): เก็บสำเนาสถานะ/`company_id` ของประกาศ (`job_snapshots`) และนับ `to_status ∈ {AUTO_REJECTED, ADMIN_REJECTED, SUSPENDED, REMOVED}` เป็นเหตุการณ์ปฏิเสธของบริษัท ดังนั้น **Job ต้องส่ง E03 ทุกการเปลี่ยนสถานะ พร้อม `company_id` และ `entity_version` ที่เพิ่มขึ้น**
 > **E04/E18 ส่งโดย verification:** E04 = รายงานนับเข้าเกณฑ์ครบ 3 บัญชี (ส่งครั้งเดียวต่อรอบรีเซ็ต) — Job ระงับได้เฉพาะจาก `PUBLISHED` ตาม [data-schema.md](data-schema.md) §8.2; E18 ส่งเมื่อธงเปลี่ยนจริง (`entity_version` เพิ่มทีละ 1)
@@ -380,6 +381,13 @@ Gateway ใช้อัปเดต Denylist ทันที (`suspended=false` 
 ```
 **ห้ามแจ้ง HR/บริษัท** (README 5.2.2)
 
+### E19 `ConductReportCreated`  (lifecycle → notification)
+```ts
+{ conduct_report_id: string, application_id: string, student_user_id: string,
+  advisor_user_id: string, company_id: string, category: string, created_at: string }
+```
+HR รายงานพฤติกรรมนักศึกษาที่กำลังฝึกงานถึงอาจารย์ — แจ้ง**อาจารย์ที่ปรึกษาเท่านั้น** (in-app + อีเมล ลิงก์ `/advisor/conduct-reports`); ไม่มีรายละเอียดใน Event
+
 ### E18 `CompanyFlagChanged`  (verification → job, notification)
 ```ts
 { company_id: string, flag: 'UNDER_REVIEW', active: boolean,
@@ -403,6 +411,7 @@ Job เก็บค่าไว้เพื่อใส่ใน `JobSubmitted.c
 | `CertificateIssued` / `CertificateRevoked` | นักศึกษา | — |
 | `ReminderDue` | `audience` ใน Payload; **ชนิดยกระดับ 5 ชนิด** (`ADVISOR_APPROVE_ESCALATE_ADMIN_D7`, `START_CONFIRM_ESCALATE_D7`, `EVALUATE_ESCALATE_D14`, `ISSUE_CERT_ESCALATE_D14`, `DISPUTE_ESCALATE_D7`) Notification **เพิ่ม Admin เอง** (รายชื่อจาก `GET /internal/v1/admins` — Lifecycle เรียก Identity endpoint นี้ไม่ได้ จึงไม่ใส่ Admin ใน `audience`) • `audience` ว่างได้ (เช่น `ADVISOR_APPROVE_ESCALATE_ADMIN_D7` ส่งถึง Admin อย่างเดียว) ⇒ Notification **ต้องไม่ทิ้ง Event** ต้องเติม Admin แล้วส่งตามปกติ (PM ตัดสิน 2026-11-18) | In-App และอีเมล (README UAT-32) |
 | `ProblemReportCreated` | อาจารย์ + Admin | เสมอ |
+| `ConductReportCreated` | อาจารย์ที่ปรึกษา | เสมอ (in-app + อีเมล) |
 | `CompanyFlagChanged` | Admin | `active=true` |
 | `UserDeletionRequested` | — | ลบกล่องข้อความ/บันทึกส่ง |
 | `UserSuspended` | — | บันทึกเท่านั้น |

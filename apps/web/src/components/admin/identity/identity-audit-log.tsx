@@ -10,9 +10,11 @@ import { IDENTITY_AUDIT_ACTION_LABEL, IDENTITY_AUDIT_TARGET_LABEL, labelOf } fro
 type AuditEntry = {
   id: string;
   admin_id: string;
+  admin_label: string | null;
   action: string;
   target_type: string;
   target_id: string;
+  target_label: string | null;
   before: unknown;
   after: unknown;
   reason: string | null;
@@ -53,7 +55,8 @@ export function IdentityAuditLog() {
     const query = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
     if (action) query.set('action', action);
     if (targetType) query.set('target_type', targetType);
-    if (targetId) query.set('target_id', targetId);
+    // ช่องเป้าหมายรับรหัสที่คนอ่านได้ (รหัสนักศึกษา/อาจารย์/อีเมล/เลขทะเบียน) — UUID ยังใช้ได้สำหรับลิงก์เดิม
+    if (targetId) query.set(UUID.test(targetId) ? 'target_id' : 'target_code', targetId);
     if (adminId) query.set('admin_id', adminId);
     setLoading(true);
     setError('');
@@ -68,8 +71,8 @@ export function IdentityAuditLog() {
     event.preventDefault();
     const nextTargetId = targetIdText.trim();
     const nextAdminId = adminIdText.trim();
-    if ((nextTargetId && !UUID.test(nextTargetId)) || (nextAdminId && !UUID.test(nextAdminId))) {
-      setError('รหัสเป้าหมายและรหัสผู้ดูแลต้องเป็น UUID');
+    if (nextAdminId && !UUID.test(nextAdminId)) {
+      setError('กรุณาเลือกผู้ดูแลจากรายการ');
       return;
     }
     setError('');
@@ -88,7 +91,7 @@ export function IdentityAuditLog() {
       {[
         { label: 'การกระทำ', value: actionText, set: setActionText, max: 100 },
         { label: 'ชนิดเป้าหมาย', value: targetTypeText, set: setTargetTypeText, max: 50 },
-        { label: 'รหัสเป้าหมาย', value: targetIdText, set: setTargetIdText, max: 36 },
+        { label: 'เป้าหมาย (รหัสนักศึกษา/อาจารย์ อีเมล หรือเลขทะเบียน)', value: targetIdText, set: setTargetIdText, max: 320 },
       ].map((field) => <label key={field.label} className="text-sm">{field.label}
         <input value={field.value} onChange={(event) => field.set(event.target.value)} maxLength={field.max}
           className="mt-1 w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm" />
@@ -104,7 +107,7 @@ export function IdentityAuditLog() {
           <div className="flex flex-wrap items-start justify-between gap-3"><div className="min-w-0 space-y-1">
             <p className="font-medium">{labelOf(IDENTITY_AUDIT_ACTION_LABEL, entry.action)} <span className="text-sm font-normal text-ink-soft">· {labelOf(IDENTITY_AUDIT_TARGET_LABEL, entry.target_type)}</span></p>
             <p className="font-mono text-xs text-ink-soft">{entry.action}</p>
-            <p className="break-all text-xs text-ink-soft">เป้าหมาย {entry.target_id} · ผู้ดูแล {entry.admin_id}</p>
+            <p className="break-all text-xs text-ink-soft">เป้าหมาย {entry.target_label ?? '(ไม่พบบัญชี/บริษัท — อาจถูกลบแล้ว)'} · ผู้ดูแล {entry.admin_label ?? '—'}</p>
             <p className="text-xs text-ink-soft">{new Date(entry.occurred_at).toLocaleString('th-TH')} · Correlation ID {entry.correlation_id}</p>
             {entry.reason && <p className="text-sm">เหตุผล: {entry.reason}</p>}
           </div><button type="button" onClick={() => setOpenId(openId === entry.id ? null : entry.id)}
